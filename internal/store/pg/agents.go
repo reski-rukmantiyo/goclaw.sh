@@ -199,6 +199,22 @@ func (s *PGAgentStore) Update(ctx context.Context, id uuid.UUID, updates map[str
 			updates[col] = []byte("{}")
 		}
 	}
+	// Promoted NOT NULL text columns: null → empty string.
+	for _, col := range []string{"emoji", "agent_description", "thinking_level"} {
+		if v, ok := updates[col]; ok && v == nil {
+			updates[col] = ""
+		}
+	}
+	// Promoted NOT NULL integer columns: null → 0.
+	if v, ok := updates["max_tokens"]; ok && v == nil {
+		updates["max_tokens"] = 0
+	}
+	// Promoted NOT NULL boolean columns: null → false.
+	for _, col := range []string{"self_evolve", "skill_evolve"} {
+		if v, ok := updates[col]; ok && v == nil {
+			updates[col] = false
+		}
+	}
 
 	// If setting this agent as default, unset any existing default first (scoped to same tenant).
 	if v, ok := updates["is_default"]; ok {
