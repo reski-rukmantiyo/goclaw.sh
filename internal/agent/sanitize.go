@@ -36,9 +36,6 @@ func SanitizeAssistantContent(content string) string {
 
 	// 1. Strip garbled tool-call XML (DeepSeek, GLM, Minimax)
 	content = stripGarbledToolXML(content)
-	if content == "" {
-		return ""
-	}
 
 	// 2. Strip downgraded tool call text ([Tool Call: ...], [Tool Result ...])
 	content = stripDowngradedToolCallText(content)
@@ -62,6 +59,14 @@ func SanitizeAssistantContent(content string) string {
 	content = stripLeadingBlankLines(content)
 
 	content = strings.TrimSpace(content)
+
+	// Safety net: if sanitization stripped everything, preserve the original.
+	// Better to show imperfect content than "..." to the user.
+	if content == "" && original != "" {
+		slog.Warn("sanitization stripped entire response, preserving original",
+			"original_len", len(original))
+		return original
+	}
 
 	if content != original {
 		slog.Debug("sanitized assistant content",

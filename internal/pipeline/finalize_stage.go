@@ -41,7 +41,16 @@ func (s *FinalizeStage) Execute(ctx context.Context, state *RunState) error {
 
 	// 2b. Fallback for empty content (matching v2: channels need non-empty content to deliver).
 	if state.Observe.FinalContent == "" && !isSilent {
-		state.Observe.FinalContent = "..."
+		slog.Warn("finalize: empty FinalContent, applying fallback",
+			"session", state.Input.SessionKey,
+			"has_block_reply", state.Observe.LastBlockReply != "",
+			"iterations", state.Iteration,
+			"tool_calls", state.Tool.TotalToolCalls)
+		if state.Observe.LastBlockReply != "" {
+			state.Observe.FinalContent = state.Observe.LastBlockReply
+		} else {
+			state.Observe.FinalContent = "..."
+		}
 	}
 
 	// 2c. Append content suffix (e.g. image markdown for WS) with dedup.
