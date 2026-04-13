@@ -84,8 +84,11 @@ var ShellDenyPatterns = []string{
 
 	// Network abuse / reconnaissance
 	`\b(nmap|masscan|zmap|rustscan)\b`,
-	`\b(ssh|scp|sftp)\b.*@`,
+	`\b(scp|sftp)\b.*@`,
 	`\b(chisel|frp|ngrok|cloudflared|bore|localtunnel)\b`,
+
+	// Original ssh pattern
+	// `\b(ssh|scp|sftp)\b.*@`,
 
 	// Persistence
 	`\bcrontab\b`,
