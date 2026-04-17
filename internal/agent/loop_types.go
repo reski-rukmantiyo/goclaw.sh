@@ -78,8 +78,8 @@ type Loop struct {
 	// agentUUID is the canonical DB primary key. Use for SQL WHERE/JOIN,
 	// DomainEvent.AgentID, OTel span attributes, and context propagation via
 	// store.WithAgentID. See docs/agent-identity-conventions.md.
-	agentUUID uuid.UUID
-	tenantID  uuid.UUID // agent's owning tenant
+	agentUUID        uuid.UUID
+	tenantID         uuid.UUID // agent's owning tenant
 	agentType        string    // "open" or "predefined"
 	defaultTimezone  string    // system default timezone for bootstrap pre-fill
 	provider         providers.Provider
@@ -103,7 +103,7 @@ type Loop struct {
 	// Memory flush runs if callback != nil; auto-inject runs if AutoInjector != nil.
 	autoInjector memory.AutoInjector // v3 L0 memory auto-inject (nil = disabled)
 
-	eventPub        bus.EventPublisher // currently unused by Loop; kept for future use
+	eventPub        bus.EventPublisher      // currently unused by Loop; kept for future use
 	domainBus       eventbus.DomainEventBus // V3 domain event bus for consolidation pipeline
 	sessions        store.SessionStore
 	tools           tools.ToolExecutor
@@ -229,8 +229,8 @@ type Loop struct {
 	memStore store.MemoryStore
 
 	// v3 orchestration mode (spawn/delegate/team) — controls tool visibility
-	orchMode          OrchestrationMode
-	delegateTargets   []DelegateTargetEntry // delegation targets for prompt injection
+	orchMode        OrchestrationMode
+	delegateTargets []DelegateTargetEntry // delegation targets for prompt injection
 
 	// v3 evolution metrics store (nil = disabled)
 	evolutionMetricsStore store.EvolutionMetricsStore
@@ -323,7 +323,7 @@ type LoopConfig struct {
 	TenantID    uuid.UUID // agent's owning tenant — injected into execution context
 	AgentType   string    // "open" or "predefined"
 	DisplayName string    // human-readable agent display name (for runtime section)
-	IsTeamLead bool      // agent leads a team (from resolver detection)
+	IsTeamLead  bool      // agent leads a team (from resolver detection)
 
 	// Per-user profile + file seeding + dynamic context loading
 	EnsureUserProfile EnsureUserProfileFunc // preferred: separate profile + workspace
@@ -401,8 +401,8 @@ type LoopConfig struct {
 	MCPUserCredSrvs []store.MCPAccessInfo // servers needing per-user creds
 
 	// V3 orchestration mode (resolved by resolver, controls tool visibility)
-	OrchMode          OrchestrationMode
-	DelegateTargets   []DelegateTargetEntry // delegation targets for prompt injection
+	OrchMode        OrchestrationMode
+	DelegateTargets []DelegateTargetEntry // delegation targets for prompt injection
 
 	// V3 evolution metrics store for recording tool/retrieval/feedback metrics
 	EvolutionMetricsStore store.EvolutionMetricsStore
@@ -588,7 +588,7 @@ type RunRequest struct {
 // RunResult is the output of a completed agent run.
 type RunResult struct {
 	Content        string           `json:"content"`
-	Thinking       string           `json:"thinking,omitempty"`       // reasoning content from thinking models (Claude, o3, DeepSeek-R1, Kimi)
+	Thinking       string           `json:"thinking,omitempty"` // reasoning content from thinking models (Claude, o3, DeepSeek-R1, Kimi)
 	RunID          string           `json:"runId"`
 	Iterations     int              `json:"iterations"`
 	Usage          *providers.Usage `json:"usage,omitempty"`
