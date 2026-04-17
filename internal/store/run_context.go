@@ -35,6 +35,7 @@ type RunContext struct {
 	SharedKG            bool
 	SharedSessions      bool
 	RestrictToWorkspace bool
+	KGGraphID           string // explicit KG scope override (from channel config, e.g., WhatsApp listen_graph_id)
 
 	// Tool configuration
 	BuiltinToolSettings map[string][]byte

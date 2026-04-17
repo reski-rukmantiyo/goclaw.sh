@@ -579,6 +579,10 @@ type RunRequest struct {
 	// TeamWorkspace overrides the member agent's workspace with the team's workspace
 	// so file operations (read/write/image/audio) use the shared team directory.
 	TeamWorkspace string
+
+	// KG graph scope override from channel config (aligns agent KG queries with extraction scope).
+	// When set, store.KGUserID() returns this value instead of the session userID or shared flag.
+	GraphID string
 }
 
 // RunResult is the output of a completed agent run.

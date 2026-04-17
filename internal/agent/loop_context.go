@@ -42,6 +42,19 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 	if req.UserID != "" {
 		ctx = store.WithUserID(ctx, req.UserID)
 	}
+	// Resolve KG graph scope: agent-level config > per-request from channel.
+	// Agent-level KGGraphID is the authoritative scope (user-configured).
+	// Per-request GraphID (from WhatsApp channel) is used only as fallback.
+	graphID := ""
+	if l.workspaceSharing != nil && l.workspaceSharing.KGGraphID != "" {
+		graphID = l.workspaceSharing.KGGraphID
+	}
+	if graphID == "" {
+		graphID = req.GraphID
+	}
+	if graphID != "" {
+		ctx = store.WithKGGraphID(ctx, graphID)
+	}
 	// Resolve merged tenant user identity for credential lookups.
 	// Keeps UserID unchanged (session/workspace scoping) but sets a separate
 	// CredentialUserID for SecureCLI, MCP, and other per-user features.
@@ -319,6 +332,7 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 		SharedKG:            store.IsSharedKG(ctx),
 		SharedSessions:      store.IsSharedSessions(ctx),
 		RestrictToWorkspace: l.restrictToWs != nil && *l.restrictToWs,
+		KGGraphID:           graphID,
 		BuiltinToolSettings: l.builtinToolSettings,
 		ChannelType:         req.ChannelType,
 		SubagentsCfg:        l.subagentsCfg,

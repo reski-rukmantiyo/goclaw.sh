@@ -765,7 +765,10 @@
       "shareKGNote": "Bật/tắt không di chuyển dữ liệu — KG per-user trước đó sẽ không truy cập được trong chế độ shared.",
       "shareSessions": "Chia sẻ phiên hội thoại",
       "shareSessionsTip": "Cho phép agent truy cập các phiên hội thoại trên tất cả các nhóm. Khi tắt, phiên của mỗi người dùng được cô lập riêng.",
-      "shareSessionsNote": "Bật/tắt không di chuyển dữ liệu — phiên per-user trước đó sẽ không truy cập được trong chế độ shared."
+      "shareSessionsNote": "Bật/tắt không di chuyển dữ liệu — phiên per-user trước đó sẽ không truy cập được trong chế độ shared.",
+      "kgGraphId": "Knowledge Graph Scope ID",
+      "kgGraphIdTip": "Đặt scope ID tùy chỉnh cho truy vấn knowledge graph. Dùng để đồng bộ với Graph ID của nhóm WhatsApp listen-only, giúp agent truy cập dữ liệu KG từ mọi ngữ cảnh (DM, dashboard, v.v.).",
+      "kgGraphIdPlaceholder": "vd: project-gb200-inf"
     },
     "compaction": {
       "title": "Nén ngữ cảnh",

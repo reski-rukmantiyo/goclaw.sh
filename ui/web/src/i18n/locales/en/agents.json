@@ -781,7 +781,10 @@
       "shareKGNote": "Toggling this does not migrate data — existing per-user KG entities become inaccessible in shared mode.",
       "shareSessions": "Share Sessions",
       "shareSessionsTip": "Allow agent to access conversation sessions across all groups. When off, each user's sessions remain isolated.",
-      "shareSessionsNote": "Toggling this does not migrate data — existing per-user sessions become inaccessible in shared mode."
+      "shareSessionsNote": "Toggling this does not migrate data — existing per-user sessions become inaccessible in shared mode.",
+      "kgGraphId": "Knowledge Graph Scope ID",
+      "kgGraphIdTip": "Set a custom scope ID for knowledge graph queries. Use this to align with a WhatsApp listen-only group's Graph ID so the agent can access extracted KG data from any context (DM, dashboard, etc.).",
+      "kgGraphIdPlaceholder": "e.g. project-gb200-inf"
     },
     "compaction": {
       "title": "Compaction",

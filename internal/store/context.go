@@ -27,6 +27,10 @@ const (
 	SharedMemoryKey contextKey = "goclaw_shared_memory"
 	// SharedKGKey indicates KG should be shared across all users of the agent (no per-user scoping).
 	SharedKGKey contextKey = "goclaw_shared_kg"
+	// KGGraphIDKey overrides the normal KGUserID() return value.
+	// Used by channels (e.g., WhatsApp listen-only) to align KG query scope
+	// with extraction scope. Takes precedence over both SharedKG and UserID.
+	KGGraphIDKey contextKey = "goclaw_kg_graph_id"
 	// SharedSessionsKey indicates sessions should be shared across all users (no per-group scoping).
 	SharedSessionsKey contextKey = "goclaw_shared_sessions"
 	// ShellDenyGroupsKey holds per-agent shell deny group overrides.
@@ -214,12 +218,21 @@ func MemoryUserID(ctx context.Context) string {
 }
 
 // KGUserID returns the userID to use for knowledge graph operations.
-// Returns "" (agent-level scope) when shared KG is active, otherwise the per-user ID.
+// Precedence: KGGraphID override > SharedKG (agent-level) > UserID (session scope).
 func KGUserID(ctx context.Context) string {
+	if v, ok := ctx.Value(KGGraphIDKey).(string); ok && v != "" {
+		return v
+	}
 	if IsSharedKG(ctx) {
 		return ""
 	}
 	return UserIDFromContext(ctx)
+}
+
+// WithKGGraphID returns a context with an explicit KG graph ID override.
+// When set, KGUserID() returns this value regardless of SharedKG flag or UserID.
+func WithKGGraphID(ctx context.Context, graphID string) context.Context {
+	return context.WithValue(ctx, KGGraphIDKey, graphID)
 }
 
 // WithSharedKG returns a context flagged for shared knowledge graph (agent-level, no per-user scoping).

@@ -251,6 +251,11 @@ func (c *Channel) handleIncomingMessage(evt *events.Message) {
 		userID = senderID[:idx]
 	}
 
+	// Resolve graphID for KG scope alignment with extraction worker.
+	// The agent's knowledge_graph_search tool needs to query using the same
+	// scope that the extraction worker used when storing entities.
+	graphID := c.resolveGraphID(chatID, peerKind)
+
 	c.Bus().PublishInbound(bus.InboundMessage{
 		Channel:  c.Name(),
 		SenderID: senderID,
@@ -262,6 +267,7 @@ func (c *Channel) handleIncomingMessage(evt *events.Message) {
 		AgentID:  targetAgentID,
 		TenantID: c.TenantID(),
 		Metadata: metadata,
+		GraphID:  graphID,
 	})
 
 	// Schedule temp media file cleanup after agent pipeline has had time to process.

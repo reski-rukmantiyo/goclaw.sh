@@ -101,6 +101,20 @@ export function WorkspaceSharingSection({ value, onChange }: WorkspaceSharingSec
               </p>
             )}
           </div>
+
+          {/* KG Graph ID — explicit scope for KG queries */}
+          <div className="rounded-lg border p-3 sm:p-4">
+            <div className="flex items-center justify-between">
+              <InfoLabel tip={t(`${s}.kgGraphIdTip`)}>{t(`${s}.kgGraphId`)}</InfoLabel>
+            </div>
+            <input
+              type="text"
+              value={value.kg_graph_id ?? ""}
+              onChange={(e) => onChange({ ...value, kg_graph_id: e.target.value || undefined })}
+              placeholder={t(`${s}.kgGraphIdPlaceholder`)}
+              className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
         </div>
       </section>
 

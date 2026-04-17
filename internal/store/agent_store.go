@@ -318,6 +318,7 @@ type WorkspaceSharingConfig struct {
 	ShareMemory         bool     `json:"share_memory" db:"-"`
 	ShareKnowledgeGraph bool     `json:"share_knowledge_graph" db:"-"`
 	ShareSessions       bool     `json:"share_sessions" db:"-"`
+	KGGraphID           string   `json:"kg_graph_id,omitempty" db:"-"` // default KG scope for agent (e.g., WhatsApp listen_graph_id)
 }
 
 const (
@@ -407,7 +408,7 @@ func (a *AgentData) ParseWorkspaceSharing() *WorkspaceSharingConfig {
 	if json.Unmarshal(a.WorkspaceSharing, &ws) != nil {
 		return nil
 	}
-	if !ws.SharedDM && !ws.SharedGroup && len(ws.SharedUsers) == 0 && !ws.ShareMemory && !ws.ShareKnowledgeGraph && !ws.ShareSessions {
+	if !ws.SharedDM && !ws.SharedGroup && len(ws.SharedUsers) == 0 && !ws.ShareMemory && !ws.ShareKnowledgeGraph && !ws.ShareSessions && ws.KGGraphID == "" {
 		return nil
 	}
 	return &ws

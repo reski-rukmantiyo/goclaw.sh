@@ -30,6 +30,7 @@ type InboundMessage struct {
 	HistoryLimit int               `json:"history_limit,omitempty"` // max turns to keep in context (0=unlimited, from channel config)
 	ToolAllow    []string          `json:"tool_allow,omitempty"`    // per-group tool allow list (nil = no restriction)
 	Metadata     map[string]string `json:"metadata,omitempty"`
+	GraphID      string            `json:"graph_id,omitempty"` // KG graph scope override (from WhatsApp listen-only config)
 }
 
 // OutboundMessage represents a message to be sent to a channel.

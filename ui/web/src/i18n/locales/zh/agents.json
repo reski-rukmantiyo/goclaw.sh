@@ -765,7 +765,10 @@
       "shareKGNote": "切换不会迁移数据——切换到共享模式后，现有的用户独立知识图谱实体将无法访问。",
       "shareSessions": "共享会话",
       "shareSessionsTip": "允许 agent 访问所有群组的会话记录。关闭时，每个用户的会话保持隔离。",
-      "shareSessionsNote": "切换不会迁移数据——切换到共享模式后，现有的用户独立会话将无法访问。"
+      "shareSessionsNote": "切换不会迁移数据——切换到共享模式后，现有的用户独立会话将无法访问。",
+      "kgGraphId": "知识图谱范围 ID",
+      "kgGraphIdTip": "设置知识图谱查询的自定义范围 ID。用于与 WhatsApp 仅监听群组的 Graph ID 对齐，使 agent 能从任何上下文（DM、仪表板等）访问提取的 KG 数据。",
+      "kgGraphIdPlaceholder": "例如 project-gb200-inf"
     },
     "compaction": {
       "title": "压缩",

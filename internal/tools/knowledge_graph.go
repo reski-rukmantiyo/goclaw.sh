@@ -72,11 +72,16 @@ func (t *KnowledgeGraphSearchTool) Execute(ctx context.Context, args map[string]
 		return ErrorResult("agent context not available")
 	}
 	userID := store.KGUserID(ctx)
+	shared := store.IsSharedKG(ctx)
 
 	query, _ := args["query"].(string)
 	if query == "" {
 		return ErrorResult("query parameter is required")
 	}
+
+	slog.Debug("kg.search",
+		"agent_id", agentID, "user_id", userID,
+		"shared", shared, "query", query)
 
 	entityID, _ := args["entity_id"].(string)
 	maxDepth := 2
