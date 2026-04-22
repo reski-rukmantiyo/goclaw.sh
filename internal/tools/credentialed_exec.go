@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -189,10 +190,8 @@ func matchesBinaryVerbose(args []string, denyPatternsJSON json.RawMessage) strin
 			slog.Warn("secure_cli.invalid_deny_pattern", "pattern", p, "error", err)
 			continue
 		}
-		for _, arg := range args {
-			if re.MatchString(arg) {
-				return p
-			}
+		if slices.ContainsFunc(args, re.MatchString) {
+			return p
 		}
 	}
 	return ""
@@ -273,14 +272,19 @@ func (t *ExecTool) executeCredentialed(ctx context.Context, cred *store.SecureCL
 
 // executeCredentialedHost runs a credentialed command directly on the host.
 // Uses exec.Command (no shell) with credentials as env vars.
+// ctx cancellation triggers SIGTERM → 3s grace → SIGKILL via process-group helpers.
 func (t *ExecTool) executeCredentialedHost(ctx context.Context, absPath string, args []string,
 	cwd string, envMap map[string]string, timeout time.Duration) *Result {
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, absPath, args...)
+	// Plain exec.Command (not CommandContext) so we own the kill sequence.
+	cmd := exec.Command(absPath, args...)
 	cmd.Dir = cwd
+
+	// Process group so abort reaches the whole tree (mirrors executeOnHost).
+	setProcessGroup(cmd)
 
 	// Build env: inherit minimal PATH + HOME, add credentials
 	cmd.Env = buildCredentialedEnv(envMap)
@@ -289,8 +293,30 @@ func (t *ExecTool) executeCredentialedHost(ctx context.Context, absPath string, 
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err := cmd.Run()
-	return formatCredentialedResult(absPath, args, stdout.String(), stderr.String(), err, ctx, timeout)
+	if err := cmd.Start(); err != nil {
+		return ErrorResult(fmt.Sprintf("credentialed exec: failed to start %s: %v", absPath, err))
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case err := <-done:
+		return formatCredentialedResult(absPath, args, stdout.String(), stderr.String(), err, ctx, timeout)
+
+	case <-ctx.Done():
+		_ = killProcessGroup(cmd, syscallSIGTERM)
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			_ = killProcessGroup(cmd, syscallSIGKILL)
+			<-done
+		}
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return ErrorResult(fmt.Sprintf("[CREDENTIALED EXEC] Command timed out after %s.\nBinary: %s", timeout, absPath))
+		}
+		return ErrorResult(fmt.Sprintf("[CREDENTIALED EXEC] Command aborted.\nBinary: %s", absPath))
+	}
 }
 
 // executeCredentialedSandbox runs a credentialed command inside a Docker sandbox.
