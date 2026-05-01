@@ -12,12 +12,7 @@ import {
 } from "@/components/ui/select";
 import type { AgentData } from "@/types/agent";
 
-interface Props {
-  agent: AgentData;
-  onUpdate: (updates: Record<string, unknown>) => Promise<void>;
-}
-
-interface ScopeGuardrailsConfig {
+export interface ScopeGuardrailsConfig {
   enabled?: boolean;
   enforcement?: string;
   scope_description?: string;
@@ -31,80 +26,73 @@ function readScopeGuardrails(agent: AgentData): ScopeGuardrailsConfig {
   return (bag.scope_guardrails as ScopeGuardrailsConfig) || {};
 }
 
-export function ScopeGuardrailsSection({ agent, onUpdate }: Props) {
-  const { t } = useTranslation("agents");
-  const saved = readScopeGuardrails(agent);
+interface Props {
+  agent?: AgentData;
+  frontmatter: string;
+  enabled: boolean;
+  onEnabledChange: (v: boolean) => void;
+  enforcement: string;
+  onEnforcementChange: (v: string) => void;
+  scopeDescription: string;
+  onScopeDescriptionChange: (v: string) => void;
+  allowedTopics: string[];
+  onAllowedTopicsChange: (v: string[]) => void;
+  deniedTopics: string[];
+  onDeniedTopicsChange: (v: string[]) => void;
+  offTopicResponse: string;
+  onOffTopicResponseChange: (v: string) => void;
+}
 
-  const [enabled, setEnabled] = useState(Boolean(saved.enabled));
-  const [enforcement, setEnforcement] = useState(saved.enforcement || "soft");
-  const [scopeDescription, setScopeDescription] = useState(saved.scope_description || "");
-  const [allowedTopics, setAllowedTopics] = useState<string[]>(saved.allowed_topics || []);
-  const [deniedTopics, setDeniedTopics] = useState<string[]>(saved.denied_topics || []);
-  const [offTopicResponse, setOffTopicResponse] = useState(saved.off_topic_response || "");
+export { readScopeGuardrails };
+
+export function ScopeGuardrailsSection({
+  frontmatter,
+  enabled,
+  onEnabledChange,
+  enforcement,
+  onEnforcementChange,
+  scopeDescription,
+  onScopeDescriptionChange,
+  allowedTopics,
+  onAllowedTopicsChange,
+  deniedTopics,
+  onDeniedTopicsChange,
+  offTopicResponse,
+  onOffTopicResponseChange,
+}: Props) {
+  const { t } = useTranslation("agents");
   const [newAllowed, setNewAllowed] = useState("");
   const [newDenied, setNewDenied] = useState("");
-  const [saving, setSaving] = useState(false);
 
+  // Auto-fill scope description from frontmatter (Expertise Summary) when empty
   useEffect(() => {
-    const s = readScopeGuardrails(agent);
-    setEnabled(Boolean(s.enabled));
-    setEnforcement(s.enforcement || "soft");
-    setScopeDescription(s.scope_description || "");
-    setAllowedTopics(s.allowed_topics || []);
-    setDeniedTopics(s.denied_topics || []);
-    setOffTopicResponse(s.off_topic_response || "");
-  }, [agent.other_config]);
-
-  const savedStr = JSON.stringify(readScopeGuardrails(agent));
-  const currentStr = JSON.stringify({
-    enabled, enforcement, scope_description: scopeDescription,
-    allowed_topics: allowedTopics, denied_topics: deniedTopics,
-    off_topic_response: offTopicResponse,
-  });
-  const dirty = savedStr !== currentStr;
+    if (enabled && !scopeDescription && frontmatter) {
+      onScopeDescriptionChange(frontmatter);
+    }
+  }, [enabled, frontmatter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addAllowed = () => {
     const v = newAllowed.trim();
     if (v && !allowedTopics.includes(v)) {
-      setAllowedTopics([...allowedTopics, v]);
+      onAllowedTopicsChange([...allowedTopics, v]);
       setNewAllowed("");
     }
   };
 
   const removeAllowed = (topic: string) => {
-    setAllowedTopics(allowedTopics.filter((t) => t !== topic));
+    onAllowedTopicsChange(allowedTopics.filter((t) => t !== topic));
   };
 
   const addDenied = () => {
     const v = newDenied.trim();
     if (v && !deniedTopics.includes(v)) {
-      setDeniedTopics([...deniedTopics, v]);
+      onDeniedTopicsChange([...deniedTopics, v]);
       setNewDenied("");
     }
   };
 
   const removeDenied = (topic: string) => {
-    setDeniedTopics(deniedTopics.filter((t) => t !== topic));
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const bag = { ...((agent.other_config ?? {}) as Record<string, unknown>) };
-      if (enabled) {
-        const sg: ScopeGuardrailsConfig = { enabled: true, enforcement };
-        if (scopeDescription.trim()) sg.scope_description = scopeDescription.trim();
-        if (allowedTopics.length > 0) sg.allowed_topics = allowedTopics;
-        if (deniedTopics.length > 0) sg.denied_topics = deniedTopics;
-        if (offTopicResponse.trim()) sg.off_topic_response = offTopicResponse.trim();
-        bag.scope_guardrails = sg;
-      } else {
-        delete bag.scope_guardrails;
-      }
-      await onUpdate({ other_config: bag });
-    } finally {
-      setSaving(false);
-    }
+    onDeniedTopicsChange(deniedTopics.filter((t) => t !== topic));
   };
 
   return (
@@ -117,14 +105,7 @@ export function ScopeGuardrailsSection({ agent, onUpdate }: Props) {
             <p className="text-xs text-muted-foreground">{t("detail.scopeGuardrails.hint", "Restrict agent to specific topics and domains")}</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          {dirty && (
-            <Button size="xs" onClick={handleSave} disabled={saving}>
-              {saving ? t("general.saving") : t("general.saveChanges", "Save")}
-            </Button>
-          )}
-          <Switch checked={enabled} onCheckedChange={setEnabled} />
-        </div>
+        <Switch checked={enabled} onCheckedChange={onEnabledChange} />
       </div>
 
       {enabled && (
@@ -134,7 +115,7 @@ export function ScopeGuardrailsSection({ agent, onUpdate }: Props) {
             <Label className="text-xs font-normal text-muted-foreground">
               {t("detail.scopeGuardrails.enforcementLabel", "Enforcement")}
             </Label>
-            <Select value={enforcement} onValueChange={setEnforcement}>
+            <Select value={enforcement} onValueChange={onEnforcementChange}>
               <SelectTrigger className="w-full sm:w-[200px] text-base md:text-sm h-8">
                 <SelectValue />
               </SelectTrigger>
@@ -161,8 +142,8 @@ export function ScopeGuardrailsSection({ agent, onUpdate }: Props) {
             </Label>
             <Textarea
               value={scopeDescription}
-              onChange={(e) => setScopeDescription(e.target.value)}
-              placeholder={t("detail.scopeGuardrails.scopePlaceholder", "e.g. Personal finance assistant specializing in budgeting and investing")}
+              onChange={(e) => onScopeDescriptionChange(e.target.value)}
+              placeholder={frontmatter || t("detail.scopeGuardrails.scopePlaceholder", "e.g. Personal finance assistant specializing in budgeting and investing")}
               rows={2}
               className="text-base md:text-sm"
             />
@@ -241,7 +222,7 @@ export function ScopeGuardrailsSection({ agent, onUpdate }: Props) {
             </Label>
             <Textarea
               value={offTopicResponse}
-              onChange={(e) => setOffTopicResponse(e.target.value)}
+              onChange={(e) => onOffTopicResponseChange(e.target.value)}
               placeholder={t("detail.scopeGuardrails.offTopicPlaceholder", "e.g. I'm focused on finance topics. Let me help you with budgeting or investing instead.")}
               rows={2}
               maxLength={500}

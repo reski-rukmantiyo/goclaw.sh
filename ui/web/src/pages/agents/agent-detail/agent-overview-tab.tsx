@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   AgentData, MemoryConfig, SubagentsConfig, ToolPolicyConfig,
@@ -12,11 +12,13 @@ import { PromptSettingsSection } from "./overview-sections/prompt-settings-secti
 import { PinnedSkillsSection } from "./overview-sections/pinned-skills-section";
 import { OrchestrationSection } from "./overview-sections/orchestration-section";
 import { CapabilitiesSection } from "./overview-sections/capabilities-section";
-import { ScopeGuardrailsSection } from "./overview-sections/scope-guardrails-section";
+import { ScopeGuardrailsSection, readScopeGuardrails, type ScopeGuardrailsConfig } from "./overview-sections/scope-guardrails-section";
 import { ChatGPTOAuthRoutingSummarySection } from "./overview-sections/chatgpt-oauth-routing-summary-section";
 import { HeartbeatCard } from "./overview-sections/heartbeat-card";
 import { HooksSummaryCard } from "./overview-sections/hooks-summary-card";
 import { MemorySection } from "./config-sections";
+import { readPromptMode } from "./agent-display-utils";
+import type { PromptMode } from "../prompt-mode-cards";
 import type { UseAgentHeartbeatReturn } from "../hooks/use-agent-heartbeat";
 
 interface AgentOverviewTabProps {
@@ -62,9 +64,47 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
   const [toolsEnabled, setToolsEnabled] = useState(agent.tools_config != null);
   const [tools, setTools] = useState<ToolPolicyConfig>(agent.tools_config ?? {});
 
+  // Prompt settings (prompt_mode + TTS) — lifted for unified save
+  const savedOtherConfig = (agent.other_config ?? {}) as Record<string, unknown>;
+  const [promptMode, setPromptMode] = useState<PromptMode>(readPromptMode(agent) as PromptMode);
+
+  // Scope Guardrails — lifted for unified save
+  const savedScope = readScopeGuardrails(agent);
+  const [scopeEnabled, setScopeEnabled] = useState(Boolean(savedScope.enabled));
+  const [scopeEnforcement, setScopeEnforcement] = useState(savedScope.enforcement || "soft");
+  const [scopeDescription, setScopeDescription] = useState(savedScope.scope_description || "");
+  const [scopeAllowed, setScopeAllowed] = useState<string[]>(savedScope.allowed_topics || []);
+  const [scopeDenied, setScopeDenied] = useState<string[]>(savedScope.denied_topics || []);
+  const [scopeOffTopic, setScopeOffTopic] = useState(savedScope.off_topic_response || "");
+
+  // Reset scope state when agent.other_config changes (after save)
+  useEffect(() => {
+    const s = readScopeGuardrails(agent);
+    setScopeEnabled(Boolean(s.enabled));
+    setScopeEnforcement(s.enforcement || "soft");
+    setScopeDescription(s.scope_description || "");
+    setScopeAllowed(s.allowed_topics || []);
+    setScopeDenied(s.denied_topics || []);
+    setScopeOffTopic(s.off_topic_response || "");
+  }, [agent.other_config]);
+
   // Save state
   const [saving, setSaving] = useState(false);
   const [llmSaveBlocked, setLlmSaveBlocked] = useState(false);
+
+  // Dirty checks for PromptSettingsSection (prompt_mode only — TTS has its own save)
+  const savedPromptMode = readPromptMode(agent) as PromptMode;
+  const promptDirty = promptMode !== savedPromptMode;
+
+  // Dirty check for scope guardrails
+  const scopeDirty = JSON.stringify(readScopeGuardrails(agent)) !== JSON.stringify({
+    enabled: scopeEnabled,
+    enforcement: scopeEnforcement,
+    scope_description: scopeDescription,
+    allowed_topics: scopeAllowed,
+    denied_topics: scopeDenied,
+    off_topic_response: scopeOffTopic,
+  });
 
   const handleSave = async () => {
     setSaving(true);
@@ -96,6 +136,28 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
       if (provider !== agent.provider) {
         updates.chatgpt_oauth_routing = null;
       }
+
+      // Merge other_config: prompt_mode + scope_guardrails
+      const bag = { ...savedOtherConfig };
+      // Prompt mode
+      if (promptMode && promptMode !== "full") {
+        bag.prompt_mode = promptMode;
+      } else {
+        delete bag.prompt_mode;
+      }
+      // Scope guardrails
+      if (scopeEnabled) {
+        const sg: ScopeGuardrailsConfig = { enabled: true, enforcement: scopeEnforcement };
+        if (scopeDescription.trim()) sg.scope_description = scopeDescription.trim();
+        if (scopeAllowed.length > 0) sg.allowed_topics = scopeAllowed;
+        if (scopeDenied.length > 0) sg.denied_topics = scopeDenied;
+        if (scopeOffTopic.trim()) sg.off_topic_response = scopeOffTopic.trim();
+        bag.scope_guardrails = sg;
+      } else {
+        delete bag.scope_guardrails;
+      }
+      updates.other_config = bag;
+
       await onUpdate(updates);
     } catch {
       // toast shown by hook
@@ -104,9 +166,49 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
     }
   };
 
+  // Unified dirty: personality, model, evolution, memory, capabilities, prompt, scope
+  const personalityDirty =
+    (emoji ?? "") !== (agent.emoji ?? "") ||
+    displayName !== (agent.display_name ?? "") ||
+    frontmatter !== (agent.frontmatter ?? "") ||
+    status !== agent.status ||
+    isDefault !== agent.is_default;
+  const modelDirty =
+    provider !== agent.provider ||
+    model !== agent.model ||
+    contextWindow !== (agent.context_window || 200000) ||
+    maxToolIterations !== (agent.max_tool_iterations || 20) ||
+    budgetDollars !== (agent.budget_monthly_cents ? String(agent.budget_monthly_cents / 100) : "");
+  const evDirty =
+    Boolean(agent.self_evolve) !== selfEvolve ||
+    Boolean(agent.skill_evolve) !== skillEvolve ||
+    (skillEvolve ? skillNudgeInterval : 15) !== (typeof agent.skill_nudge_interval === "number" ? agent.skill_nudge_interval : 15);
+  const memDirty = JSON.stringify(mem) !== JSON.stringify(agent.memory_config ?? {});
+  const subDirty = subEnabled !== (agent.subagents_config != null) || JSON.stringify(sub) !== JSON.stringify(agent.subagents_config ?? {});
+  const toolsDirty = toolsEnabled !== (agent.tools_config != null) || JSON.stringify(tools) !== JSON.stringify(agent.tools_config ?? {});
+
+  const hasChanges = personalityDirty || modelDirty || evDirty || memDirty || subDirty || toolsDirty || promptDirty || scopeDirty;
+
   return (
     <div className="space-y-4">
-      <PromptSettingsSection agent={agent} onUpdate={onUpdate} />
+      <PromptSettingsSection agent={agent} onUpdate={onUpdate} promptMode={promptMode} onPromptModeChange={setPromptMode} />
+
+      <ScopeGuardrailsSection
+        agent={agent}
+        frontmatter={frontmatter}
+        enabled={scopeEnabled}
+        onEnabledChange={setScopeEnabled}
+        enforcement={scopeEnforcement}
+        onEnforcementChange={setScopeEnforcement}
+        scopeDescription={scopeDescription}
+        onScopeDescriptionChange={setScopeDescription}
+        allowedTopics={scopeAllowed}
+        onAllowedTopicsChange={setScopeAllowed}
+        deniedTopics={scopeDenied}
+        onDeniedTopicsChange={setScopeDenied}
+        offTopicResponse={scopeOffTopic}
+        onOffTopicResponseChange={setScopeOffTopic}
+      />
 
       <PersonalitySection
         agentKey={agent.agent_key}
@@ -187,12 +289,10 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
         onToolsChange={setTools}
       />
 
-      <ScopeGuardrailsSection agent={agent} onUpdate={onUpdate} />
-
       <StickySaveBar
         onSave={handleSave}
         saving={saving}
-        disabled={llmSaveBlocked}
+        disabled={llmSaveBlocked || !hasChanges}
         label={t("general.saveChanges")}
         savingLabel={t("general.saving")}
       />

@@ -1,10 +1,8 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { toast } from "@/stores/use-toast-store";
 import { useAuthStore } from "@/stores/use-auth-store";
 import type { AgentData } from "@/types/agent";
-import { readPromptMode } from "../agent-display-utils";
 import { PromptModeCards, type PromptMode } from "../../prompt-mode-cards";
 import { useTtsConfig } from "@/pages/tts/hooks/use-tts-config";
 import { TtsEmptyState } from "./tts-empty-state";
@@ -32,9 +30,11 @@ export function getModelOptions(providerId: string): TtsModelOption[] {
 interface Props {
   agent: AgentData;
   onUpdate: (updates: Record<string, unknown>) => Promise<void>;
+  promptMode: PromptMode;
+  onPromptModeChange: (v: PromptMode) => void;
 }
 
-export function PromptSettingsSection({ agent, onUpdate }: Props) {
+export function PromptSettingsSection({ agent, onUpdate, promptMode, onPromptModeChange }: Props) {
   const { t } = useTranslation("agents");
   const { t: tTts } = useTranslation("tts");
   const isOwner = useAuthStore((s) => s.isOwner);
@@ -42,12 +42,10 @@ export function PromptSettingsSection({ agent, onUpdate }: Props) {
   const globalProvider = globalTts.provider;
 
   const otherConfig = (agent.other_config ?? {}) as Record<string, unknown>;
-  const savedMode = readPromptMode(agent) as PromptMode;
   const savedVoiceId = (otherConfig.tts_voice_id as string) ?? "";
   const savedModelId = (otherConfig.tts_model_id as string) ?? "";
   const savedTtsParams = (otherConfig.tts_params as Record<string, ParamValue>) ?? {};
 
-  const [mode, setMode] = useState<PromptMode>(savedMode);
   const [ttsVoiceId, setTtsVoiceId] = useState<string>(savedVoiceId);
   const [ttsModelId, setTtsModelId] = useState<string>(savedModelId);
   const [ttsParams, setTtsParams] = useState<Record<string, ParamValue>>(savedTtsParams);
@@ -59,7 +57,6 @@ export function PromptSettingsSection({ agent, onUpdate }: Props) {
     const voice = (cfg.tts_voice_id as string) ?? "";
     const model = (cfg.tts_model_id as string) ?? "";
     const params = (cfg.tts_params as Record<string, ParamValue>) ?? {};
-    setMode(readPromptMode(agent) as PromptMode);
     setTtsVoiceId(voice);
     setTtsModelId(model);
     setTtsParams(params);
@@ -68,8 +65,7 @@ export function PromptSettingsSection({ agent, onUpdate }: Props) {
 
   const savedOverride = !!(savedVoiceId || savedModelId);
   const ttsParamsDirty = JSON.stringify(ttsParams) !== JSON.stringify(savedTtsParams);
-  const dirty =
-    mode !== savedMode ||
+  const ttsDirty =
     ttsVoiceId !== savedVoiceId ||
     ttsModelId !== savedModelId ||
     override !== savedOverride ||
@@ -78,21 +74,7 @@ export function PromptSettingsSection({ agent, onUpdate }: Props) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Finding #13 (honest): we spread the last-loaded otherConfig prop as a
-      // base, then overwrite only the fields this section owns. Concurrent-tab
-      // clobber is NOT mitigated — a second tab saving an unrelated field
-      // between our last load and this PUT will lose that update.
-      // Server-side JSON-merge-patch endpoint is the correct v2 fix (deferred;
-      // see plan §Open Questions). Refetch before PUT is intentionally omitted:
-      // it would add latency for a race that is rare in practice for local-first
-      // desktop/single-user deployments.
       const bag = { ...otherConfig };
-      if (mode && mode !== "full") {
-        bag.prompt_mode = mode;
-      } else {
-        delete bag.prompt_mode;
-      }
-      // Write TTS override only when checkbox enabled and value provided
       if (override && ttsVoiceId) {
         bag.tts_voice_id = ttsVoiceId;
       } else {
@@ -103,24 +85,12 @@ export function PromptSettingsSection({ agent, onUpdate }: Props) {
       } else {
         delete bag.tts_model_id;
       }
-      // Write tts_params when override is enabled and params are non-empty.
-      // Agent stores GENERIC keys (speed, emotion, style) — the bidirectional
-      // adapter in TtsOverrideBlock handles native↔generic conversion at load/save.
       if (override && Object.keys(ttsParams).length > 0) {
         bag.tts_params = ttsParams;
       } else {
         delete bag.tts_params;
       }
       await onUpdate({ other_config: bag });
-      const modeRank: Record<string, number> = { none: 0, minimal: 1, task: 2, full: 3 };
-      if ((modeRank[mode] ?? 3) > (modeRank[savedMode] ?? 3)) {
-        toast.info(
-          t(
-            "detail.prompt.upgradeWarning",
-            "Mode upgraded. Some files may need regeneration — use Resummon or Edit with AI in the Files tab.",
-          ),
-        );
-      }
     } finally {
       setSaving(false);
     }
@@ -130,14 +100,14 @@ export function PromptSettingsSection({ agent, onUpdate }: Props) {
     <section className="space-y-3 rounded-lg border p-3 sm:p-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">{t("detail.prompt.title")}</h3>
-        {dirty && (
+        {ttsDirty && (
           <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving ? t("saving", "Saving...") : t("save", "Save")}
           </Button>
         )}
       </div>
 
-      <PromptModeCards value={mode} onChange={setMode} />
+      <PromptModeCards value={promptMode} onChange={onPromptModeChange} />
 
       {/* TTS subsection */}
       <div className="space-y-3 border-t pt-3">
