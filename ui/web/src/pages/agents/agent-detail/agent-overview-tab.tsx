@@ -12,6 +12,7 @@ import { PromptSettingsSection } from "./overview-sections/prompt-settings-secti
 import { PinnedSkillsSection } from "./overview-sections/pinned-skills-section";
 import { OrchestrationSection } from "./overview-sections/orchestration-section";
 import { CapabilitiesSection } from "./overview-sections/capabilities-section";
+import { ScopeGuardrailsSection } from "./overview-sections/scope-guardrails-section";
 import { ChatGPTOAuthRoutingSummarySection } from "./overview-sections/chatgpt-oauth-routing-summary-section";
 import { HeartbeatCard } from "./overview-sections/heartbeat-card";
 import { HooksSummaryCard } from "./overview-sections/hooks-summary-card";
@@ -185,6 +186,8 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
         onToolsToggle={setToolsEnabled}
         onToolsChange={setTools}
       />
+
+      <ScopeGuardrailsSection agent={agent} onUpdate={onUpdate} />
 
       <StickySaveBar
         onSave={handleSave}

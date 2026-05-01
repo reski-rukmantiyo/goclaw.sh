@@ -168,6 +168,10 @@ type SystemPromptConfig struct {
 	// SharedKGIDs lists the agent's knowledge graph scope IDs (e.g. "project-sovereign").
 	// Populated from WorkspaceSharingConfig when ShareKnowledgeGraph is enabled.
 	SharedKGIDs []string
+
+	// ScopeGuardrails constrains the agent to a defined conversational scope.
+	// When non-nil and enabled, injects scope guardrails section into the system prompt.
+	ScopeGuardrails *store.ScopeGuardrailsConfig
 }
 
 // sectionContent returns override content if provider contribution has one,
@@ -390,6 +394,11 @@ func BuildSystemPrompt(cfg SystemPromptConfig) string {
 		lines = append(lines, buildSelfEvolveSection()...)
 	}
 
+	// 3.6. ## Scope Guardrails — all modes when enabled
+	if cfg.ScopeGuardrails != nil && cfg.ScopeGuardrails.Enabled && !cfg.IsBootstrap {
+		lines = append(lines, buildScopeGuardrailsSection(cfg.ScopeGuardrails)...)
+	}
+
 	// 4. ## Skills — full + task (pinned skills use hybrid section)
 	if (isFull || isTask) && !cfg.IsBootstrap && (cfg.SkillsSummary != "" || cfg.SkillsContent != "" || cfg.HasSkillSearch || cfg.HasSkillManage || cfg.PinnedSkillsSummary != "") {
 		if cfg.PinnedSkillsSummary != "" {
@@ -529,7 +538,10 @@ func BuildSystemPrompt(cfg SystemPromptConfig) string {
 		if len(personaFiles) > 0 {
 			lines = append(lines, buildPersonaReminder(personaFiles, cfg.AgentType, cfg.ProviderType)...)
 		}
-		lines = append(lines, "Reminder: Follow AGENTS.md rules — NO_REPLY when silent, match the user's language.", "")
+		if cfg.ScopeGuardrails != nil && cfg.ScopeGuardrails.Enabled {
+				lines = append(lines, "Reminder: Stay within your defined scope — do not answer questions outside your area of expertise.", "")
+			}
+			lines = append(lines, "Reminder: Follow AGENTS.md rules — NO_REPLY when silent, match the user's language.", "")
 	}
 
 	result := strings.Join(lines, "\n")

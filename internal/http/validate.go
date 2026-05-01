@@ -1,6 +1,7 @@
 package http
 
 import (
+	"fmt"
 	"log/slog"
 	"regexp"
 
@@ -34,6 +35,67 @@ func filterAllowedKeys(updates map[string]any, allowed map[string]bool) map[stri
 // The allow-list is owned by internal/audio (single source of truth, Action D).
 func validateAgentTTSParams(ttsParams map[string]any) error {
 	return audio.ValidateAgentTTSParams(ttsParams)
+}
+
+// validateScopeGuardrails validates the scope_guardrails object within other_config.
+func validateScopeGuardrails(sg map[string]any) error {
+	// Validate enforcement value
+	if enforcement, ok := sg["enforcement"]; ok && enforcement != nil {
+		e, ok := enforcement.(string)
+		if !ok {
+			return fmt.Errorf("scope_guardrails.enforcement must be a string")
+		}
+		if e != "soft" && e != "strict" {
+			return fmt.Errorf("scope_guardrails.enforcement must be \"soft\" or \"strict\"")
+		}
+	}
+	// Validate allowed_topics is a string array
+	if topics, ok := sg["allowed_topics"]; ok && topics != nil {
+		if _, ok := topics.([]any); !ok {
+			return fmt.Errorf("scope_guardrails.allowed_topics must be an array")
+		}
+	}
+	// Validate denied_topics is a string array
+	if topics, ok := sg["denied_topics"]; ok && topics != nil {
+		if _, ok := topics.([]any); !ok {
+			return fmt.Errorf("scope_guardrails.denied_topics must be an array")
+		}
+	}
+	// Validate off_topic_response length
+	if resp, ok := sg["off_topic_response"]; ok && resp != nil {
+		s, ok := resp.(string)
+		if !ok {
+			return fmt.Errorf("scope_guardrails.off_topic_response must be a string")
+		}
+		if len(s) > 500 {
+			return fmt.Errorf("scope_guardrails.off_topic_response must be at most 500 characters")
+		}
+	}
+	// When enabled, require at least one scope definition
+	if enabled, ok := sg["enabled"]; ok {
+		if e, ok := enabled.(bool); ok && e {
+			hasScope := false
+			if desc, ok := sg["scope_description"]; ok && desc != nil {
+				if s, ok := desc.(string); ok && s != "" {
+					hasScope = true
+				}
+			}
+			if topics, ok := sg["allowed_topics"]; ok {
+				if arr, ok := topics.([]any); ok && len(arr) > 0 {
+					hasScope = true
+				}
+			}
+			if topics, ok := sg["denied_topics"]; ok {
+				if arr, ok := topics.([]any); ok && len(arr) > 0 {
+					hasScope = true
+				}
+			}
+			if !hasScope {
+				return fmt.Errorf("scope_guardrails requires at least one of: scope_description, allowed_topics, or denied_topics when enabled")
+			}
+		}
+	}
+	return nil
 }
 
 // --- Field allowlists for update endpoints ---

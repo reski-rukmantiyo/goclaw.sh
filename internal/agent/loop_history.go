@@ -253,6 +253,7 @@ func (l *Loop) buildMessages(ctx context.Context, history []providers.Message, s
 		ProviderContribution:   l.providerContribution(),
 		DefaultTimezone:        l.defaultTimezone,
 		SharedKGIDs:            l.sharedKGIDs(),
+		ScopeGuardrails:        l.scopeGuardrails,
 	})
 
 	messages = append(messages, providers.Message{

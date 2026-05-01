@@ -107,6 +107,9 @@ type PipelineDeps struct {
 	SkillPostscript          func(ctx context.Context, content string, totalToolCalls int) string // skill evolution nudge (nil = disabled)
 	SanitizeContent          func(content string) string
 	StripMessageDirectives   func(content string) string
+	// CheckScopeGuard evaluates whether the response is on-topic (strict mode).
+	// Returns (onTopic, replacementContent). Empty replacement = use original.
+	CheckScopeGuard          func(userMsg, assistantResponse string) (bool, string)
 	DeduplicateMediaSuffix   func(content, suffix string) string
 	IsSilentReply          func(content string) bool
 	EmitSessionCompleted   func(ctx context.Context, sessionKey string, msgCount, tokensUsed, compactionCount int)

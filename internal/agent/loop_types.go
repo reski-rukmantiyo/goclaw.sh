@@ -198,6 +198,9 @@ type Loop struct {
 	// Pinned skills from agent other_config (always inline, max 10).
 	pinnedSkills []string
 
+	// Scope guardrails: constrains agent to defined conversational scope.
+	scopeGuardrails *store.ScopeGuardrailsConfig
+
 	// Self-evolve: predefined agents can update SOUL.md through chat
 	selfEvolve bool
 
@@ -395,6 +398,9 @@ type LoopConfig struct {
 	// Pinned skills from agent other_config (always inline, max 10)
 	PinnedSkills []string
 
+	// Scope guardrails: constrains agent to defined conversational scope.
+	ScopeGuardrails *store.ScopeGuardrailsConfig
+
 	// Self-evolve: predefined agents can update SOUL.md (style/tone) through chat
 	SelfEvolve bool
 
@@ -556,6 +562,7 @@ func NewLoop(cfg LoopConfig) *Loop {
 		reasoningConfig:        cfg.ReasoningConfig,
 		promptMode:             cfg.PromptMode,
 		pinnedSkills:           cfg.PinnedSkills,
+		scopeGuardrails:        cfg.ScopeGuardrails,
 		selfEvolve:             cfg.SelfEvolve,
 		allowImageGeneration:   cfg.AllowImageGeneration,
 		ttsAutoMode:            cfg.TTSAutoMode,

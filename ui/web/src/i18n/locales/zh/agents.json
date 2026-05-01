@@ -272,6 +272,22 @@
       "memoryHint": "情景记忆 + L0自动注入",
       "retrievalTitle": "检索",
       "retrievalHint": "L0/L1/L2渐进式知识加载"
+    },
+    "scopeGuardrails": {
+      "title": "范围护栏",
+      "hint": "将代理限制在特定主题和领域",
+      "enforcementLabel": "执行模式",
+      "softMode": "软性（仅提示词）",
+      "strictMode": "严格（提示词 + 输出检查）",
+      "softHint": "指令添加到系统提示词中，无运行时检查。",
+      "strictHint": "超出范围的回复将在运行时被检测并替换。",
+      "scopeLabel": "范围描述",
+      "scopePlaceholder": "例如：专注于预算和投资的个人财务助手",
+      "allowedLabel": "允许的主题",
+      "deniedLabel": "禁止的主题",
+      "addTopicPlaceholder": "添加主题...",
+      "offTopicLabel": "超出范围的回复",
+      "offTopicPlaceholder": "例如：我只专注于财务话题。让我帮您处理预算或投资问题。"
     }
   },
   "general": {

@@ -272,6 +272,22 @@
       "memoryHint": "Bộ nhớ episodic + tự động chèn L0",
       "retrievalTitle": "Truy Xuất",
       "retrievalHint": "Tải tri thức tiến dần L0/L1/L2"
+    },
+    "scopeGuardrails": {
+      "title": "Giới hạn phạm vi",
+      "hint": "Giới hạn tác tử vào các chủ đề và lĩnh vực cụ thể",
+      "enforcementLabel": "Chế độ thực thi",
+      "softMode": "Mềm (chỉ hướng dẫn)",
+      "strictMode": "Nghiêm ngặt (hướng dẫn + kiểm tra đầu ra)",
+      "softHint": "Hướng dẫn được thêm vào system prompt. Không kiểm tra runtime.",
+      "strictHint": "Phản hồi ngoài phạm vi được phát hiện và thay thế lúc runtime.",
+      "scopeLabel": "Mô tả phạm vi",
+      "scopePlaceholder": "vd. Trợ lý tài chính cá nhân chuyên về ngân sách và đầu tư",
+      "allowedLabel": "Chủ đề được phép",
+      "deniedLabel": "Chủ đề bị cấm",
+      "addTopicPlaceholder": "Thêm chủ đề...",
+      "offTopicLabel": "Phản hồi ngoài phạm vi",
+      "offTopicPlaceholder": "vd. Tôi chỉ hỗ trợ về tài chính. Để tôi giúp bạn về ngân sách hoặc đầu tư nhé."
     }
   },
   "general": {

@@ -420,6 +420,26 @@ func (l *Loop) makeSkillPostscript() func(ctx context.Context, content string, t
 	}
 }
 
+// makeScopeGuardCallback returns a strict-mode scope guard check for FinalizeStage.
+// Returns nil when scope guardrails are disabled or in soft mode (no runtime check needed).
+func (l *Loop) makeScopeGuardCallback() func(userMsg, assistantResponse string) (bool, string) {
+	if l.scopeGuardrails == nil || !l.scopeGuardrails.Enabled || l.scopeGuardrails.Enforcement != "strict" {
+		return nil
+	}
+	checker := NewScopeGuardChecker(l.scopeGuardrails)
+	offTopic := l.scopeGuardrails.OffTopicResponse
+	if offTopic == "" {
+		offTopic = "I'm not able to help with that topic."
+	}
+	return func(userMsg, assistantResponse string) (bool, string) {
+		onTopic, _ := checker.CheckResponse(userMsg, assistantResponse)
+		if !onTopic {
+			return false, offTopic
+		}
+		return true, ""
+	}
+}
+
 func (l *Loop) makeBootstrapCleanup() func(ctx context.Context, state *pipeline.RunState) error {
 	return func(ctx context.Context, state *pipeline.RunState) error {
 		if l.bootstrapCleanup == nil {

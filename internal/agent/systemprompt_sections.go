@@ -546,6 +546,52 @@ func splitPersonaFiles(files []bootstrap.ContextFile) (persona, other []bootstra
 	return
 }
 
+// buildScopeGuardrailsSection generates the scope guardrails system prompt section.
+// Placed after safety (section 3) so domain constraints follow fundamental safety rules.
+func buildScopeGuardrailsSection(cfg *store.ScopeGuardrailsConfig) []string {
+	var lines []string
+	lines = append(lines,
+		"## Scope Guardrails",
+		"",
+	)
+
+	if cfg.ScopeDescription != "" {
+		lines = append(lines,
+			fmt.Sprintf("Your defined scope: %s", cfg.ScopeDescription),
+			"",
+		)
+	}
+
+	if len(cfg.AllowedTopics) > 0 {
+		lines = append(lines,
+			"You MAY discuss topics related to: "+strings.Join(cfg.AllowedTopics, ", ")+".",
+			"",
+		)
+	}
+
+	if len(cfg.DeniedTopics) > 0 {
+		lines = append(lines,
+			"You MUST NOT discuss topics related to: "+strings.Join(cfg.DeniedTopics, ", ")+".",
+			"If a user asks about these topics, politely decline and redirect to your defined scope.",
+			"",
+		)
+	}
+
+	offTopic := cfg.OffTopicResponse
+	if offTopic == "" {
+		offTopic = "I'm not able to help with that. I'm focused on my defined area of expertise."
+	}
+	lines = append(lines,
+		"When a question is clearly outside your scope:",
+		"1. Politely decline using a response like: \""+offTopic+"\"",
+		"2. Do NOT attempt to answer out-of-scope questions, even if you know the answer.",
+		"3. Do NOT apologize excessively — a brief, friendly redirect is sufficient.",
+		"",
+	)
+
+	return lines
+}
+
 // buildPersonaSection renders SOUL.md and IDENTITY.md early in the system prompt.
 // Placed in the primacy zone so the model internalizes persona before any instructions.
 func buildPersonaSection(files []bootstrap.ContextFile, agentType string) []string {

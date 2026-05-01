@@ -33,6 +33,14 @@ func (s *FinalizeStage) Execute(ctx context.Context, state *RunState) error {
 		state.Observe.FinalContent = s.deps.SanitizeContent(state.Observe.FinalContent)
 	}
 
+	// 1a. Scope guardrail check (strict mode) — replaces off-topic responses
+	if s.deps.CheckScopeGuard != nil && state.Observe.FinalContent != "" {
+		if onTopic, replacement := s.deps.CheckScopeGuard(state.Input.Message, state.Observe.FinalContent); !onTopic {
+			slog.Info("scope_guardrail.replaced_response", "session", state.Input.SessionKey, "reason", replacement)
+			state.Observe.FinalContent = replacement
+		}
+	}
+
 	// 1b. Skill evolution postscript (matching v2 loop_finalize.go:52-57).
 	if s.deps.SkillPostscript != nil && state.Observe.FinalContent != "" {
 		state.Observe.FinalContent = s.deps.SkillPostscript(ctx, state.Observe.FinalContent, state.Tool.TotalToolCalls)

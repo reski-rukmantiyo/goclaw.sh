@@ -427,6 +427,15 @@ func (h *AgentsHandler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+			// Validate scope_guardrails config structure.
+			if sg, ok := v["scope_guardrails"]; ok && sg != nil {
+				if sgMap, ok := sg.(map[string]any); ok {
+					if err := validateScopeGuardrails(sgMap); err != nil {
+						writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, err.Error())
+						return
+					}
+				}
+			}
 		}
 	}
 

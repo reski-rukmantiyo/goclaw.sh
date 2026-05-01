@@ -287,6 +287,22 @@
       "usageRate": "Usage Rate",
       "tooltipCalls": "{{count}} calls, {{ms}}ms avg",
       "tooltipQueries": "{{count}} queries, score {{score}}"
+    },
+    "scopeGuardrails": {
+      "title": "Scope Guardrails",
+      "hint": "Restrict agent to specific topics and domains",
+      "enforcementLabel": "Enforcement",
+      "softMode": "Soft (prompt-only)",
+      "strictMode": "Strict (prompt + output guard)",
+      "softHint": "Instructions are added to the system prompt. No runtime enforcement.",
+      "strictHint": "Off-topic responses are detected and replaced at runtime.",
+      "scopeLabel": "Scope Description",
+      "scopePlaceholder": "e.g. Personal finance assistant specializing in budgeting and investing",
+      "allowedLabel": "Allowed Topics",
+      "deniedLabel": "Denied Topics",
+      "addTopicPlaceholder": "Add topic...",
+      "offTopicLabel": "Off-Topic Response",
+      "offTopicPlaceholder": "e.g. I'm focused on finance topics. Let me help you with budgeting or investing instead."
     }
   },
   "general": {
