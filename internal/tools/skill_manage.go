@@ -131,6 +131,13 @@ func (t *SkillManageTool) executeCreate(ctx context.Context, args map[string]any
 		return ErrorResult(skills.FormatGuardViolations(violations))
 	}
 
+	// Scope guardrail check — block off-topic skill creation
+	if scopeCfg := store.ScopeGuardrailsFromContext(ctx); scopeCfg != nil {
+		if reason, allowed := skills.GuardSkillScope(content, scopeCfg); !allowed {
+			return ErrorResult(fmt.Sprintf("Scope guardrail: %s", reason))
+		}
+	}
+
 	// Parse frontmatter
 	name, description, slug, frontmatter := skills.ParseSkillFrontmatter(content)
 	if name == "" {
@@ -281,6 +288,13 @@ func (t *SkillManageTool) executePatch(ctx context.Context, args map[string]any)
 	violations, safe := skills.GuardSkillContent(patched)
 	if !safe {
 		return ErrorResult(skills.FormatGuardViolations(violations))
+	}
+
+	// Scope guardrail check — block off-topic skill patching
+	if scopeCfg := store.ScopeGuardrailsFromContext(ctx); scopeCfg != nil {
+		if reason, allowed := skills.GuardSkillScope(patched, scopeCfg); !allowed {
+			return ErrorResult(fmt.Sprintf("Scope guardrail: %s", reason))
+		}
 	}
 
 	oldVer := info.Version

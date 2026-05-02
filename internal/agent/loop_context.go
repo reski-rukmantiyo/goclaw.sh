@@ -114,6 +114,9 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 	if l.shellDenyGroups != nil {
 		ctx = store.WithShellDenyGroups(ctx, l.shellDenyGroups)
 	}
+	if l.scopeGuardrails != nil {
+		ctx = store.WithScopeGuardrails(ctx, l.scopeGuardrails)
+	}
 
 	// Workspace scope propagation (delegation origin → workspace tools).
 	if req.WorkspaceChannel != "" {

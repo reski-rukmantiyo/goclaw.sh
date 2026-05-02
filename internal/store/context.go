@@ -35,6 +35,8 @@ const (
 	SharedSessionsKey contextKey = "goclaw_shared_sessions"
 	// ShellDenyGroupsKey holds per-agent shell deny group overrides.
 	ShellDenyGroupsKey contextKey = "goclaw_shell_deny_groups"
+	// ScopeGuardrailsKey holds the agent's scope guardrails config for topic enforcement.
+	ScopeGuardrailsKey contextKey = "goclaw_scope_guardrails"
 	// AgentKeyKey is the context key for the agent key/name (string identifier, e.g. "default").
 	AgentKeyKey contextKey = "goclaw_agent_key"
 	// TenantIDKey is the context key for the tenant UUID.
@@ -91,6 +93,19 @@ func ShellDenyGroupsFromContext(ctx context.Context) map[string]bool {
 	}
 	if rc := RunContextFromCtx(ctx); rc != nil {
 		return rc.ShellDenyGroups
+	}
+	return nil
+}
+
+// WithScopeGuardrails returns a new context with the agent's scope guardrails config.
+func WithScopeGuardrails(ctx context.Context, cfg *ScopeGuardrailsConfig) context.Context {
+	return context.WithValue(ctx, ScopeGuardrailsKey, cfg)
+}
+
+// ScopeGuardrailsFromContext returns scope guardrails config from context, or nil.
+func ScopeGuardrailsFromContext(ctx context.Context) *ScopeGuardrailsConfig {
+	if v, ok := ctx.Value(ScopeGuardrailsKey).(*ScopeGuardrailsConfig); ok && v != nil {
+		return v
 	}
 	return nil
 }

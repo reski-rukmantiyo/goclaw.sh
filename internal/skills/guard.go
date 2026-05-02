@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
 
 // GuardViolation describes a security pattern match in SKILL.md content.
@@ -87,6 +89,46 @@ func GuardSkillContent(content string) ([]GuardViolation, bool) {
 	}
 
 	return violations, len(violations) == 0
+}
+
+// GuardSkillScope checks whether skill content is within the agent's defined scope.
+// Returns (reason, allowed). allowed=true means the content passes scope checks.
+// When allowed=false, reason describes which scope boundary was violated.
+func GuardSkillScope(content string, cfg *store.ScopeGuardrailsConfig) (string, bool) {
+	if cfg == nil || !cfg.Enabled {
+		return "", true
+	}
+	lower := strings.ToLower(content)
+
+	// Denied topics — hard block
+	for _, topic := range cfg.DeniedTopics {
+		if topic == "" {
+			continue
+		}
+		lt := strings.ToLower(topic)
+		if strings.Contains(lower, lt) {
+			return fmt.Sprintf("skill content matches denied topic %q — outside agent scope", topic), false
+		}
+	}
+
+	// Allowed topics — if defined, content must relate to at least one
+	if len(cfg.AllowedTopics) > 0 {
+		matched := false
+		for _, topic := range cfg.AllowedTopics {
+			if topic == "" {
+				continue
+			}
+			if strings.Contains(lower, strings.ToLower(topic)) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return "skill content does not match any allowed topic — outside agent scope", false
+		}
+	}
+
+	return "", true
 }
 
 // FormatGuardViolations returns a human-readable rejection message suitable

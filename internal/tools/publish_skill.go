@@ -88,6 +88,19 @@ func (t *PublishSkillTool) Execute(ctx context.Context, args map[string]any) *Re
 		return ErrorResult("SKILL.md is empty")
 	}
 
+	// Security scan before any disk write
+	violations, safe := skills.GuardSkillContent(string(content))
+	if !safe {
+		return ErrorResult(skills.FormatGuardViolations(violations))
+	}
+
+	// Scope guardrail check — block off-topic skill publishing
+	if scopeCfg := store.ScopeGuardrailsFromContext(ctx); scopeCfg != nil {
+		if reason, allowed := skills.GuardSkillScope(string(content), scopeCfg); !allowed {
+			return ErrorResult(fmt.Sprintf("Scope guardrail: %s", reason))
+		}
+	}
+
 	// Parse frontmatter
 	name, description, slug, frontmatter := skills.ParseSkillFrontmatter(string(content))
 	if name == "" {
