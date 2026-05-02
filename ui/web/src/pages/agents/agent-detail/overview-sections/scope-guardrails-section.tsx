@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ShieldCheck, X, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -64,12 +64,24 @@ export function ScopeGuardrailsSection({
   const [newAllowed, setNewAllowed] = useState("");
   const [newDenied, setNewDenied] = useState("");
 
-  // Auto-fill scope description from frontmatter (Expertise Summary) when empty
-  useEffect(() => {
-    if (enabled && !scopeDescription && frontmatter) {
+  // Whether the user has manually edited the scope description (overrides auto-sync)
+  const [userOverrode, setUserOverrode] = useState(scopeDescription !== "" && scopeDescription !== frontmatter);
+
+  const handleToggle = (v: boolean) => {
+    if (v && !userOverrode) {
+      // Activating: sync scope description from expertise summary
       onScopeDescriptionChange(frontmatter);
     }
-  }, [enabled, frontmatter]); // eslint-disable-line react-hooks/exhaustive-deps
+    onEnabledChange(v);
+  };
+
+  const handleDescriptionChange = (v: string) => {
+    setUserOverrode(v !== frontmatter);
+    onScopeDescriptionChange(v);
+  };
+
+  // Resync from frontmatter when it changes (unless user overrode)
+  const effectiveDescription = userOverrode ? scopeDescription : (frontmatter || scopeDescription);
 
   const addAllowed = () => {
     const v = newAllowed.trim();
@@ -105,7 +117,7 @@ export function ScopeGuardrailsSection({
             <p className="text-xs text-muted-foreground">{t("detail.scopeGuardrails.hint", "Restrict agent to specific topics and domains")}</p>
           </div>
         </div>
-        <Switch checked={enabled} onCheckedChange={onEnabledChange} />
+        <Switch checked={enabled} onCheckedChange={handleToggle} />
       </div>
 
       {enabled && (
@@ -135,14 +147,17 @@ export function ScopeGuardrailsSection({
             </p>
           </div>
 
-          {/* Scope description */}
+          {/* Scope description — auto-synced from expertise summary unless user overrides */}
           <div className="space-y-1.5">
             <Label className="text-xs font-normal text-muted-foreground">
               {t("detail.scopeGuardrails.scopeLabel", "Scope Description")}
+              {!userOverrode && frontmatter && (
+                <span className="ml-1 opacity-60">({t("detail.scopeGuardrails.syncedLabel", "synced from Expertise Summary")})</span>
+              )}
             </Label>
             <Textarea
-              value={scopeDescription}
-              onChange={(e) => onScopeDescriptionChange(e.target.value)}
+              value={effectiveDescription}
+              onChange={(e) => handleDescriptionChange(e.target.value)}
               placeholder={frontmatter || t("detail.scopeGuardrails.scopePlaceholder", "e.g. Personal finance assistant specializing in budgeting and investing")}
               rows={2}
               className="text-base md:text-sm"

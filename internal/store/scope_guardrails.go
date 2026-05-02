@@ -39,13 +39,13 @@ func (a *AgentData) ParseScopeGuardrails() *ScopeGuardrailsConfig {
 	if !cfg.Enabled {
 		return nil
 	}
-	// Default enforcement to "soft"
+	// Default enforcement to "strict"
 	if cfg.Enforcement == "" {
-		cfg.Enforcement = "soft"
+		cfg.Enforcement = "strict"
 	}
 	// Normalize: only "soft" or "strict"
 	if cfg.Enforcement != "soft" && cfg.Enforcement != "strict" {
-		cfg.Enforcement = "soft"
+		cfg.Enforcement = "strict"
 	}
 	// Auto-derive scope description from agent metadata when empty
 	if cfg.ScopeDescription == "" {

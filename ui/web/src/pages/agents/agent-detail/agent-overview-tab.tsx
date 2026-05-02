@@ -71,7 +71,7 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
   // Scope Guardrails — lifted for unified save
   const savedScope = readScopeGuardrails(agent);
   const [scopeEnabled, setScopeEnabled] = useState(Boolean(savedScope.enabled));
-  const [scopeEnforcement, setScopeEnforcement] = useState(savedScope.enforcement || "soft");
+  const [scopeEnforcement, setScopeEnforcement] = useState(savedScope.enforcement || "strict");
   const [scopeDescription, setScopeDescription] = useState(savedScope.scope_description || "");
   const [scopeAllowed, setScopeAllowed] = useState<string[]>(savedScope.allowed_topics || []);
   const [scopeDenied, setScopeDenied] = useState<string[]>(savedScope.denied_topics || []);
@@ -81,7 +81,7 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
   useEffect(() => {
     const s = readScopeGuardrails(agent);
     setScopeEnabled(Boolean(s.enabled));
-    setScopeEnforcement(s.enforcement || "soft");
+    setScopeEnforcement(s.enforcement || "strict");
     setScopeDescription(s.scope_description || "");
     setScopeAllowed(s.allowed_topics || []);
     setScopeDenied(s.denied_topics || []);
