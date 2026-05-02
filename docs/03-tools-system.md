@@ -176,6 +176,8 @@ Memory layers: L1 (`memory_search`) returns ranked abstracts; L2 (`memory_expand
 | `publish_skill` | Register a skill directory in the database |
 | `skill_manage` | Manage skill lifecycle (admin operations) |
 
+**Scope guard** — when conversational scope guardrails are enabled (`scope_guardrails.enabled=true`), both `skill_manage` (create/patch) and `publish_skill` validate skill content against the agent's defined scope via `GuardSkillScope()`. Denied topics cause a hard rejection; allowed topics require at least one match. See [doc 21 §9](./21-agent-evolution-and-skill-management.md#9-conversational-scope-guardrails).
+
 ---
 
 ## 5. Tool Contracts (JSON Schemas)

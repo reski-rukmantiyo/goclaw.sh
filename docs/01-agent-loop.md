@@ -90,6 +90,7 @@ Finalize (runs once, uses background context if cancelled)
 
 **FinalizeStage**
 - Run 7-step output sanitization pipeline
+- **Scope guardrail check** (strict mode): if `scope_guardrails.enforcement=strict`, validates that the final response is on-topic; replaces off-topic responses with configured decline message
 - Flush buffered messages atomically
 - Update session metadata (model, provider, token counts)
 - Emit `run.completed` or `run.failed` event
@@ -279,6 +280,7 @@ flowchart TD
 ### Phase 6: Response Finalization
 
 - Run the 7-step output sanitization pipeline (see Section 3).
+- **Scope guardrail check** (strict mode only): if the agent has scope guardrails with `enforcement=strict`, `ScopeGuardChecker` evaluates the final response. If off-topic, the response is replaced with the configured `off_topic_response`. Logged at `slog.Info("scope_guardrail.replaced_response")`.
 - Detect `NO_REPLY` in the final content. If present, suppress message delivery (silent reply).
 - Flush all buffered messages atomically to the session (user message, tool messages, assistant message). This prevents concurrent runs from interleaving partial history.
 - Update session metadata: model name, provider name, cumulative token counts.
@@ -301,7 +303,7 @@ When the context is cancelled (via `/stop` or `/stopall`), the loop exits immedi
 
 ## 2. System Prompt
 
-The system prompt is assembled dynamically from 19 sections. Two modes control the amount of content included:
+The system prompt is assembled dynamically from 24 sections. Two modes control the amount of content included:
 
 - **PromptFull**: used for main agent runs. Includes all sections.
 - **PromptMinimal**: used for sub-agents and cron jobs. Reduced sections (only AGENTS.md and TOOLS.md from bootstrap files).
@@ -314,23 +316,24 @@ The system prompt is assembled dynamically from 19 sections. Two modes control t
 4. **Tooling** -- core tool descriptions, filtered by policy and sandbox status.
 5. **Credentialed CLI** -- optional secure CLI context for credentialed exec tool access.
 6. **Safety** -- defensive preamble for handling external content, identity anchoring for predefined agents.
-7. **Self-Evolution** -- rules for predefined agents to update SOUL.md (style/tone) from user feedback.
-8. **Skills (inline)** -- skill content injected directly when the skill set is small (≤15 skills).
-9. **Skills (search mode)** -- use `skill_search` tool when the skill set is large.
-10. **MCP Tools (inline)** -- external integration tools with real descriptions.
-11. **MCP Tools (search mode)** -- use `mcp_tool_search` when many MCP tools are available.
-12. **Workspace** -- working directory path, file structure, sandbox container workdir.
-13. **Team Workspace** -- absolute path to shared team workspace (for team agents).
-14. **Sandbox** -- Docker container instructions, available commands, policy notes.
-15. **User Identity** -- owner IDs for permission checks (full mode only).
-16. **Time** -- current UTC date/time for temporal awareness.
-17. **Channel Formatting** -- platform-specific output hints (e.g., Zalo → plain text).
-18. **Extra Context** -- additional context wrapped in `<extra_context>` tags (subagent context, etc.).
-19. **Project Context** -- bootstrap context files (remaining after persona extraction), wrapped in defensive preamble.
-20. **Sub-Agent Spawning** -- rules for launching child agents (skipped for team agents with TEAM.md).
-21. **Runtime** -- agent ID, session key, provider info, model pricing.
-22. **Persona Reminder** -- recency reinforcement to combat "lost in the middle" in long conversations.
-23. **Memory Reminders** -- prompts to run memory_search and knowledge_graph_search before answering.
+7. **Scope Guardrails** -- topic boundaries (allowed/denied topics, scope description) injected when `scope_guardrails.enabled=true`. In strict mode, off-topic responses are detected and replaced in FinalizeStage.
+8. **Self-Evolution** -- rules for predefined agents to update SOUL.md (style/tone) from user feedback.
+9. **Skills (inline)** -- skill content injected directly when the skill set is small (≤15 skills).
+10. **Skills (search mode)** -- use `skill_search` tool when the skill set is large.
+11. **MCP Tools (inline)** -- external integration tools with real descriptions.
+12. **MCP Tools (search mode)** -- use `mcp_tool_search` when many MCP tools are available.
+13. **Workspace** -- working directory path, file structure, sandbox container workdir.
+14. **Team Workspace** -- absolute path to shared team workspace (for team agents).
+15. **Sandbox** -- Docker container instructions, available commands, policy notes.
+16. **User Identity** -- owner IDs for permission checks (full mode only).
+17. **Time** -- current UTC date/time for temporal awareness.
+18. **Channel Formatting** -- platform-specific output hints (e.g., Zalo → plain text).
+19. **Extra Context** -- additional context wrapped in `<extra_context>` tags (subagent context, etc.).
+20. **Project Context** -- bootstrap context files (remaining after persona extraction), wrapped in defensive preamble.
+21. **Sub-Agent Spawning** -- rules for launching child agents (skipped for team agents with TEAM.md).
+22. **Runtime** -- agent ID, session key, provider info, model pricing.
+23. **Persona Reminder** -- recency reinforcement to combat "lost in the middle" in long conversations.
+24. **Memory Reminders** -- prompts to run memory_search and knowledge_graph_search before answering.
 
 ---
 

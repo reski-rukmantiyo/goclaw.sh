@@ -640,7 +640,116 @@ Defaults used if keys absent. Set `evolution_enabled: false` to disable metrics 
 
 ---
 
-## 9. Cross-References
+## 9. Conversational Scope Guardrails
+
+Scope guardrails constrain an agent to a defined conversational domain. When enabled, the agent receives explicit topic boundaries in its system prompt and — in strict mode — off-topic responses are detected and replaced at runtime.
+
+### 9.1 Configuration
+
+Stored in `agents.other_config` JSONB under key `scope_guardrails`:
+
+```json
+{
+  "scope_guardrails": {
+    "enabled": true,
+    "enforcement": "strict",
+    "scope_description": "Personal finance assistant specializing in budgeting and investing",
+    "allowed_topics": ["budgeting", "investing", "savings", "tax planning"],
+    "denied_topics": ["medical advice", "legal counsel"],
+    "off_topic_response": "I'm focused on personal finance. Let me help you with budgeting or investing instead."
+  }
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Master toggle |
+| `enforcement` | string | `"strict"` | `"soft"` (prompt-only) or `"strict"` (prompt + output guard) |
+| `scope_description` | string | auto-derived | Natural language domain description. Auto-synced from expertise summary (frontmatter + agent description) when empty; toggle override to edit manually |
+| `allowed_topics` | string[] | `[]` | Domains the agent MAY discuss. If empty, all topics are allowed unless denied |
+| `denied_topics` | string[] | `[]` | Domains the agent MUST NOT discuss. Takes priority over allowed |
+| `off_topic_response` | string | `""` | Custom decline message. Default: *"I'm not able to help with that. I'm focused on my defined area of expertise."* |
+
+**Scope description auto-sync:** When `scope_description` is empty, the system derives it from the agent's frontmatter and `AgentDescription`. In the web UI, an override toggle lets admins switch between auto-synced and manually edited descriptions.
+
+**Parsed by:** `AgentData.ParseScopeGuardrails()` in `internal/store/scope_guardrails.go`. Returns `nil` when disabled.
+
+### 9.2 Enforcement Modes
+
+| Mode | System Prompt | Runtime Guard | Behavior |
+|------|:---:|:---:|---|
+| **Soft** | Yes | No | Topic boundaries injected into prompt. Agent self-regulates — no runtime enforcement. Lower token cost, relies on model compliance. |
+| **Strict** (default) | Yes | Yes | Same prompt injection **plus** output guard in `FinalizeStage`. Off-topic responses are detected and replaced with `off_topic_response`. Strongest guarantee. |
+
+### 9.3 Integration Points
+
+Scope guardrails integrate at three layers:
+
+```
+Agent Resolver                    ParseScopeGuardrails() from agent config
+    ↓
+System Prompt Builder     →      buildScopeGuardrailsSection() injects topic rules
+    ↓
+FinalizeStage (strict)    →      ScopeGuardChecker.CheckResponse() validates output
+    ↓
+Skill Tools               →      GuardSkillScope() blocks out-of-scope skill creation
+```
+
+**1. Resolver** (`internal/agent/resolver.go:517`)
+
+On cache miss, the resolver parses scope guardrails from agent config and passes them into the Loop configuration.
+
+**2. System Prompt** (`internal/agent/systemprompt_sections.go:549`)
+
+When enabled, a `## Scope Guardrails` section is injected after the safety section. Contains:
+- Scope description
+- Allowed topics (MAY discuss)
+- Denied topics (MUST NOT discuss)
+- Off-topic response template and behavioral rules
+
+**3. Output Guard** (`internal/pipeline/finalize_stage.go:37`)
+
+In strict mode, the `FinalizeStage` runs `CheckScopeGuard` after sanitization but before delivery:
+- Checks denied topics (highest priority) — if user asked about a denied topic and agent engaged, replace
+- Checks allowed topics — if user asked outside scope and agent answered substantively, replace
+- Recognizes decline phrases (e.g., "I can't", "outside my scope") — if agent correctly declined, allow through
+
+**4. Skill Scope Guard** (`internal/skills/guard.go:97`)
+
+When scope guardrails are enabled, `skill_manage` (create/patch) and `publish_skill` validate skill content against the agent's scope:
+- Denied topics: hard block — skill content matching a denied topic is rejected
+- Allowed topics: if defined, skill content must relate to at least one allowed topic
+
+### 9.4 UI
+
+**Web dashboard:** Agent Overview tab → Scope Guardrails section (ShieldCheck icon)
+- Enable/disable toggle
+- Enforcement mode selector (Soft / Strict)
+- Scope description with auto-sync from expertise summary + override toggle
+- Allowed topics (badge list + add/remove)
+- Denied topics (badge list + add/remove)
+- Off-topic response (textarea, max 500 chars)
+
+**Desktop:** `evolution-guardrails-card.tsx` provides the same configuration surface.
+
+### 9.5 File Reference
+
+| Module | Path | Purpose |
+|--------|------|---------|
+| Config parsing | `internal/store/scope_guardrails.go` | `ScopeGuardrailsConfig` struct, `ParseScopeGuardrails()` |
+| Output guard | `internal/agent/scope_guard.go` | `ScopeGuardChecker`, decline indicators, topic matching |
+| System prompt | `internal/agent/systemprompt_sections.go` | `buildScopeGuardrailsSection()` |
+| Context propagation | `internal/store/context.go` | `WithScopeGuardrails()`, `ScopeGuardrailsFromContext()` |
+| Skill scope guard | `internal/skills/guard.go` | `GuardSkillScope()` |
+| Pipeline integration | `internal/pipeline/finalize_stage.go` | Strict-mode output replacement |
+| Loop wiring | `internal/agent/loop_pipeline_callbacks.go` | `makeScopeGuardCallback()` |
+| Resolver | `internal/agent/resolver.go` | Parses config into Loop |
+| Web UI | `ui/web/src/pages/agents/agent-detail/overview-sections/scope-guardrails-section.tsx` | Scope guardrails section component |
+| Desktop UI | `ui/desktop/frontend/src/components/agents/evolution-guardrails-card.tsx` | Desktop card component |
+
+---
+
+## 10. Cross-References
 
 - [14 - Skills Runtime](./14-skills-runtime.md) — Python/Node runtime environment for skill scripts
 - [15 - Core Skills System](./15-core-skills-system.md) — Bundled system skills, startup seeding, dependency checking
