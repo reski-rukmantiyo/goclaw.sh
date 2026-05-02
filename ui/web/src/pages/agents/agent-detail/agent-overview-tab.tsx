@@ -193,6 +193,20 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
     <div className="space-y-4">
       <PromptSettingsSection agent={agent} onUpdate={onUpdate} promptMode={promptMode} onPromptModeChange={setPromptMode} />
 
+      <PersonalitySection
+        agentKey={agent.agent_key}
+        emoji={emoji}
+        onEmojiChange={setEmoji}
+        displayName={displayName}
+        onDisplayNameChange={setDisplayName}
+        frontmatter={frontmatter}
+        onFrontmatterChange={setFrontmatter}
+        status={status}
+        onStatusChange={setStatus}
+        isDefault={isDefault}
+        onIsDefaultChange={setIsDefault}
+      />
+
       <ScopeGuardrailsSection
         agent={agent}
         frontmatter={frontmatter}
@@ -208,20 +222,6 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
         onDeniedTopicsChange={setScopeDenied}
         offTopicResponse={scopeOffTopic}
         onOffTopicResponseChange={setScopeOffTopic}
-      />
-
-      <PersonalitySection
-        agentKey={agent.agent_key}
-        emoji={emoji}
-        onEmojiChange={setEmoji}
-        displayName={displayName}
-        onDisplayNameChange={setDisplayName}
-        frontmatter={frontmatter}
-        onFrontmatterChange={setFrontmatter}
-        status={status}
-        onStatusChange={setStatus}
-        isDefault={isDefault}
-        onIsDefaultChange={setIsDefault}
       />
 
       <ModelBudgetSection
