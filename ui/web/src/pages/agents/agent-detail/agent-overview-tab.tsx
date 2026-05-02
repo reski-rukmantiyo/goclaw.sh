@@ -145,10 +145,11 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
       } else {
         delete bag.prompt_mode;
       }
-      // Scope guardrails
+      // Scope guardrails — fall back to frontmatter (expertise summary) for scope_description
       if (scopeEnabled) {
+        const desc = scopeDescription.trim() || frontmatter.trim();
         const sg: ScopeGuardrailsConfig = { enabled: true, enforcement: scopeEnforcement };
-        if (scopeDescription.trim()) sg.scope_description = scopeDescription.trim();
+        if (desc) sg.scope_description = desc;
         if (scopeAllowed.length > 0) sg.allowed_topics = scopeAllowed;
         if (scopeDenied.length > 0) sg.denied_topics = scopeDenied;
         if (scopeOffTopic.trim()) sg.off_topic_response = scopeOffTopic.trim();

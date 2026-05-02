@@ -68,20 +68,8 @@ export function ScopeGuardrailsSection({
   const [userOverrode, setUserOverrode] = useState(scopeDescription !== "" && scopeDescription !== frontmatter);
 
   const handleToggle = (v: boolean) => {
-    if (v && !userOverrode) {
-      // Activating: sync scope description from expertise summary
-      onScopeDescriptionChange(frontmatter);
-    }
     onEnabledChange(v);
   };
-
-  const handleDescriptionChange = (v: string) => {
-    setUserOverrode(v !== frontmatter);
-    onScopeDescriptionChange(v);
-  };
-
-  // Resync from frontmatter when it changes (unless user overrode)
-  const effectiveDescription = userOverrode ? scopeDescription : (frontmatter || scopeDescription);
 
   const addAllowed = () => {
     const v = newAllowed.trim();
@@ -147,21 +135,35 @@ export function ScopeGuardrailsSection({
             </p>
           </div>
 
-          {/* Scope description — auto-synced from expertise summary unless user overrides */}
+          {/* Scope description — synced from expertise summary by default, toggle to override */}
           <div className="space-y-1.5">
-            <Label className="text-xs font-normal text-muted-foreground">
-              {t("detail.scopeGuardrails.scopeLabel", "Scope Description")}
-              {!userOverrode && frontmatter && (
-                <span className="ml-1 opacity-60">({t("detail.scopeGuardrails.syncedLabel", "synced from Expertise Summary")})</span>
-              )}
-            </Label>
-            <Textarea
-              value={effectiveDescription}
-              onChange={(e) => handleDescriptionChange(e.target.value)}
-              placeholder={frontmatter || t("detail.scopeGuardrails.scopePlaceholder", "e.g. Personal finance assistant specializing in budgeting and investing")}
-              rows={2}
-              className="text-base md:text-sm"
-            />
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-normal text-muted-foreground">
+                {t("detail.scopeGuardrails.scopeLabel", "Scope Description")}
+              </Label>
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor="scope-override" className="text-xs text-muted-foreground cursor-pointer">
+                  {t("detail.scopeGuardrails.overrideLabel", "Override")}
+                </Label>
+                <Switch id="scope-override" checked={userOverrode} onCheckedChange={(v) => {
+                  setUserOverrode(v);
+                  if (!v) onScopeDescriptionChange(frontmatter);
+                }} />
+              </div>
+            </div>
+            {!userOverrode && frontmatter ? (
+              <p className="text-xs text-muted-foreground italic">
+                {t("detail.scopeGuardrails.usingSummary", "Using Expertise Summary as scope")}: "{frontmatter}"
+              </p>
+            ) : (
+              <Textarea
+                value={scopeDescription}
+                onChange={(e) => onScopeDescriptionChange(e.target.value)}
+                placeholder={t("detail.scopeGuardrails.scopePlaceholder", "e.g. Personal finance assistant specializing in budgeting and investing")}
+                rows={2}
+                className="text-base md:text-sm"
+              />
+            )}
           </div>
 
           {/* Allowed topics */}
