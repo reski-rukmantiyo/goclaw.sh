@@ -67,13 +67,17 @@ func (g *ScopeGuardChecker) CheckResponse(userMsg, assistantResponse string) (bo
 		}
 	}
 
-	// Check allowed topics — if defined, response should stay in scope
+	// Check allowed topics — if defined, user message must relate to at least one.
+	// We only flag substantive off-topic responses, not short acknowledgments or greetings.
 	if len(g.cfg.AllowedTopics) > 0 && !isUserMsgInScope(lowerUser, g.cfg.AllowedTopics) {
-		// User asked about something outside allowed topics
 		if isDecliningResponse(lowerResp) {
 			return true, "" // agent correctly declined
 		}
-		// Agent may have answered an off-topic query
+		// Short/generic responses are likely acknowledgments — don't block them
+		if isLikelyGenericResponse(lowerResp) {
+			return true, ""
+		}
+		// Longer response that doesn't mention any allowed topic — flag it
 		if !isResponseInScope(lowerResp, g.cfg.AllowedTopics) {
 			return false, "response may be outside allowed scope"
 		}
@@ -116,7 +120,36 @@ func isResponseInScope(lowerResp string, allowedTopics []string) bool {
 			return true
 		}
 	}
-	// If no topic matches, the response might be a generic greeting or small talk — allow it
-	// Only flag when the response is substantive and off-topic
+	return false
+}
+
+// isLikelyGenericResponse identifies short/generic responses that are almost
+// certainly acknowledgments or greetings — not substantive off-topic answers.
+// These should not be flagged by the scope guard.
+func isLikelyGenericResponse(lowerResp string) bool {
+	trimmed := strings.TrimSpace(lowerResp)
+	// Very short responses (< 80 chars) are likely acknowledgments
+	if len(trimmed) < 80 {
+		return true
+	}
+	// Check for common acknowledgment patterns
+	genericPatterns := []string{
+		"sure,",
+		"of course",
+		"let me",
+		"i'll ",
+		"i will",
+		"give me",
+		"one moment",
+		"just a",
+		"checking",
+		"looking",
+	}
+	lower := strings.ToLower(trimmed)
+	for _, p := range genericPatterns {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
 	return false
 }

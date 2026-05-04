@@ -12,6 +12,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/pipeline"
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
+	"github.com/nextlevelbuilder/goclaw/internal/sessions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/internal/tools"
 	"github.com/nextlevelbuilder/goclaw/internal/workspace"
@@ -422,7 +423,9 @@ func (l *Loop) makeSkillPostscript() func(ctx context.Context, content string, t
 
 // makeScopeGuardCallback returns a strict-mode scope guard check for FinalizeStage.
 // Returns nil when scope guardrails are disabled or in soft mode (no runtime check needed).
-func (l *Loop) makeScopeGuardCallback() func(userMsg, assistantResponse string) (bool, string) {
+// System sessions (heartbeat, cron, subagent, team) are exempt from scope checks —
+// they are internal operations, not user conversations.
+func (l *Loop) makeScopeGuardCallback() func(sessionKey, userMsg, assistantResponse string) (bool, string) {
 	if l.scopeGuardrails == nil || !l.scopeGuardrails.Enabled || l.scopeGuardrails.Enforcement != "strict" {
 		return nil
 	}
@@ -431,7 +434,12 @@ func (l *Loop) makeScopeGuardCallback() func(userMsg, assistantResponse string) 
 	if offTopic == "" {
 		offTopic = "I'm not able to help with that topic."
 	}
-	return func(userMsg, assistantResponse string) (bool, string) {
+	return func(sessionKey, userMsg, assistantResponse string) (bool, string) {
+		// System sessions are internal operations — exempt from scope guardrails.
+		if sessions.IsHeartbeatSession(sessionKey) || sessions.IsCronSession(sessionKey) ||
+			sessions.IsSubagentSession(sessionKey) || sessions.IsTeamSession(sessionKey) {
+			return true, ""
+		}
 		onTopic, _ := checker.CheckResponse(userMsg, assistantResponse)
 		if !onTopic {
 			return false, offTopic

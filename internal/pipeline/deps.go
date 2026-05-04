@@ -109,7 +109,8 @@ type PipelineDeps struct {
 	StripMessageDirectives   func(content string) string
 	// CheckScopeGuard evaluates whether the response is on-topic (strict mode).
 	// Returns (onTopic, replacementContent). Empty replacement = use original.
-	CheckScopeGuard          func(userMsg, assistantResponse string) (bool, string)
+	// sessionKey is used to skip system sessions (heartbeat, cron, subagent, team).
+	CheckScopeGuard          func(sessionKey, userMsg, assistantResponse string) (bool, string)
 	DeduplicateMediaSuffix   func(content, suffix string) string
 	IsSilentReply          func(content string) bool
 	EmitSessionCompleted   func(ctx context.Context, sessionKey string, msgCount, tokensUsed, compactionCount int)

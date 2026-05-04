@@ -35,7 +35,7 @@ func (s *FinalizeStage) Execute(ctx context.Context, state *RunState) error {
 
 	// 1a. Scope guardrail check (strict mode) — replaces off-topic responses
 	if s.deps.CheckScopeGuard != nil && state.Observe.FinalContent != "" {
-		if onTopic, replacement := s.deps.CheckScopeGuard(state.Input.Message, state.Observe.FinalContent); !onTopic {
+		if onTopic, replacement := s.deps.CheckScopeGuard(state.Input.SessionKey, state.Input.Message, state.Observe.FinalContent); !onTopic {
 			slog.Info("scope_guardrail.replaced_response", "session", state.Input.SessionKey, "reason", replacement)
 			state.Observe.FinalContent = replacement
 		}
