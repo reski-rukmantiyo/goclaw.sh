@@ -18,6 +18,7 @@
     "all": "Tất cả",
     "pending": "Chờ xử lý",
     "processed": "Đã xử lý",
+    "failed": "Thất bại",
     "agent": "Agent",
     "allAgents": "Tất cả agent",
     "channel": "Kênh",
@@ -29,7 +30,8 @@
   },
   "status": {
     "pending": "Chờ xử lý",
-    "processed": "Đã xử lý"
+    "processed": "Đã xử lý",
+    "failed": "Thất bại"
   },
   "showing": "Hiển thị {{count}} / {{total}} tin nhắn",
   "pagination": {
@@ -53,6 +55,9 @@
     "messageTime": "Thời gian tin nhắn",
     "createdAt": "Tạo lúc",
     "processedAt": "Xử lý lúc",
+    "extractionError": "Lỗi trích xuất",
+    "extractionAttempts": "Số lần thử",
+    "lastAttemptedAt": "Lần thử cuối",
     "messageBody": "Nội dung tin nhắn",
     "copy": "Sao chép",
     "copied": "Đã sao chép",

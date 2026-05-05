@@ -18,6 +18,7 @@
     "all": "All",
     "pending": "Pending",
     "processed": "Processed",
+    "failed": "Failed",
     "agent": "Agent",
     "allAgents": "All agents",
     "channel": "Channel",
@@ -29,7 +30,8 @@
   },
   "status": {
     "pending": "Pending",
-    "processed": "Processed"
+    "processed": "Processed",
+    "failed": "Failed"
   },
   "showing": "Showing {{count}} of {{total}} messages",
   "pagination": {
@@ -53,6 +55,9 @@
     "messageTime": "Message Time",
     "createdAt": "Created At",
     "processedAt": "Processed At",
+    "extractionError": "Extraction Error",
+    "extractionAttempts": "Attempts",
+    "lastAttemptedAt": "Last Attempt",
     "messageBody": "Message Body",
     "copy": "Copy",
     "copied": "Copied",

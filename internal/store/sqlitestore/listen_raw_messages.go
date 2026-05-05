@@ -61,7 +61,7 @@ func (s *SQLiteListenRawMessageStore) ListPending(ctx context.Context, agentID, 
 	}
 	args := append([]any{agentID, graphID, maxRows}, tArgs...)
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, channel_name, chat_id, chat_name, graph_id, sender, sender_id, body, msg_timestamp, agent_id, created_at, processed_at, media_refs
+		`SELECT id, channel_name, chat_id, chat_name, graph_id, sender, sender_id, body, msg_timestamp, agent_id, created_at, processed_at, media_refs, extraction_status, extraction_error, extraction_attempts, last_attempted_at
 				 FROM listen_raw_messages
 				 WHERE agent_id = ? AND graph_id = ? AND processed_at IS NULL`+tClause+`
 				 ORDER BY msg_timestamp DESC
@@ -80,9 +80,12 @@ func (s *SQLiteListenRawMessageStore) ListPending(ctx context.Context, agentID, 
 		var createdAt sql.NullString
 		var msgTimestamp sql.NullString
 		var mediaRefsJSON string
+		var lastAttemptedAt sql.NullString
+		var extractionErr sql.NullString
 		if err := rows.Scan(&m.ID, &m.ChannelName, &m.ChatID, &m.ChatName,
 			&m.GraphID, &m.Sender, &m.SenderID, &m.Body,
-			&msgTimestamp, &m.AgentID, &createdAt, &processedAt, &mediaRefsJSON); err != nil {
+			&msgTimestamp, &m.AgentID, &createdAt, &processedAt, &mediaRefsJSON,
+			&m.ExtractionStatus, &extractionErr, &m.ExtractionAttempts, &lastAttemptedAt); err != nil {
 			return nil, err
 		}
 		if msgTimestamp.Valid {
@@ -96,6 +99,13 @@ func (s *SQLiteListenRawMessageStore) ListPending(ctx context.Context, agentID, 
 		if processedAt.Valid && processedAt.String != "" {
 			t, _ := time.Parse(time.RFC3339Nano, processedAt.String)
 			m.ProcessedAt = &t
+		}
+		if extractionErr.Valid {
+			m.ExtractionError = extractionErr.String
+		}
+		if lastAttemptedAt.Valid && lastAttemptedAt.String != "" {
+			t, _ := time.Parse(time.RFC3339Nano, lastAttemptedAt.String)
+			m.LastAttemptedAt = &t
 		}
 		if mediaRefsJSON != "" && mediaRefsJSON != "[]" {
 			_ = json.Unmarshal([]byte(mediaRefsJSON), &m.MediaRefs)
@@ -118,7 +128,31 @@ func (s *SQLiteListenRawMessageStore) MarkProcessed(ctx context.Context, ids []u
 		args = append(args, id)
 	}
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE listen_raw_messages SET processed_at = ? WHERE id IN (`+strings.Join(placeholders, ",")+`)`,
+		`UPDATE listen_raw_messages SET processed_at = ?, extraction_status = 'extracted', extraction_error = NULL WHERE id IN (`+strings.Join(placeholders, ",")+`)`,
+		args...,
+	)
+	return err
+}
+
+func (s *SQLiteListenRawMessageStore) MarkExtractionFailed(ctx context.Context, ids []uuid.UUID, errorMsg string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	placeholders := make([]string, len(ids))
+	args := make([]any, 0, len(ids)+2)
+	args = append(args, errorMsg, now)
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE listen_raw_messages
+		 SET extraction_status = 'failed',
+		     extraction_error = ?,
+		     last_attempted_at = ?,
+		     extraction_attempts = extraction_attempts + 1
+		 WHERE id IN (`+strings.Join(placeholders, ",")+`)`,
 		args...,
 	)
 	return err
@@ -194,7 +228,7 @@ func (s *SQLiteListenRawMessageStore) ResetProcessedByIDs(ctx context.Context, i
 		return 0, err
 	}
 	args = append(args, tArgs...)
-	q := `UPDATE listen_raw_messages SET processed_at = NULL WHERE id IN (` + strings.Join(placeholders, ",") + `) AND processed_at IS NOT NULL` + tClause
+	q := `UPDATE listen_raw_messages SET processed_at = NULL, extraction_status = 'pending', extraction_error = NULL, extraction_attempts = 0, last_attempted_at = NULL WHERE id IN (` + strings.Join(placeholders, ",") + `) AND processed_at IS NOT NULL` + tClause
 	res, err := s.db.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, err
@@ -234,6 +268,10 @@ func (s *SQLiteListenRawMessageStore) List(ctx context.Context, opts store.Liste
 			conditions = append(conditions, "processed_at IS NULL")
 		}
 	}
+	if opts.ExtractionStatus != "" {
+		conditions = append(conditions, "extraction_status = ?")
+		args = append(args, opts.ExtractionStatus)
+	}
 
 	whereClause := ""
 	if len(conditions) > 0 {
@@ -265,7 +303,7 @@ func (s *SQLiteListenRawMessageStore) List(ctx context.Context, opts store.Liste
 	pageArgs = append(pageArgs, limit, offset)
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, channel_name, chat_id, chat_name, graph_id, sender, sender_id, body, msg_timestamp, agent_id, created_at, processed_at, media_refs
+		`SELECT id, channel_name, chat_id, chat_name, graph_id, sender, sender_id, body, msg_timestamp, agent_id, created_at, processed_at, media_refs, extraction_status, extraction_error, extraction_attempts, last_attempted_at
 				 FROM listen_raw_messages WHERE 1=1`+tClause+whereClause+`
 				 ORDER BY created_at DESC
 				 LIMIT ? OFFSET ?`,
@@ -283,9 +321,12 @@ func (s *SQLiteListenRawMessageStore) List(ctx context.Context, opts store.Liste
 		var createdAt sql.NullString
 		var msgTimestamp sql.NullString
 		var mediaRefsJSON string
+		var lastAttemptedAt sql.NullString
+		var extractionErr sql.NullString
 		if err := rows.Scan(&m.ID, &m.ChannelName, &m.ChatID, &m.ChatName,
 			&m.GraphID, &m.Sender, &m.SenderID, &m.Body,
-			&msgTimestamp, &m.AgentID, &createdAt, &processedAt, &mediaRefsJSON); err != nil {
+			&msgTimestamp, &m.AgentID, &createdAt, &processedAt, &mediaRefsJSON,
+			&m.ExtractionStatus, &extractionErr, &m.ExtractionAttempts, &lastAttemptedAt); err != nil {
 			return nil, 0, err
 		}
 		if msgTimestamp.Valid {
@@ -299,6 +340,13 @@ func (s *SQLiteListenRawMessageStore) List(ctx context.Context, opts store.Liste
 		if processedAt.Valid && processedAt.String != "" {
 			t, _ := time.Parse(time.RFC3339Nano, processedAt.String)
 			m.ProcessedAt = &t
+		}
+		if extractionErr.Valid {
+			m.ExtractionError = extractionErr.String
+		}
+		if lastAttemptedAt.Valid && lastAttemptedAt.String != "" {
+			t, _ := time.Parse(time.RFC3339Nano, lastAttemptedAt.String)
+			m.LastAttemptedAt = &t
 		}
 		if mediaRefsJSON != "" && mediaRefsJSON != "[]" {
 			_ = json.Unmarshal([]byte(mediaRefsJSON), &m.MediaRefs)

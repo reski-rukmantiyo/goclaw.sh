@@ -15,6 +15,10 @@ export interface RawMessage {
   agent_name: string;
   processed_at: string | null;
   created_at: string;
+  extraction_status: string;
+  extraction_error?: string;
+  extraction_attempts: number;
+  last_attempted_at?: string;
 }
 
 interface RawMessagesResponse {
@@ -43,6 +47,7 @@ export function useRawMessages() {
       chatId?: string;
       agentId?: string;
       graphId?: string;
+      extractionStatus?: string;
     }) => {
       setLoading(true);
       try {
@@ -67,6 +72,9 @@ export function useRawMessages() {
         }
         if (params?.graphId) {
           query.graph_id = params.graphId;
+        }
+        if (params?.extractionStatus) {
+          query.extraction_status = params.extractionStatus;
         }
         const res = await http.get<RawMessagesResponse>("/v1/listen-raw-messages", query);
         setMessages(res?.messages ?? []);

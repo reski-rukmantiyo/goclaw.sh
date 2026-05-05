@@ -1617,8 +1617,12 @@ CREATE TABLE IF NOT EXISTS listen_raw_messages (
     agent_id      TEXT NOT NULL,
     tenant_id     TEXT NOT NULL REFERENCES tenants(id),
     created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    processed_at  TEXT,
-    media_refs    TEXT NOT NULL DEFAULT '[]'
+    processed_at        TEXT,
+    media_refs          TEXT NOT NULL DEFAULT '[]',
+    extraction_status   TEXT NOT NULL DEFAULT 'pending',
+    extraction_error    TEXT,
+    extraction_attempts INTEGER NOT NULL DEFAULT 0,
+    last_attempted_at   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_listen_raw_agent_chat ON listen_raw_messages(agent_id, chat_id, created_at);

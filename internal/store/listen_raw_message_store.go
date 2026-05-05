@@ -23,7 +23,11 @@ type ListenRawMessage struct {
 	TenantID     uuid.UUID  `json:"tenant_id" db:"tenant_id"`
 	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
 	ProcessedAt  *time.Time `json:"processed_at,omitempty" db:"processed_at"`
-	MediaRefs    []RawMediaRef `json:"media_refs" db:"media_refs"`
+	MediaRefs          []RawMediaRef `json:"media_refs" db:"media_refs"`
+	ExtractionStatus   string        `json:"extraction_status" db:"extraction_status"`
+	ExtractionError    string        `json:"extraction_error,omitempty" db:"extraction_error"`
+	ExtractionAttempts int           `json:"extraction_attempts" db:"extraction_attempts"`
+	LastAttemptedAt    *time.Time    `json:"last_attempted_at,omitempty" db:"last_attempted_at"`
 }
 
 // RawMediaRef stores a reference to a persisted media file attached to a raw message.
@@ -51,7 +55,8 @@ type ListenRawMessageListOpts struct {
 	ChatID      string
 	AgentID     string
 	GraphID     string
-	Processed   *bool // nil=all, true=processed only, false=pending only
+	Processed        *bool  // nil=all, true=processed only, false=pending only
+	ExtractionStatus string // "pending", "extracted", "failed", or empty for all
 }
 
 // ListenRawMessageStore persists raw messages captured by WhatsApp listen-only mode.
@@ -65,6 +70,10 @@ type ListenRawMessageStore interface {
 
 	// MarkProcessed sets processed_at = NOW() for the given message IDs.
 	MarkProcessed(ctx context.Context, ids []uuid.UUID) error
+
+	// MarkExtractionFailed sets extraction_status='failed', increments attempts,
+	// and stores the error message for the given message IDs.
+	MarkExtractionFailed(ctx context.Context, ids []uuid.UUID, errorMsg string) error
 
 	// ListPendingGroups returns distinct (agent_id, graph_id) pairs that have
 	// unprocessed messages, for the worker to know what to poll.

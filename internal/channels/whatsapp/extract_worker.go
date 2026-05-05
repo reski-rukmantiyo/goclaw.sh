@@ -146,7 +146,7 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 	if p == nil {
 		slog.Warn("whatsapp extraction worker: no LLM provider available",
 			"agent_id", agentID, "graph_id", graphID)
-		recordExtractionFailure(deps.retryTracker, groupKey, agentID, graphID, "no_provider")
+		recordExtractionFailure(deps, groupKey, agentID, graphID, "no LLM provider available", msgs)
 		return
 	}
 
@@ -210,7 +210,7 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 		if err != nil {
 			slog.Warn("whatsapp extraction worker: extraction failed",
 				"agent_id", agentID, "graph_id", graphID, "error", err)
-			recordExtractionFailure(deps.retryTracker, groupKey, agentID, graphID, "extract_fallback")
+			recordExtractionFailure(deps, groupKey, agentID, graphID, fmt.Sprintf("fallback extraction failed: %s", err), msgs)
 			return
 		}
 		ingestAndFinalize(ctx, deps, result, agentID, graphID, msgs, groupKey)
@@ -224,7 +224,7 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 	if err != nil {
 		slog.Warn("whatsapp extraction worker: extraction failed",
 			"agent_id", agentID, "graph_id", graphID, "error", err)
-		recordExtractionFailure(deps.retryTracker, groupKey, agentID, graphID, "extract_summary")
+		recordExtractionFailure(deps, groupKey, agentID, graphID, fmt.Sprintf("summary extraction failed: %s", err), msgs)
 		return
 	}
 
@@ -282,9 +282,8 @@ func ingestAndFinalize(ctx context.Context, deps ExtractionWorkerDeps, result *k
 		if err != nil {
 			slog.Warn("whatsapp extraction worker: KG ingest failed",
 				"agent_id", agentID, "graph_id", graphID, "error", err)
-			// Still mark as processed to avoid retrying a failed ingest indefinitely.
-				recordExtractionFailure(deps.retryTracker, groupKey, agentID, graphID, "ingest")
-				return
+			recordExtractionFailure(deps, groupKey, agentID, graphID, fmt.Sprintf("KG ingest failed: %s", err), msgs)
+			return
 		} else {
 			slog.Info("whatsapp extraction worker: KG extraction complete",
 				"agent_id", agentID, "graph_id", graphID,
@@ -320,13 +319,26 @@ func ingestAndFinalize(ctx context.Context, deps ExtractionWorkerDeps, result *k
 	}
 }
 
-// recordExtractionFailure increments the consecutive failure counter and applies
-// exponential backoff. Logs a warning when failures accumulate.
-func recordExtractionFailure(tracker map[string]*groupRetryState, groupKey, agentID, graphID, stage string) {
-	s := tracker[groupKey]
+// recordExtractionFailure increments the consecutive failure counter, persists the
+// error to the database for UI visibility, and applies exponential backoff.
+func recordExtractionFailure(deps ExtractionWorkerDeps, groupKey, agentID, graphID, errorMsg string, msgs []store.ListenRawMessage) {
+	// Persist failure to DB for each message in the batch.
+	if len(msgs) > 0 && deps.RawMsgStore != nil {
+		ids := make([]uuid.UUID, len(msgs))
+		for i, m := range msgs {
+			ids[i] = m.ID
+		}
+		failCtx := store.WithTenantID(context.Background(), deps.TenantID)
+		if err := deps.RawMsgStore.MarkExtractionFailed(failCtx, ids, errorMsg); err != nil {
+			slog.Warn("whatsapp extraction worker: failed to mark extraction failure",
+				"agent_id", agentID, "graph_id", graphID, "error", err)
+		}
+	}
+
+	s := deps.retryTracker[groupKey]
 	if s == nil {
 		s = &groupRetryState{}
-		tracker[groupKey] = s
+		deps.retryTracker[groupKey] = s
 	}
 	s.consecutiveFailures++
 	backoffSec := math.Min(float64(defaultExtractPollSec)*math.Pow(2, float64(s.consecutiveFailures)), float64(maxRetryBackoffSec))
@@ -334,7 +346,7 @@ func recordExtractionFailure(tracker map[string]*groupRetryState, groupKey, agen
 	if s.consecutiveFailures >= 3 {
 		slog.Warn("whatsapp extraction worker: group has consecutive failures, backing off",
 			"agent_id", agentID, "graph_id", graphID,
-			"stage", stage,
+			"error", errorMsg,
 			"consecutive_failures", s.consecutiveFailures,
 			"backoff_sec", int(backoffSec),
 			"next_attempt", s.nextAttempt.Format("15:04:05"))

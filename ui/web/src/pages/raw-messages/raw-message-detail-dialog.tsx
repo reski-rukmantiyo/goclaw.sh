@@ -26,9 +26,11 @@ export function RawMessageDetailDialog({ message, onClose, onReset }: RawMessage
     { label: t("detail.channel"), value: message.channel_name },
     {
       label: t("detail.status"),
-      value: message.processed_at
-        ? <Badge variant="success" className="text-xs">{t("status.processed")}</Badge>
-        : <Badge variant="secondary" className="text-xs">{t("status.pending")}</Badge>,
+      value: message.extraction_status === "failed"
+        ? <Badge variant="destructive" className="text-xs">{t("status.failed")}</Badge>
+        : message.processed_at
+          ? <Badge variant="success" className="text-xs">{t("status.processed")}</Badge>
+          : <Badge variant="secondary" className="text-xs">{t("status.pending")}</Badge>,
     },
     { label: t("detail.messageTime"), value: formatDate(message.msg_timestamp) },
     { label: t("detail.createdAt"), value: formatDate(message.created_at) },
@@ -36,6 +38,20 @@ export function RawMessageDetailDialog({ message, onClose, onReset }: RawMessage
       label: t("detail.processedAt"),
       value: message.processed_at ? formatDate(message.processed_at) : t("detail.na"),
     },
+    ...(message.extraction_status === "failed" ? [
+      {
+        label: t("detail.extractionError"),
+        value: <span className="text-destructive text-xs">{message.extraction_error || t("detail.na")}</span>,
+      },
+      {
+        label: t("detail.extractionAttempts"),
+        value: message.extraction_attempts > 0 ? String(message.extraction_attempts) : t("detail.na"),
+      },
+      {
+        label: t("detail.lastAttemptedAt"),
+        value: message.last_attempted_at ? formatDate(message.last_attempted_at) : t("detail.na"),
+      },
+    ] : []),
   ];
 
   return (

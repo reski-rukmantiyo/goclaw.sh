@@ -53,6 +53,9 @@ func (h *ListenRawMessagesHandler) handleList(w http.ResponseWriter, r *http.Req
 		b := v == "true" || v == "1"
 		opts.Processed = &b
 	}
+	if v := r.URL.Query().Get("extraction_status"); v != "" {
+		opts.ExtractionStatus = v
+	}
 	if v := r.URL.Query().Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
 			opts.Limit = n

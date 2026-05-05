@@ -37,7 +37,7 @@ export function RawMessagesPage() {
   const [selectedMsg, setSelectedMsg] = useState<RawMessage | null>(null);
 
   // Server-side filters
-  const [filterProcessed, setFilterProcessed] = useState<"all" | "pending" | "processed">("all");
+  const [filterProcessed, setFilterProcessed] = useState<"all" | "pending" | "processed" | "failed">("all");
   const [filterAgentId, setFilterAgentId] = useState<string>("__all__");
   const [filterChannel, setFilterChannel] = useState("");
   const [filterGraphId, setFilterGraphId] = useState("");
@@ -78,9 +78,11 @@ export function RawMessagesPage() {
       channelName?: string;
       agentId?: string;
       graphId?: string;
+      extractionStatus?: string;
     } = { limit: PAGE_SIZE, offset };
     if (filterProcessed === "pending") params.processed = false;
     if (filterProcessed === "processed") params.processed = true;
+    if (filterProcessed === "failed") params.extractionStatus = "failed";
     if (filterChannel) params.channelName = filterChannel;
     if (filterAgentId !== "__all__") params.agentId = filterAgentId;
     if (filterGraphId) params.graphId = filterGraphId;
@@ -166,9 +168,11 @@ export function RawMessagesPage() {
       channelName?: string;
       agentId?: string;
       graphId?: string;
+      extractionStatus?: string;
     } = { limit: PAGE_SIZE, offset };
     if (filterProcessed === "pending") params.processed = false;
     if (filterProcessed === "processed") params.processed = true;
+    if (filterProcessed === "failed") params.extractionStatus = "failed";
     if (filterChannel) params.channelName = filterChannel;
     if (filterAgentId !== "__all__") params.agentId = filterAgentId;
     if (filterGraphId) params.graphId = filterGraphId;
@@ -245,6 +249,7 @@ export function RawMessagesPage() {
               <option value="all">{t("filters.all")}</option>
               <option value="pending">{t("filters.pending")}</option>
               <option value="processed">{t("filters.processed")}</option>
+              <option value="failed">{t("filters.failed")}</option>
             </select>
 
             {/* Agent dropdown */}
@@ -436,7 +441,9 @@ export function RawMessagesPage() {
                         {formatDate(msg.msg_timestamp || msg.created_at)}
                       </td>
                       <td className="px-4 py-3">
-                        {msg.processed_at ? (
+                        {msg.extraction_status === "failed" ? (
+                          <Badge variant="destructive" className="text-xs">{t("status.failed")}</Badge>
+                        ) : msg.processed_at ? (
                           <Badge variant="success" className="text-xs">{t("status.processed")}</Badge>
                         ) : (
                           <Badge variant="secondary" className="text-xs">{t("status.pending")}</Badge>
@@ -483,7 +490,7 @@ export function RawMessagesPage() {
         <RawMessageDetailDialog
           message={selectedMsg}
           onClose={() => setSelectedMsg(null)}
-          onReset={selectedMsg.processed_at ? () => handleResetSingle(selectedMsg) : undefined}
+          onReset={selectedMsg.processed_at || selectedMsg.extraction_status === "failed" ? () => handleResetSingle(selectedMsg) : undefined}
         />
       )}
     </div>
