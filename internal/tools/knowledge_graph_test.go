@@ -211,7 +211,7 @@ func TestKGTraversal_Tier1_OutgoingEdges(t *testing.T) {
 	tool.SetKGStore(ms)
 
 	ctx := kgContext()
-	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, ids["A"], 2, "Viettx")
+	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, ids["A"], 2, "Viettx", nil, nil)
 	text := result.ForLLM
 
 	if !strings.Contains(text, "GoClaw") {
@@ -232,7 +232,7 @@ func TestKGTraversal_Tier2_OnlyIncomingEdges(t *testing.T) {
 
 	ctx := kgContext()
 	// D=Kuwait has 0 outgoing, 1 incoming (C→D)
-	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, ids["D"], 2, "Kuwait")
+	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, ids["D"], 2, "Kuwait", nil, nil)
 	text := result.ForLLM
 
 	if !strings.Contains(text, "Direct connections") {
@@ -253,7 +253,7 @@ func TestKGTraversal_Tier3_IsolatedWithQuery(t *testing.T) {
 
 	ctx := kgContext()
 	// E=Chiến sự TĐ: 0 outgoing, 0 incoming, but searchable by name
-	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, ids["E"], 2, "Chiến sự")
+	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, ids["E"], 2, "Chiến sự", nil, nil)
 	text := result.ForLLM
 
 	if !strings.Contains(text, "Chiến sự Trung Đông") {
@@ -271,7 +271,7 @@ func TestKGTraversal_Tier3_IsolatedNoQuery(t *testing.T) {
 
 	ctx := kgContext()
 	// E=isolated, no query fallback
-	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, ids["E"], 2, "")
+	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, ids["E"], 2, "", nil, nil)
 	text := result.ForLLM
 
 	if !strings.Contains(text, "No connected entities found") {
@@ -300,7 +300,7 @@ func TestKGTraversal_Tier2_CappedAt10(t *testing.T) {
 	tool.SetKGStore(ms)
 
 	ctx := kgContext()
-	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, entityX, 2, "")
+	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, entityX, 2, "", nil, nil)
 	text := result.ForLLM
 
 	count := strings.Count(text, "—[connects_to]→")
@@ -319,7 +319,7 @@ func TestKGTraversal_Tier1_SkipsTier2WhenTraversalHasResults(t *testing.T) {
 
 	ctx := kgContext()
 	// B=GoClaw has 1 outgoing (B→C) and 1 incoming (A→B)
-	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, ids["B"], 2, "GoClaw")
+	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, ids["B"], 2, "GoClaw", nil, nil)
 	text := result.ForLLM
 
 	if !strings.Contains(text, "Dầu thô") {
@@ -351,7 +351,7 @@ func TestKGTraversal_Tier2_RelationFormat(t *testing.T) {
 	tool.SetKGStore(ms)
 
 	ctx := kgContext()
-	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, idF, 2, "")
+	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, idF, 2, "", nil, nil)
 	text := result.ForLLM
 
 	// Outgoing: F —[owns]→ G
@@ -383,7 +383,7 @@ func TestKGTraversal_Tier1_CappedAt20(t *testing.T) {
 	tool.SetKGStore(ms)
 
 	ctx := kgContext()
-	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, startID, 2, "")
+	result := tool.executeTraversal(ctx, testAgentID.String(), testUserID, startID, 2, "", nil, nil)
 	text := result.ForLLM
 
 	count := strings.Count(text, "links_to")

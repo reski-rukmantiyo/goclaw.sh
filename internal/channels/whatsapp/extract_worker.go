@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
 	"time"
 
@@ -19,7 +20,14 @@ import (
 const (
 	defaultExtractPollSec = 30
 	extractBatchSize      = 20
+	maxRetryBackoffSec    = 600 // 10 minutes cap
 )
+
+// groupRetryState tracks consecutive extraction failures for a (agentID, graphID) group.
+type groupRetryState struct {
+	consecutiveFailures int
+	nextAttempt         time.Time
+}
 
 // ExtractionWorkerDeps bundles dependencies for the listen-only KG extraction worker.
 type ExtractionWorkerDeps struct {
@@ -31,6 +39,8 @@ type ExtractionWorkerDeps struct {
 	TenantID      uuid.UUID
 	PollSec       int // poll interval in seconds (default 30)
 	MediaAnalyzer *MediaAnalyzer
+
+	retryTracker map[string]*groupRetryState // key: agentID+"/"+graphID
 }
 
 // RegisterExtractionWorker starts a background goroutine that periodically polls
@@ -41,6 +51,8 @@ func RegisterExtractionWorker(deps ExtractionWorkerDeps) func() {
 		slog.Info("whatsapp extraction worker: skipped, missing stores")
 		return func() {}
 	}
+
+	deps.retryTracker = make(map[string]*groupRetryState)
 
 	pollSec := deps.PollSec
 	if pollSec <= 0 {
@@ -91,6 +103,17 @@ func processAllPendingBatches(deps ExtractionWorkerDeps) {
 
 // processGroupBatch processes one batch of pending messages for a given (agentID, graphID).
 func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, graphID string) {
+	groupKey := agentID + "/" + graphID
+
+	// Check backoff: skip this group if we're in a retry cooldown.
+	if rs, ok := deps.retryTracker[groupKey]; ok && time.Now().Before(rs.nextAttempt) {
+		slog.Debug("whatsapp extraction worker: skipping group due to retry backoff",
+			"agent_id", agentID, "graph_id", graphID,
+			"consecutive_failures", rs.consecutiveFailures,
+			"next_attempt", rs.nextAttempt.Format("15:04:05"))
+		return
+	}
+
 	msgs, err := deps.RawMsgStore.ListPending(ctx, agentID, graphID, extractBatchSize)
 	if err != nil {
 		slog.Warn("whatsapp extraction worker: failed to list pending messages",
@@ -123,6 +146,7 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 	if p == nil {
 		slog.Warn("whatsapp extraction worker: no LLM provider available",
 			"agent_id", agentID, "graph_id", graphID)
+		recordExtractionFailure(deps.retryTracker, groupKey, agentID, graphID, "no_provider")
 		return
 	}
 
@@ -186,9 +210,10 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 		if err != nil {
 			slog.Warn("whatsapp extraction worker: extraction failed",
 				"agent_id", agentID, "graph_id", graphID, "error", err)
+			recordExtractionFailure(deps.retryTracker, groupKey, agentID, graphID, "extract_fallback")
 			return
 		}
-		ingestAndFinalize(ctx, deps, result, agentID, graphID, msgs)
+		ingestAndFinalize(ctx, deps, result, agentID, graphID, msgs, groupKey)
 		return
 	}
 
@@ -199,14 +224,15 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 	if err != nil {
 		slog.Warn("whatsapp extraction worker: extraction failed",
 			"agent_id", agentID, "graph_id", graphID, "error", err)
+		recordExtractionFailure(deps.retryTracker, groupKey, agentID, graphID, "extract_summary")
 		return
 	}
 
-	ingestAndFinalize(ctx, deps, result, agentID, graphID, msgs)
+	ingestAndFinalize(ctx, deps, result, agentID, graphID, msgs, groupKey)
 }
 
 // ingestAndFinalize handles entity scoping, KG ingestion, dedup, and marking messages as processed.
-func ingestAndFinalize(ctx context.Context, deps ExtractionWorkerDeps, result *knowledgegraph.ExtractionResult, agentID, graphID string, msgs []store.ListenRawMessage) {
+func ingestAndFinalize(ctx context.Context, deps ExtractionWorkerDeps, result *knowledgegraph.ExtractionResult, agentID, graphID string, msgs []store.ListenRawMessage, groupKey string) {
 	if len(result.Entities) == 0 && len(result.Relations) == 0 {
 		slog.Debug("whatsapp extraction worker: no entities extracted",
 			"agent_id", agentID, "graph_id", graphID, "messages", len(msgs))
@@ -257,6 +283,8 @@ func ingestAndFinalize(ctx context.Context, deps ExtractionWorkerDeps, result *k
 			slog.Warn("whatsapp extraction worker: KG ingest failed",
 				"agent_id", agentID, "graph_id", graphID, "error", err)
 			// Still mark as processed to avoid retrying a failed ingest indefinitely.
+				recordExtractionFailure(deps.retryTracker, groupKey, agentID, graphID, "ingest")
+				return
 		} else {
 			slog.Info("whatsapp extraction worker: KG extraction complete",
 				"agent_id", agentID, "graph_id", graphID,
@@ -286,6 +314,30 @@ func ingestAndFinalize(ctx context.Context, deps ExtractionWorkerDeps, result *k
 	if err := deps.RawMsgStore.MarkProcessed(ctx, ids); err != nil {
 		slog.Warn("whatsapp extraction worker: failed to mark processed",
 			"agent_id", agentID, "graph_id", graphID, "error", err)
+	} else {
+		// Reset retry tracker on success.
+		delete(deps.retryTracker, groupKey)
+	}
+}
+
+// recordExtractionFailure increments the consecutive failure counter and applies
+// exponential backoff. Logs a warning when failures accumulate.
+func recordExtractionFailure(tracker map[string]*groupRetryState, groupKey, agentID, graphID, stage string) {
+	s := tracker[groupKey]
+	if s == nil {
+		s = &groupRetryState{}
+		tracker[groupKey] = s
+	}
+	s.consecutiveFailures++
+	backoffSec := math.Min(float64(defaultExtractPollSec)*math.Pow(2, float64(s.consecutiveFailures)), float64(maxRetryBackoffSec))
+	s.nextAttempt = time.Now().Add(time.Duration(backoffSec) * time.Second)
+	if s.consecutiveFailures >= 3 {
+		slog.Warn("whatsapp extraction worker: group has consecutive failures, backing off",
+			"agent_id", agentID, "graph_id", graphID,
+			"stage", stage,
+			"consecutive_failures", s.consecutiveFailures,
+			"backoff_sec", int(backoffSec),
+			"next_attempt", s.nextAttempt.Format("15:04:05"))
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -21,8 +22,11 @@ func kgSearchCmd() *cobra.Command {
 		scope    string
 		scopes   []string
 		limit    int
-		entityID string
-		depth    int
+		entityID  string
+		depth     int
+		fromTime  string
+		toTime    string
+		asOf      string
 	)
 
 	cmd := &cobra.Command{
@@ -33,7 +37,13 @@ func kgSearchCmd() *cobra.Command {
   goclaw kg-search "openrouter GPU" --agent-id 019d6771-abce-7ad1-8e4d-8ee0a211c3cc --tenant 0193a5b0-7000-7000-8000-000000000001 --scopes project-gpu-elephant,project-sovereign
 
   # Traverse from a specific entity
-  goclaw kg-search --entity-id 019dd6dd-e892-7622-84ee-4a51af84613f --agent-id 019d6771-abce-7ad1-8e4d-8ee0a211c3cc --tenant 0193a5b0-7000-7000-8000-000000000001 --depth 2`,
+  goclaw kg-search --entity-id 019dd6dd-e892-7622-84ee-4a51af84613f --agent-id 019d6771-abce-7ad1-8e4d-8ee0a211c3cc --tenant 0193a5b0-7000-7000-8000-000000000001 --depth 2
+
+  # Search by event time range
+  goclaw kg-search --from-time 2026-04-01T00:00:00Z --to-time 2026-04-30T23:59:59Z --agent-id 019d6771-abce-7ad1-8e4d-8ee0a211c3cc --tenant 0193a5b0-7000-7000-8000-000000000001
+
+  # Point-in-time temporal query
+  goclaw kg-search --as-of 2026-01-15T00:00:00Z --agent-id 019d6771-abce-7ad1-8e4d-8ee0a211c3cc --tenant 0193a5b0-7000-7000-8000-000000000001`,
 		Args: cobra.MinimumNArgs(0),
 		Run: func(cmd *cobra.Command, args []string) {
 			dsn := os.Getenv("GOCLAW_POSTGRES_DSN")
@@ -134,6 +144,85 @@ func kgSearchCmd() *cobra.Command {
 				return
 			}
 
+			// Event-time range search mode
+			if fromTime != "" || toTime != "" {
+				var ft, tt *time.Time
+				if fromTime != "" {
+					parsed, pErr := time.Parse(time.RFC3339, fromTime)
+					if pErr != nil {
+						fmt.Fprintf(os.Stderr, "Invalid --from-time: %v\n", pErr)
+						os.Exit(1)
+					}
+					ft = &parsed
+				}
+				if toTime != "" {
+					parsed, pErr := time.Parse(time.RFC3339, toTime)
+					if pErr != nil {
+						fmt.Fprintf(os.Stderr, "Invalid --to-time: %v\n", pErr)
+						os.Exit(1)
+					}
+					tt = &parsed
+				}
+
+				fmt.Printf("[SearchEntitiesByEventTime] from=%v to=%v limit=%d\n\n", ft, tt, limit)
+				entities, sErr := kgStore.SearchEntitiesByEventTime(ctx, agentID, userID, ft, tt, limit)
+				if sErr != nil {
+					fmt.Fprintf(os.Stderr, "Event-time search ERROR: %v\n", sErr)
+					os.Exit(1)
+				}
+
+				fmt.Printf("Found %d entities:\n", len(entities))
+				for i, e := range entities {
+					fmt.Printf("\n%d. %s [%s] (id: %s)\n", i+1, e.Name, e.EntityType, e.ID)
+					if e.Description != "" {
+						fmt.Printf("   %s\n", e.Description)
+					}
+					if len(e.Properties) > 0 {
+						fmt.Printf("   [%s]\n", formatKGProps(e.Properties))
+					}
+					if e.EventTime != nil {
+						fmt.Printf("   event: %s\n", e.EventTime.Format("2006-01-02 15:04"))
+					}
+					fmt.Printf("   user_id: %s\n", e.UserID)
+				}
+				return
+			}
+
+			// Point-in-time temporal mode
+			if asOf != "" {
+				parsed, pErr := time.Parse(time.RFC3339, asOf)
+				if pErr != nil {
+					fmt.Fprintf(os.Stderr, "Invalid --as-of: %v\n", pErr)
+					os.Exit(1)
+				}
+
+				fmt.Printf("[ListEntitiesTemporal] as_of=%s limit=%d\n\n", asOf, limit)
+				entities, tErr := kgStore.ListEntitiesTemporal(ctx, agentID, userID,
+					store.EntityListOptions{Limit: limit},
+					store.TemporalQueryOptions{AsOf: &parsed},
+				)
+				if tErr != nil {
+					fmt.Fprintf(os.Stderr, "Temporal list ERROR: %v\n", tErr)
+					os.Exit(1)
+				}
+
+				fmt.Printf("Found %d entities:\n", len(entities))
+				for i, e := range entities {
+					fmt.Printf("\n%d. %s [%s] (id: %s)\n", i+1, e.Name, e.EntityType, e.ID)
+					if e.Description != "" {
+						fmt.Printf("   %s\n", e.Description)
+					}
+					if len(e.Properties) > 0 {
+						fmt.Printf("   [%s]\n", formatKGProps(e.Properties))
+					}
+					if e.EventTime != nil {
+						fmt.Printf("   event: %s\n", e.EventTime.Format("2006-01-02 15:04"))
+					}
+					fmt.Printf("   user_id: %s\n", e.UserID)
+				}
+				return
+			}
+
 			// Search mode
 			if query == "" {
 				fmt.Fprintln(os.Stderr, "Provide a query argument or use --entity-id for traversal")
@@ -180,6 +269,9 @@ func kgSearchCmd() *cobra.Command {
 	cmd.Flags().IntVar(&limit, "limit", 10, "Max results")
 	cmd.Flags().StringVar(&entityID, "entity-id", "", "Entity ID to traverse from")
 	cmd.Flags().IntVar(&depth, "depth", 3, "Traversal depth (default 3)")
+	cmd.Flags().StringVar(&fromTime, "from-time", "", "Event-time range start (RFC 3339)")
+	cmd.Flags().StringVar(&toTime, "to-time", "", "Event-time range end (RFC 3339)")
+	cmd.Flags().StringVar(&asOf, "as-of", "", "Point-in-time temporal query (RFC 3339)")
 
 	return cmd
 }

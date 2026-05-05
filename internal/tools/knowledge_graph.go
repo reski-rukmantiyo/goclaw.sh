@@ -94,16 +94,6 @@ func (t *KnowledgeGraphSearchTool) Execute(ctx context.Context, args map[string]
 		maxDepth = min(int(md), 5)
 	}
 
-	// Traversal mode: entity_id provided
-	if entityID != "" {
-		return t.executeTraversal(ctx, agentID.String(), userID, entityID, maxDepth, query)
-	}
-
-	// Need query for all non-traversal modes
-	if query == "" {
-		return ErrorResult("query parameter is required (or use entity_id for traversal)")
-	}
-
 	// Parse temporal as_of parameter
 	var temporal store.TemporalQueryOptions
 	if asOfStr, ok := args["as_of"].(string); ok && asOfStr != "" {
@@ -125,9 +115,22 @@ func (t *KnowledgeGraphSearchTool) Execute(ctx context.Context, args map[string]
 		}
 	}
 
-	// Event-time range mode: from_time or to_time provided
-	if fromTime != nil || toTime != nil {
+	// Event-time range mode: from_time or to_time provided (without entity_id)
+	if (fromTime != nil || toTime != nil) && entityID == "" {
+		if query == "" {
+			query = "*"
+		}
 		return t.executeEventTimeSearch(ctx, agentID.String(), userID, query, fromTime, toTime)
+	}
+
+	// Traversal mode: entity_id provided
+	if entityID != "" {
+		return t.executeTraversal(ctx, agentID.String(), userID, entityID, maxDepth, query, fromTime, toTime)
+	}
+
+	// Need query for all non-traversal modes
+	if query == "" {
+		return ErrorResult("query parameter is required (or use entity_id for traversal)")
 	}
 
 	// Scope mode: filter by graph scope ID
@@ -145,12 +148,31 @@ func (t *KnowledgeGraphSearchTool) Execute(ctx context.Context, args map[string]
 	return t.executeSearch(ctx, agentID.String(), userID, query, args, temporal)
 }
 
-func (t *KnowledgeGraphSearchTool) executeTraversal(ctx context.Context, agentID, userID, entityID string, maxDepth int, query string) *Result {
+func (t *KnowledgeGraphSearchTool) executeTraversal(ctx context.Context, agentID, userID, entityID string, maxDepth int, query string, fromTime, toTime *time.Time) *Result {
 	// Tier 1: outgoing deep traversal
 	results, err := t.kgStore.Traverse(ctx, agentID, userID, entityID, maxDepth)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("graph traversal failed: %v", err))
 	}
+
+	// Apply event-time range filter on traversal results
+	if fromTime != nil || toTime != nil {
+		filtered := results[:0]
+		for _, r := range results {
+			if r.Entity.EventTime == nil {
+				continue
+			}
+			if fromTime != nil && r.Entity.EventTime.Before(*fromTime) {
+				continue
+			}
+			if toTime != nil && r.Entity.EventTime.After(*toTime) {
+				continue
+			}
+			filtered = append(filtered, r)
+		}
+		results = filtered
+	}
+
 	if len(results) > 0 {
 		const maxTraversalResults = 30
 		totalResults := len(results)
@@ -158,7 +180,17 @@ func (t *KnowledgeGraphSearchTool) executeTraversal(ctx context.Context, agentID
 			results = results[:maxTraversalResults]
 		}
 		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("Graph traversal from %q (max depth %d):\n\n", entityID, maxDepth))
+		sb.WriteString(fmt.Sprintf("Graph traversal from %q (max depth %d)", entityID, maxDepth))
+		if fromTime != nil || toTime != nil {
+			sb.WriteString(", filtered by event_time")
+			if fromTime != nil {
+				sb.WriteString(fmt.Sprintf(" from %s", fromTime.Format("2006-01-02")))
+			}
+			if toTime != nil {
+				sb.WriteString(fmt.Sprintf(" to %s", toTime.Format("2006-01-02")))
+			}
+		}
+		sb.WriteString(":\n\n")
 		for _, r := range results {
 			sb.WriteString(fmt.Sprintf("- [depth %d] %s (%s)", r.Depth, r.Entity.Name, r.Entity.EntityType))
 			if r.Entity.EventTime != nil {

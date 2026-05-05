@@ -4,6 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
@@ -21,7 +23,58 @@ func (h *KnowledgeGraphHandler) handleListEntities(w http.ResponseWriter, r *htt
 		limit = 50
 	}
 
-	// If query is provided, use search
+	// Parse optional time parameters (RFC 3339)
+	var fromTime, toTime, asOf *time.Time
+	if v := r.URL.Query().Get("from_time"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid from_time: must be RFC 3339 (e.g. 2026-04-01T00:00:00Z)"})
+			return
+		}
+		fromTime = &t
+	}
+	if v := r.URL.Query().Get("to_time"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid to_time: must be RFC 3339 (e.g. 2026-04-30T23:59:59Z)"})
+			return
+		}
+		toTime = &t
+	}
+	if v := r.URL.Query().Get("as_of"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid as_of: must be RFC 3339 (e.g. 2026-01-15T00:00:00Z)"})
+			return
+		}
+		asOf = &t
+	}
+
+	// Branch 1: Event-time range search
+	if fromTime != nil || toTime != nil {
+		entities, err := h.store.SearchEntitiesByEventTime(r.Context(), agentID, userID, fromTime, toTime, limit)
+		if err != nil {
+			slog.Warn("kg.search_entities_by_event_time failed", "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		if entities == nil {
+			entities = []store.Entity{}
+		}
+		if query != "" {
+			filtered := entities[:0]
+			for _, e := range entities {
+				if entityMatchesQuery(e, query) {
+					filtered = append(filtered, e)
+				}
+			}
+			entities = filtered
+		}
+		writeJSON(w, http.StatusOK, entities)
+		return
+	}
+
+	// Branch 2: Text search (unchanged)
 	if query != "" {
 		entities, err := h.store.SearchEntities(r.Context(), agentID, userID, query, limit)
 		if err != nil {
@@ -36,6 +89,29 @@ func (h *KnowledgeGraphHandler) handleListEntities(w http.ResponseWriter, r *htt
 		return
 	}
 
+	// Branch 3: Point-in-time temporal query
+	if asOf != nil {
+		entities, err := h.store.ListEntitiesTemporal(r.Context(), agentID, userID,
+			store.EntityListOptions{
+				EntityType: entityType,
+				Limit:      limit,
+				Offset:     offset,
+			},
+			store.TemporalQueryOptions{AsOf: asOf},
+		)
+		if err != nil {
+			slog.Warn("kg.list_entities_temporal failed", "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		if entities == nil {
+			entities = []store.Entity{}
+		}
+		writeJSON(w, http.StatusOK, entities)
+		return
+	}
+
+	// Branch 4: Default list (unchanged)
 	entities, err := h.store.ListEntities(r.Context(), agentID, userID, store.EntityListOptions{
 		EntityType: entityType,
 		Limit:      limit,
@@ -406,4 +482,23 @@ func (h *KnowledgeGraphHandler) handleReset(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{
 		"deleted_count": deleted,
 	})
+}
+
+// entityMatchesQuery checks if an entity's name, description, or properties
+// contain all words from the query (case-insensitive).
+func entityMatchesQuery(e store.Entity, query string) bool {
+	words := strings.Fields(strings.ToLower(query))
+	if len(words) == 0 {
+		return true
+	}
+	text := strings.ToLower(e.Name + " " + e.Description)
+	for k, v := range e.Properties {
+		text += " " + k + " " + v
+	}
+	for _, w := range words {
+		if !strings.Contains(text, w) {
+			return false
+		}
+	}
+	return true
 }
