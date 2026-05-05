@@ -80,6 +80,7 @@ func (s *ToolStage) Execute(ctx context.Context, state *RunState) error {
 			state.Messages.AppendPending(msg)
 		}
 		state.Tool.TotalToolCalls++
+		state.Tool.CalledToolNames = append(state.Tool.CalledToolNames, tc.Name)
 
 		// Hook: async PostToolUse — fire and forget with detached context.
 		if s.deps.Hooks != nil {
@@ -137,6 +138,7 @@ func (s *ToolStage) executeParallel(ctx context.Context, state *RunState, toolCa
 			state.Messages.AppendPending(msg)
 		}
 		state.Tool.TotalToolCalls++
+			state.Tool.CalledToolNames = append(state.Tool.CalledToolNames, r.tc.Name)
 
 		// Hook: async PostToolUse for parallel path — fire and forget.
 		// PreToolUse is not instrumented in the parallel path (TODO: add when parallel path matures).

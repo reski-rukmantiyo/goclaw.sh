@@ -110,7 +110,8 @@ type PipelineDeps struct {
 	// CheckScopeGuard evaluates whether the response is on-topic (strict mode).
 	// Returns (onTopic, replacementContent). Empty replacement = use original.
 	// sessionKey is used to skip system sessions (heartbeat, cron, subagent, team).
-	CheckScopeGuard          func(sessionKey, userMsg, assistantResponse string) (bool, string)
+	// calledToolNames lists tools executed during the run — used as scope evidence.
+	CheckScopeGuard          func(sessionKey, userMsg, assistantResponse string, calledToolNames []string) (bool, string)
 	DeduplicateMediaSuffix   func(content, suffix string) string
 	IsSilentReply          func(content string) bool
 	EmitSessionCompleted   func(ctx context.Context, sessionKey string, msgCount, tokensUsed, compactionCount int)

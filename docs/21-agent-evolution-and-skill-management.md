@@ -709,9 +709,12 @@ When enabled, a `## Scope Guardrails` section is injected after the safety secti
 
 **3. Output Guard** (`internal/pipeline/finalize_stage.go:37`)
 
-In strict mode, the `FinalizeStage` runs `CheckScopeGuard` after sanitization but before delivery:
+In strict mode, the `FinalizeStage` runs `CheckScopeGuard` after sanitization but before delivery. System sessions (heartbeat, cron, subagent, team) are exempt.
 - Checks denied topics (highest priority) — if user asked about a denied topic and agent engaged, replace
 - Checks allowed topics — if user asked outside scope and agent answered substantively, replace
+- Tool name matching — if the agent used tools whose names contain an allowed topic keyword (e.g., `mcp_sdp__view_all_requests` matches topic "sdp"), the response is considered in scope
+- Scope description matching — significant words from the scope description are also checked as evidence
+- Admin task patterns — when the scope description mentions administrative/operational work, common patterns (forward, draft, meeting, schedule, invite, etc.) serve as additional scope evidence
 - Recognizes decline phrases (e.g., "I can't", "outside my scope") — if agent correctly declined, allow through
 
 **4. Skill Scope Guard** (`internal/skills/guard.go:97`)

@@ -52,12 +52,13 @@ type PruneState struct {
 
 // ToolState: owned by ToolStage.
 type ToolState struct {
-	LoopDetector   any // concrete type toolLoopState lives in agent; Phase 5 defines LoopDetector interface
-	TotalToolCalls int
-	AsyncToolCalls []string      // tool names that executed async (spawn)
-	MediaResults   []MediaResult // media files produced by tools
-	Deliverables   []string      // tool output content for team task results
-	LoopKilled     bool          // set when loop detector triggers critical
+	LoopDetector    any // concrete type toolLoopState lives in agent; Phase 5 defines LoopDetector interface
+	TotalToolCalls  int
+	CalledToolNames []string      // tool names executed during this run (for scope guardrail evidence)
+	AsyncToolCalls  []string      // tool names that executed async (spawn)
+	MediaResults    []MediaResult // media files produced by tools
+	Deliverables    []string      // tool output content for team task results
+	LoopKilled      bool          // set when loop detector triggers critical
 }
 
 // ObserveState: owned by ObserveStage.

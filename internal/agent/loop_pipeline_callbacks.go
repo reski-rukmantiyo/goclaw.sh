@@ -425,7 +425,7 @@ func (l *Loop) makeSkillPostscript() func(ctx context.Context, content string, t
 // Returns nil when scope guardrails are disabled or in soft mode (no runtime check needed).
 // System sessions (heartbeat, cron, subagent, team) are exempt from scope checks —
 // they are internal operations, not user conversations.
-func (l *Loop) makeScopeGuardCallback() func(sessionKey, userMsg, assistantResponse string) (bool, string) {
+func (l *Loop) makeScopeGuardCallback() func(sessionKey, userMsg, assistantResponse string, calledToolNames []string) (bool, string) {
 	if l.scopeGuardrails == nil || !l.scopeGuardrails.Enabled || l.scopeGuardrails.Enforcement != "strict" {
 		return nil
 	}
@@ -434,13 +434,13 @@ func (l *Loop) makeScopeGuardCallback() func(sessionKey, userMsg, assistantRespo
 	if offTopic == "" {
 		offTopic = "I'm not able to help with that topic."
 	}
-	return func(sessionKey, userMsg, assistantResponse string) (bool, string) {
+	return func(sessionKey, userMsg, assistantResponse string, calledToolNames []string) (bool, string) {
 		// System sessions are internal operations — exempt from scope guardrails.
 		if sessions.IsHeartbeatSession(sessionKey) || sessions.IsCronSession(sessionKey) ||
 			sessions.IsSubagentSession(sessionKey) || sessions.IsTeamSession(sessionKey) {
 			return true, ""
 		}
-		onTopic, _ := checker.CheckResponse(userMsg, assistantResponse)
+		onTopic, _ := checker.CheckResponse(userMsg, assistantResponse, calledToolNames)
 		if !onTopic {
 			return false, offTopic
 		}
