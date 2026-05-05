@@ -55,37 +55,10 @@ func NewExtractorWithPrompt(provider providers.Provider, model string, minConfid
 }
 
 const (
-	maxChunkChars = 12000
-	retryMaxChars = 8000
-	maxRetries    = 3
-	minRetryChars = 2000
+	maxChunkChars  = 12000
+	maxSplitDepth  = 3
+	lastResortSize = 2000
 )
-
-// truncateAtParagraph shortens text to at most maxChars, preferring to cut at
-// a paragraph boundary ("\n\n"). Falls back to sentence boundary, then hard cut.
-// Always appends a truncation notice.
-func truncateAtParagraph(text string, maxChars int) string {
-	if len(text) <= maxChars {
-		return text
-	}
-	minCut := maxChars / 2
-	window := text[minCut:maxChars]
-
-	// Try paragraph boundary first.
-	if idx := strings.LastIndex(window, "\n\n"); idx >= 0 {
-		cut := minCut + idx
-		return text[:cut] + "\n\n[...truncated]"
-	}
-
-	// Try sentence boundary.
-	if idx := strings.LastIndex(window, ". "); idx >= 0 {
-		cut := minCut + idx + 2
-		return text[:cut] + "\n\n[...truncated]"
-	}
-
-	// Hard cut as last resort.
-	return text[:maxChars] + "\n\n[...truncated]"
-}
 
 // Extract calls the LLM to extract entities and relations from text.
 // For long texts, it splits into chunks, extracts from each, and merges results.
@@ -166,68 +139,99 @@ func logExtractionResult(r *ExtractionResult) {
 }
 
 // extractChunk extracts entities from a single chunk of text.
-// On truncated LLM response, it progressively shortens input and retries.
+// On truncated LLM response, it splits the input at a paragraph boundary
+// and extracts from each half recursively, preserving all content.
 func (e *Extractor) extractChunk(ctx context.Context, text string) (*ExtractionResult, error) {
-	currentText := text
+	return e.extractChunkSplit(ctx, text, 0)
+}
 
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		req := providers.ChatRequest{
-			Messages: []providers.Message{
-				{Role: "system", Content: e.systemPrompt},
-				{Role: "user", Content: currentText},
-			},
-			Model: e.model,
-			Options: map[string]any{
-				"max_tokens":  8192,
-				"temperature": 0.2,
-			},
-		}
-
-		if verboseLogging {
-			inputPreview := currentText
-			if len(inputPreview) > 1000 {
-				inputPreview = inputPreview[:1000] + "..."
-			}
-			slog.Info("kg extraction: LLM request", "model", e.model, "attempt", attempt+1,
-				"input_len", len(currentText), "input", inputPreview)
-		}
-
-		resp, err := e.provider.Chat(ctx, req)
-		if err != nil {
-			return nil, fmt.Errorf("kg extraction LLM call (attempt %d): %w", attempt+1, err)
-		}
-
-		if verboseLogging {
-			respPreview := resp.Content
-			if len(respPreview) > 2000 {
-				respPreview = respPreview[:2000] + "..."
-			}
-			slog.Info("kg extraction: LLM response", "finish_reason", resp.FinishReason,
-				"content_len", len(resp.Content), "response", respPreview)
-		}
-
-		if resp.FinishReason != "length" {
-			return e.parseResponse(resp)
-		}
-
-		// Truncated — reduce input and retry.
-		maxChars := retryMaxChars
-		if attempt > 0 {
-			maxChars = retryMaxChars / (1 << attempt)
-		}
-		if maxChars < minRetryChars {
-			return nil, fmt.Errorf("kg extraction: response still truncated after %d attempts (input too dense)", attempt+1)
-		}
-
-		slog.Warn("kg extraction: response truncated, retrying with shorter input",
-			"attempt", attempt+1, "max_retries", maxRetries,
-			"original_len", len(text), "current_len", len(currentText),
-			"next_max_chars", maxChars)
-
-		currentText = truncateAtParagraph(currentText, maxChars)
+// extractChunkSplit performs extraction with recursive splitting on truncation.
+// Instead of discarding content, it splits the input and processes each piece,
+// keeping data loss near zero. Truncation is used only as a last resort at max depth.
+func (e *Extractor) extractChunkSplit(ctx context.Context, text string, depth int) (*ExtractionResult, error) {
+	req := providers.ChatRequest{
+		Messages: []providers.Message{
+			{Role: "system", Content: e.systemPrompt},
+			{Role: "user", Content: text},
+		},
+		Model: e.model,
+		Options: map[string]any{
+			"max_tokens":  8192,
+			"temperature": 0.2,
+		},
 	}
 
-	return nil, fmt.Errorf("kg extraction: response truncated after %d retries", maxRetries)
+	if verboseLogging {
+		inputPreview := text
+		if len(inputPreview) > 1000 {
+			inputPreview = inputPreview[:1000] + "..."
+		}
+		slog.Info("kg extraction: LLM request", "model", e.model, "depth", depth,
+			"input_len", len(text), "input", inputPreview)
+	}
+
+	resp, err := e.provider.Chat(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("kg extraction LLM call (depth %d): %w", depth, err)
+	}
+
+	if verboseLogging {
+		respPreview := resp.Content
+		if len(respPreview) > 2000 {
+			respPreview = respPreview[:2000] + "..."
+		}
+		slog.Info("kg extraction: LLM response", "finish_reason", resp.FinishReason,
+			"content_len", len(resp.Content), "response", respPreview)
+	}
+
+	if resp.FinishReason != "length" {
+		return e.parseResponse(resp)
+	}
+
+	// Truncated — split input instead of discarding content.
+	if depth >= maxSplitDepth {
+		// Last resort: truncate to get at least partial results.
+		if len(text) > lastResortSize {
+			slog.Warn("kg extraction: max split depth reached, truncating as last resort",
+				"depth", depth, "input_len", len(text), "last_resort_size", lastResortSize)
+			truncated := text[:lastResortSize] + "\n\n[...truncated]"
+			return e.extractChunkSplit(ctx, truncated, depth)
+		}
+		return nil, fmt.Errorf("kg extraction: response still truncated at max depth %d (input too dense: %d chars)", depth, len(text))
+	}
+
+	// Split at midpoint, preferring paragraph boundary.
+	half := len(text) / 2
+	if idx := strings.LastIndex(text[:half], "\n\n"); idx > half/2 {
+		half = idx
+	}
+
+	slog.Warn("kg extraction: response truncated, splitting input",
+		"depth", depth, "input_len", len(text),
+		"left_len", half, "right_len", len(text)-half)
+
+	var merged *ExtractionResult
+
+	left, err := e.extractChunkSplit(ctx, text[:half], depth+1)
+	if err != nil {
+		slog.Warn("kg extraction: left split failed", "depth", depth+1, "error", err)
+	} else {
+		merged = left
+	}
+
+	right, err := e.extractChunkSplit(ctx, text[half:], depth+1)
+	if err != nil {
+		slog.Warn("kg extraction: right split failed", "depth", depth+1, "error", err)
+	} else if merged != nil {
+		merged = mergeResults(merged, right)
+	} else {
+		merged = right
+	}
+
+	if merged == nil {
+		return nil, fmt.Errorf("kg extraction: both splits failed at depth %d", depth)
+	}
+	return merged, nil
 }
 
 // parseResponse parses and filters an LLM extraction response.

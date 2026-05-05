@@ -207,7 +207,7 @@ func (s *PGListenRawMessageStore) ResetProcessed(ctx context.Context, agentID, g
 	}
 
 	where := strings.Join(conditions, " AND ")
-	q := `UPDATE listen_raw_messages SET processed_at = NULL WHERE ` + where + tClause
+	q := `UPDATE listen_raw_messages SET processed_at = NULL, extraction_status = 'pending', extraction_error = NULL, extraction_attempts = 0, last_attempted_at = NULL WHERE ` + where + tClause
 	args = append(args, tArgs...)
 
 	res, err := s.db.ExecContext(ctx, q, args...)
@@ -233,7 +233,7 @@ func (s *PGListenRawMessageStore) ResetProcessedByIDs(ctx context.Context, ids [
 		return 0, err
 	}
 	args = append(args, tArgs...)
-	q := `UPDATE listen_raw_messages SET processed_at = NULL, extraction_status = 'pending', extraction_error = NULL, extraction_attempts = 0, last_attempted_at = NULL WHERE id IN (` + strings.Join(placeholders, ",") + `) AND processed_at IS NOT NULL` + tClause
+	q := `UPDATE listen_raw_messages SET processed_at = NULL, extraction_status = 'pending', extraction_error = NULL, extraction_attempts = 0, last_attempted_at = NULL WHERE id IN (` + strings.Join(placeholders, ",") + `) AND (processed_at IS NOT NULL OR extraction_status = 'failed')` + tClause
 	res, err := s.db.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, err
