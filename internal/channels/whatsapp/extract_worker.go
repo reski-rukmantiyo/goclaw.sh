@@ -166,7 +166,7 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 	// then summarize each date separately for coherent narratives.
 	dateGroups := groupMessagesByDate(msgs)
 	var combinedSummary strings.Builder
-	summarizeOK := true
+	summarizeFailCount := 0
 
 	for _, date := range dateGroups.order {
 		dayMsgs := dateGroups.groups[date]
@@ -180,10 +180,11 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 
 		summary, err := summarizeConversation(ctx, p, model, dayText)
 		if err != nil {
-			slog.Warn("whatsapp extraction worker: summarization failed for date, falling back to raw text",
+			summarizeFailCount++
+			slog.Warn("whatsapp extraction worker: summarization failed for date, using raw text for this date",
 				"agent_id", agentID, "graph_id", graphID, "date", date, "error", err)
-			summarizeOK = false
-			break
+			// Use raw text for this specific date instead of summary.
+			summary = dayText
 		}
 
 		if combinedSummary.Len() > 0 {
@@ -196,14 +197,16 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 			if len(preview) > 300 {
 				preview = preview[:300] + "..."
 			}
-			slog.Info("whatsapp extraction worker: summarized date",
+			slog.Info("whatsapp extraction worker: processed date",
 				"agent_id", agentID, "graph_id", graphID,
 				"date", date, "raw_len", len(dayText), "summary_len", len(summary), "summary", preview)
 		}
 	}
 
-	if !summarizeOK {
-		// Fallback: extract directly from full raw text using the WhatsApp-optimized prompt.
+	// Only fall back to full raw text if ALL dates failed summarization.
+	if summarizeFailCount == len(dateGroups.order) && len(dateGroups.order) > 0 {
+		slog.Warn("whatsapp extraction worker: all dates failed summarization, using full raw text",
+			"agent_id", agentID, "graph_id", graphID)
 		fullText = appendMediaAnalysis(ctx, deps, msgs, fullText, agentID, graphID)
 		extractor := knowledgegraph.NewExtractorWithPrompt(p, model, minConfidence, listenExtractSystemPrompt)
 		result, err := extractor.Extract(ctx, fullText)
@@ -215,6 +218,12 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 		}
 		ingestAndFinalize(ctx, deps, result, agentID, graphID, msgs, groupKey)
 		return
+	}
+
+	if summarizeFailCount > 0 {
+		slog.Info("whatsapp extraction worker: some dates used raw text fallback",
+			"agent_id", agentID, "graph_id", graphID,
+			"failed_dates", summarizeFailCount, "total_dates", len(dateGroups.order))
 	}
 
 	// Extract KG from the combined per-date summaries using the default extraction prompt.
@@ -355,7 +364,14 @@ func recordExtractionFailure(deps ExtractionWorkerDeps, groupKey, agentID, graph
 
 // summarizeConversation calls the LLM to summarize raw WhatsApp text into polished narrative
 // while preserving specific details (names, IDs, timestamps, structured data).
+// On truncation, it recursively splits the input and summarizes each half.
 func summarizeConversation(ctx context.Context, p providers.Provider, model, text string) (string, error) {
+	return summarizeConversationDepth(ctx, p, model, text, 0)
+}
+
+// summarizeConversationDepth performs summarization with recursive splitting on truncation.
+// depth limits recursion to prevent infinite loops.
+func summarizeConversationDepth(ctx context.Context, p providers.Provider, model, text string, depth int) (string, error) {
 	req := providers.ChatRequest{
 		Messages: []providers.Message{
 			{Role: "system", Content: listenSummarizePrompt},
@@ -363,7 +379,7 @@ func summarizeConversation(ctx context.Context, p providers.Provider, model, tex
 		},
 		Model: model,
 		Options: map[string]any{
-			"max_tokens":  2048,
+			"max_tokens":  4096,
 			"temperature": 0.3,
 		},
 	}
@@ -372,6 +388,35 @@ func summarizeConversation(ctx context.Context, p providers.Provider, model, tex
 	if err != nil {
 		return "", fmt.Errorf("summarize conversation: %w", err)
 	}
+
+	if resp.FinishReason == "length" && depth < 2 {
+		slog.Warn("whatsapp extraction worker: summarization truncated, splitting input",
+			"input_len", len(text), "output_len", len(resp.Content), "depth", depth)
+
+		// Split at midpoint, preferring paragraph boundary.
+		half := len(text) / 2
+		if idx := strings.LastIndex(text[:half], "\n\n"); idx > half/2 {
+			half = idx
+		}
+
+		sum1, err1 := summarizeConversationDepth(ctx, p, model, text[:half], depth+1)
+		if err1 != nil {
+			// Return partial summary rather than failing entirely.
+			slog.Warn("whatsapp extraction worker: first-half summary failed, using partial",
+				"error", err1)
+			return strings.TrimSpace(resp.Content), nil
+		}
+
+		sum2, err2 := summarizeConversationDepth(ctx, p, model, text[half:], depth+1)
+		if err2 != nil {
+			slog.Warn("whatsapp extraction worker: second-half summary failed, using first half",
+				"error", err2)
+			return sum1, nil
+		}
+
+		return sum1 + "\n\n" + sum2, nil
+	}
+
 	return strings.TrimSpace(resp.Content), nil
 }
 

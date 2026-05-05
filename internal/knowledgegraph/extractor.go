@@ -54,7 +54,38 @@ func NewExtractorWithPrompt(provider providers.Provider, model string, minConfid
 	return &Extractor{provider: provider, model: model, minConfidence: minConfidence, systemPrompt: systemPrompt}
 }
 
-const maxChunkChars = 12000
+const (
+	maxChunkChars = 12000
+	retryMaxChars = 8000
+	maxRetries    = 3
+	minRetryChars = 2000
+)
+
+// truncateAtParagraph shortens text to at most maxChars, preferring to cut at
+// a paragraph boundary ("\n\n"). Falls back to sentence boundary, then hard cut.
+// Always appends a truncation notice.
+func truncateAtParagraph(text string, maxChars int) string {
+	if len(text) <= maxChars {
+		return text
+	}
+	minCut := maxChars / 2
+	window := text[minCut:maxChars]
+
+	// Try paragraph boundary first.
+	if idx := strings.LastIndex(window, "\n\n"); idx >= 0 {
+		cut := minCut + idx
+		return text[:cut] + "\n\n[...truncated]"
+	}
+
+	// Try sentence boundary.
+	if idx := strings.LastIndex(window, ". "); idx >= 0 {
+		cut := minCut + idx + 2
+		return text[:cut] + "\n\n[...truncated]"
+	}
+
+	// Hard cut as last resort.
+	return text[:maxChars] + "\n\n[...truncated]"
+}
 
 // Extract calls the LLM to extract entities and relations from text.
 // For long texts, it splits into chunks, extracts from each, and merges results.
@@ -81,19 +112,30 @@ func (e *Extractor) Extract(ctx context.Context, text string) (*ExtractionResult
 	slog.Info("kg extraction: splitting long input", "chunks", len(chunks), "total_len", len(text))
 
 	merged := &ExtractionResult{}
+	var failedChunks []int
 	for i, chunk := range chunks {
 		if verboseLogging {
 			slog.Info("kg extraction: processing chunk", "chunk", i+1, "total", len(chunks), "chunk_len", len(chunk))
 		}
 		result, err := e.extractChunk(ctx, chunk)
 		if err != nil {
+			failedChunks = append(failedChunks, i+1)
 			slog.Warn("kg extraction: chunk failed", "chunk", i+1, "total", len(chunks), "error", err)
-			continue // skip failed chunk, extract what we can
+			continue
 		}
 		if verboseLogging {
 			logExtractionResult(result)
 		}
 		merged = mergeResults(merged, result)
+	}
+
+	if len(failedChunks) > 0 {
+		if len(merged.Entities) == 0 && len(merged.Relations) == 0 {
+			return nil, fmt.Errorf("kg extraction: all %d chunks failed (indices: %v)", len(chunks), failedChunks)
+		}
+		slog.Warn("kg extraction: some chunks failed but partial results available",
+			"failed", failedChunks, "total_chunks", len(chunks),
+			"entities", len(merged.Entities), "relations", len(merged.Relations))
 	}
 
 	if verboseLogging {
@@ -124,58 +166,72 @@ func logExtractionResult(r *ExtractionResult) {
 }
 
 // extractChunk extracts entities from a single chunk of text.
+// On truncated LLM response, it progressively shortens input and retries.
 func (e *Extractor) extractChunk(ctx context.Context, text string) (*ExtractionResult, error) {
-	req := providers.ChatRequest{
-		Messages: []providers.Message{
-			{Role: "system", Content: e.systemPrompt},
-			{Role: "user", Content: text},
-		},
-		Model: e.model,
-		Options: map[string]any{
-			"max_tokens":  8192,
-			"temperature": 0.2,
-		},
-	}
+	currentText := text
 
-	if verboseLogging {
-		inputPreview := text
-		if len(inputPreview) > 1000 {
-			inputPreview = inputPreview[:1000] + "..."
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		req := providers.ChatRequest{
+			Messages: []providers.Message{
+				{Role: "system", Content: e.systemPrompt},
+				{Role: "user", Content: currentText},
+			},
+			Model: e.model,
+			Options: map[string]any{
+				"max_tokens":  8192,
+				"temperature": 0.2,
+			},
 		}
-		slog.Info("kg extraction: LLM request", "model", e.model, "input_len", len(text), "input", inputPreview)
-	}
 
-	resp, err := e.provider.Chat(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("kg extraction LLM call: %w", err)
-	}
-
-	if verboseLogging {
-		respPreview := resp.Content
-		if len(respPreview) > 2000 {
-			respPreview = respPreview[:2000] + "..."
+		if verboseLogging {
+			inputPreview := currentText
+			if len(inputPreview) > 1000 {
+				inputPreview = inputPreview[:1000] + "..."
+			}
+			slog.Info("kg extraction: LLM request", "model", e.model, "attempt", attempt+1,
+				"input_len", len(currentText), "input", inputPreview)
 		}
-		slog.Info("kg extraction: LLM response", "finish_reason", resp.FinishReason, "content_len", len(resp.Content), "response", respPreview)
-	}
 
-	// If response was truncated, retry with shorter input
-	if resp.FinishReason == "length" {
-		slog.Warn("kg extraction: response truncated, retrying with shorter input")
-		const retryMaxChars = 8000
-		if len(text) > retryMaxChars {
-			text = text[:retryMaxChars] + "\n\n[...truncated]"
-		}
-		req.Messages[1].Content = text
-		resp, err = e.provider.Chat(ctx, req)
+		resp, err := e.provider.Chat(ctx, req)
 		if err != nil {
-			return nil, fmt.Errorf("kg extraction LLM retry: %w", err)
+			return nil, fmt.Errorf("kg extraction LLM call (attempt %d): %w", attempt+1, err)
 		}
-		if resp.FinishReason == "length" {
-			return nil, fmt.Errorf("kg extraction: response still truncated after retry")
+
+		if verboseLogging {
+			respPreview := resp.Content
+			if len(respPreview) > 2000 {
+				respPreview = respPreview[:2000] + "..."
+			}
+			slog.Info("kg extraction: LLM response", "finish_reason", resp.FinishReason,
+				"content_len", len(resp.Content), "response", respPreview)
 		}
+
+		if resp.FinishReason != "length" {
+			return e.parseResponse(resp)
+		}
+
+		// Truncated — reduce input and retry.
+		maxChars := retryMaxChars
+		if attempt > 0 {
+			maxChars = retryMaxChars / (1 << attempt)
+		}
+		if maxChars < minRetryChars {
+			return nil, fmt.Errorf("kg extraction: response still truncated after %d attempts (input too dense)", attempt+1)
+		}
+
+		slog.Warn("kg extraction: response truncated, retrying with shorter input",
+			"attempt", attempt+1, "max_retries", maxRetries,
+			"original_len", len(text), "current_len", len(currentText),
+			"next_max_chars", maxChars)
+
+		currentText = truncateAtParagraph(currentText, maxChars)
 	}
 
-	// Parse JSON response
+	return nil, fmt.Errorf("kg extraction: response truncated after %d retries", maxRetries)
+}
+
+// parseResponse parses and filters an LLM extraction response.
+func (e *Extractor) parseResponse(resp *providers.ChatResponse) (*ExtractionResult, error) {
 	var result ExtractionResult
 	content := strings.TrimSpace(resp.Content)
 	content = stripCodeBlock(content)
@@ -203,14 +259,13 @@ func (e *Extractor) extractChunk(ctx context.Context, text string) (*ExtractionR
 		return nil, fmt.Errorf("parse extraction result: %w", err)
 	}
 
-	// Filter by confidence threshold and normalize
+	// Filter by confidence threshold and normalize.
 	filtered := &ExtractionResult{}
 	for _, ent := range result.Entities {
 		if ent.Confidence >= e.minConfidence {
 			ent.ExternalID = strings.ToLower(strings.TrimSpace(ent.ExternalID))
 			ent.Name = strings.TrimSpace(ent.Name)
 			ent.EntityType = strings.ToLower(strings.TrimSpace(ent.EntityType))
-			// Parse RawEventTime (any type from LLM JSON) into EventTime.
 			if ent.EventTime == nil && ent.RawEventTime != nil {
 				if s, ok := ent.RawEventTime.(string); ok {
 					ent.EventTime = store.ParseFlexibleTime(s)
