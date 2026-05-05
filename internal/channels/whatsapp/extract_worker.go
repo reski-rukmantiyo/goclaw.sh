@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/nextlevelbuilder/goclaw/internal/knowledgegraph"
 	"github.com/nextlevelbuilder/goclaw/internal/providerresolve"
@@ -21,12 +22,22 @@ const (
 	defaultExtractPollSec = 30
 	extractBatchSize      = 20
 	maxRetryBackoffSec    = 600 // 10 minutes cap
+	providerCacheTTL      = 5 * time.Minute
 )
 
 // groupRetryState tracks consecutive extraction failures for a (agentID, graphID) group.
 type groupRetryState struct {
 	consecutiveFailures int
 	nextAttempt         time.Time
+}
+
+// cachedProvider holds a resolved LLM provider with a TTL for reuse across ticks.
+type cachedProvider struct {
+	provider      providers.Provider
+	model         string
+	minConfidence float64
+	source        string
+	resolvedAt    time.Time
 }
 
 // ExtractionWorkerDeps bundles dependencies for the listen-only KG extraction worker.
@@ -41,6 +52,39 @@ type ExtractionWorkerDeps struct {
 	MediaAnalyzer *MediaAnalyzer
 
 	retryTracker map[string]*groupRetryState // key: agentID+"/"+graphID
+	provider     *cachedProvider              // cached LLM provider, accessed only from ticker goroutine
+}
+
+// resolveProvider returns a cached LLM provider or resolves a new one.
+// Only called from the single ticker goroutine, so no mutex needed.
+func (d *ExtractionWorkerDeps) resolveProvider(ctx context.Context) (providers.Provider, string, float64, string) {
+	if d.provider != nil && time.Since(d.provider.resolvedAt) < providerCacheTTL {
+		return d.provider.provider, d.provider.model, d.provider.minConfidence, d.provider.source
+	}
+
+	var p providers.Provider
+	var model string
+	var minConfidence float64 = 0.75
+	var providerSource string
+
+	if d.BuiltinTools != nil {
+		p, model, minConfidence, providerSource = resolveKGProvider(ctx, *d)
+	}
+
+	if p == nil {
+		p, model = providerresolve.ResolveBackgroundProvider(ctx, d.TenantID, d.Registry, d.SystemConfigs)
+		if p != nil {
+			providerSource = "background"
+		}
+	}
+
+	if p != nil {
+		d.provider = &cachedProvider{
+			provider: p, model: model, minConfidence: minConfidence,
+			source: providerSource, resolvedAt: time.Now(),
+		}
+	}
+	return p, model, minConfidence, providerSource
 }
 
 // RegisterExtractionWorker starts a background goroutine that periodically polls
@@ -124,24 +168,8 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 		return
 	}
 
-	// Resolve KG extraction provider: prefer the KG-specific provider/model from
-	// builtin_tools settings (same as the main KG extraction pipeline), fall back
-	// to the background provider chain.
-	var p providers.Provider
-	var model string
-	var minConfidence float64 = 0.75
-	var providerSource string
-
-	if deps.BuiltinTools != nil {
-		p, model, minConfidence, providerSource = resolveKGProvider(ctx, deps)
-	}
-
-	if p == nil {
-		p, model = providerresolve.ResolveBackgroundProvider(ctx, deps.TenantID, deps.Registry, deps.SystemConfigs)
-		if p != nil {
-			providerSource = "background"
-		}
-	}
+	// Resolve KG extraction provider (cached for 5 minutes).
+	p, model, minConfidence, providerSource := deps.resolveProvider(ctx)
 
 	if p == nil {
 		slog.Warn("whatsapp extraction worker: no LLM provider available",
@@ -165,32 +193,62 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 	// Group messages by date, build text per date, analyze media per date,
 	// then summarize each date separately for coherent narratives.
 	dateGroups := groupMessagesByDate(msgs)
+
+	// Summarize date groups concurrently (up to 4 in parallel).
+	type dateResult struct {
+		date    string
+		summary string
+		rawLen  int
+		err     error
+	}
+	const maxConcurrentDates = 4
+	results := make([]dateResult, len(dateGroups.order))
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrentDates)
+
+	for i, date := range dateGroups.order {
+		i, date := i, date
+		dayMsgs := dateGroups.groups[date]
+		g.Go(func() error {
+			dayText := buildConversationTextFromRaw(dayMsgs)
+			if dayText == "" {
+				results[i] = dateResult{date: date}
+				return nil
+			}
+
+			// Analyze media for this date's messages.
+			dayText = appendMediaAnalysis(gctx, deps, dayMsgs, dayText, agentID, graphID)
+
+			summary, err := summarizeConversation(gctx, p, model, dayText)
+			results[i] = dateResult{date: date, summary: summary, rawLen: len(dayText), err: err}
+			return nil // don't cancel others on individual date failure
+		})
+	}
+	g.Wait()
+
+	// Build combined summary from ordered results.
 	var combinedSummary strings.Builder
 	summarizeFailCount := 0
-
-	for _, date := range dateGroups.order {
-		dayMsgs := dateGroups.groups[date]
-		dayText := buildConversationTextFromRaw(dayMsgs)
-		if dayText == "" {
-			continue
+	for _, r := range results {
+		if r.summary == "" && r.err == nil {
+			continue // empty day (no text)
 		}
 
-		// Analyze media for this date's messages.
-		dayText = appendMediaAnalysis(ctx, deps, dayMsgs, dayText, agentID, graphID)
-
-		summary, err := summarizeConversation(ctx, p, model, dayText)
-		if err != nil {
+		summary := r.summary
+		if r.err != nil {
 			summarizeFailCount++
 			slog.Warn("whatsapp extraction worker: summarization failed for date, using raw text for this date",
-				"agent_id", agentID, "graph_id", graphID, "date", date, "error", err)
-			// Use raw text for this specific date instead of summary.
-			summary = dayText
+				"agent_id", agentID, "graph_id", graphID, "date", r.date, "error", r.err)
+			// Rebuild raw text for fallback.
+			dayMsgs := dateGroups.groups[r.date]
+			summary = buildConversationTextFromRaw(dayMsgs)
 		}
 
 		if combinedSummary.Len() > 0 {
 			combinedSummary.WriteString("\n\n")
 		}
-		fmt.Fprintf(&combinedSummary, "== %s ==\n%s", date, summary)
+		fmt.Fprintf(&combinedSummary, "== %s ==\n%s", r.date, summary)
 
 		if knowledgegraph.VerboseLogging() {
 			preview := summary
@@ -199,7 +257,7 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 			}
 			slog.Info("whatsapp extraction worker: processed date",
 				"agent_id", agentID, "graph_id", graphID,
-				"date", date, "raw_len", len(dayText), "summary_len", len(summary), "summary", preview)
+				"date", r.date, "raw_len", r.rawLen, "summary_len", len(summary), "summary", preview)
 		}
 	}
 
@@ -379,7 +437,7 @@ func summarizeConversationDepth(ctx context.Context, p providers.Provider, model
 		},
 		Model: model,
 		Options: map[string]any{
-			"max_tokens":  4096,
+			"max_tokens":  8192,
 			"temperature": 0.3,
 		},
 	}
@@ -389,7 +447,7 @@ func summarizeConversationDepth(ctx context.Context, p providers.Provider, model
 		return "", fmt.Errorf("summarize conversation: %w", err)
 	}
 
-	if resp.FinishReason == "length" && depth < 2 {
+	if resp.FinishReason == "length" && depth < 1 {
 		slog.Warn("whatsapp extraction worker: summarization truncated, splitting input",
 			"input_len", len(text), "output_len", len(resp.Content), "depth", depth)
 

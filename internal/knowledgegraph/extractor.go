@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"strings"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
@@ -55,9 +57,10 @@ func NewExtractorWithPrompt(provider providers.Provider, model string, minConfid
 }
 
 const (
-	maxChunkChars  = 12000
-	maxSplitDepth  = 3
-	lastResortSize = 2000
+	maxChunkChars      = 12000
+	maxSplitDepth      = 2
+	lastResortSize     = 2000
+	maxConcurrentChunks = 3
 )
 
 // Extract calls the LLM to extract entities and relations from text.
@@ -80,20 +83,36 @@ func (e *Extractor) Extract(ctx context.Context, text string) (*ExtractionResult
 		return result, err
 	}
 
-	// Long text: split into chunks and merge
+	// Long text: split into chunks and process concurrently
 	chunks := splitChunks(text, maxChunkChars)
 	slog.Info("kg extraction: splitting long input", "chunks", len(chunks), "total_len", len(text))
 
+	chunkResults := make([]*ExtractionResult, len(chunks))
+	chunkErrors := make([]error, len(chunks))
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrentChunks)
+
+	for i, chunk := range chunks {
+		i, chunk := i, chunk
+		g.Go(func() error {
+			if verboseLogging {
+				slog.Info("kg extraction: processing chunk", "chunk", i+1, "total", len(chunks), "chunk_len", len(chunk))
+			}
+			result, err := e.extractChunk(gctx, chunk)
+			chunkResults[i] = result
+			chunkErrors[i] = err
+			return nil // don't cancel other chunks on failure
+		})
+	}
+	g.Wait()
+
 	merged := &ExtractionResult{}
 	var failedChunks []int
-	for i, chunk := range chunks {
-		if verboseLogging {
-			slog.Info("kg extraction: processing chunk", "chunk", i+1, "total", len(chunks), "chunk_len", len(chunk))
-		}
-		result, err := e.extractChunk(ctx, chunk)
-		if err != nil {
+	for i, result := range chunkResults {
+		if chunkErrors[i] != nil {
 			failedChunks = append(failedChunks, i+1)
-			slog.Warn("kg extraction: chunk failed", "chunk", i+1, "total", len(chunks), "error", err)
+			slog.Warn("kg extraction: chunk failed", "chunk", i+1, "total", len(chunks), "error", chunkErrors[i])
 			continue
 		}
 		if verboseLogging {
