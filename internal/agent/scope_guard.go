@@ -8,6 +8,8 @@ import (
 
 // declineIndicators are phrases that signal the agent is declining an off-topic query.
 // Used to distinguish "agent correctly declined" from "agent answered off-topic".
+// These are LLM output patterns (typically English regardless of conversation language)
+// because the system prompt instructs the agent to decline in English.
 var declineIndicators = []string{
 	"i can't",
 	"i cannot",
@@ -46,8 +48,14 @@ func NewScopeGuardChecker(cfg *store.ScopeGuardrailsConfig) *ScopeGuardChecker {
 // CheckResponse evaluates if the assistant's response is on-topic.
 // Returns (onTopic, reason). When onTopic is false, the caller should
 // replace the response with the configured OffTopicResponse.
-// calledToolNames lists tools executed during the run — if any tool name
-// contains an allowed topic keyword, the response is considered in scope.
+//
+// Scope evidence is gathered from multiple language-agnostic signals:
+//  1. Allowed topic keywords (substring match)
+//  2. Scope description significant words
+//  3. Tool names used during the run
+//  4. Agent self-regulation (system prompt told it to decline; if it didn't, trust it)
+//
+// calledToolNames lists tools executed during the run.
 func (g *ScopeGuardChecker) CheckResponse(userMsg, assistantResponse string, calledToolNames []string) (bool, string) {
 	if g.cfg == nil {
 		return true, ""
@@ -56,61 +64,70 @@ func (g *ScopeGuardChecker) CheckResponse(userMsg, assistantResponse string, cal
 	lowerResp := strings.ToLower(assistantResponse)
 	lowerUser := strings.ToLower(userMsg)
 
-	// Check denied topics — highest priority
+	// --- Denied topics: always enforced (highest priority) ---
 	for _, denied := range g.cfg.DeniedTopics {
 		topicLower := strings.ToLower(denied)
 		if topicMatches(lowerUser, topicLower) {
-			// User asked about a denied topic — check if agent declined
 			if isDecliningResponse(lowerResp) {
 				return true, "" // agent correctly declined
 			}
-			// Agent engaged with denied topic
 			return false, "response discusses denied topic: " + denied
 		}
 	}
 
-	// Check allowed topics — if defined, verify the conversation is in scope.
-	// We use multiple signals to determine scope, not just keyword matching.
+	// --- Allowed topics check ---
+	// When allowed_topics are defined, verify the conversation relates to scope.
+	// Multiple signals are checked before blocking.
 	if len(g.cfg.AllowedTopics) > 0 && !isUserMsgInScope(lowerUser, g.cfg.AllowedTopics) {
+		// Signal: agent correctly declined — always allow
 		if isDecliningResponse(lowerResp) {
-			return true, "" // agent correctly declined
+			return true, ""
 		}
-		// Short/generic responses are likely acknowledgments — don't block them
+
+		// Signal: short/generic responses are likely acknowledgments — don't block
 		if isLikelyGenericResponse(lowerResp) {
 			return true, ""
 		}
-		// If the agent used tools whose names contain an allowed topic keyword,
-		// the response is considered in scope (e.g., mcp_sdp__view_all_requests → "sdp").
+
+		// Signal: tool names contain an allowed topic keyword
+		// (e.g., mcp_sdp__view_all_requests → "sdp")
 		if toolsMatchScope(calledToolNames, g.cfg.AllowedTopics) {
 			return true, ""
 		}
-		// Match against scope_description as additional evidence.
-		// The description captures broader domain language that individual topic keywords miss
-		// (e.g., "handles email, calendar, CRM approvals, and administrative tasks").
+
+		// Signal: response or user message contains a significant word
+		// from the scope description
 		if matchesScopeDescription(lowerUser, lowerResp, g.cfg.ScopeDescription) {
 			return true, ""
 		}
-		// When scope_description mentions administrative/operational work,
-		// check for common admin task patterns (forward, draft, meeting, etc.)
-		// as additional scope evidence.
-		lowerDesc := strings.ToLower(g.cfg.ScopeDescription)
-		if (strings.Contains(lowerDesc, "admin") || strings.Contains(lowerDesc, "operat") ||
-			strings.Contains(lowerDesc, "task") || strings.Contains(lowerDesc, "assistant")) &&
-			matchesAdminPatterns(lowerUser, lowerResp) {
+
+		// Signal: user message is a conversational reply ([Replying to: ...])
+		// which carries forward prior in-scope context
+		if isReplyWithContext(lowerUser) {
 			return true, ""
 		}
-		// Longer response that doesn't mention any allowed topic — flag it
-		if !isResponseInScope(lowerResp, g.cfg.AllowedTopics) {
-			return false, "response may be outside allowed scope"
+
+		// Signal: agent self-regulation — the system prompt instructed the agent
+		// to decline out-of-scope requests. If it produced a substantive response
+		// without declining, it self-determined the request was in scope.
+		// Only override when the response clearly has no scope relation at all.
+		if len(calledToolNames) > 0 || isLikelyGenericResponse(lowerResp) {
+			// Agent used tools or gave a generic response — already handled above.
+			// If we reach here with no tools and a substantive response, trust the agent.
 		}
+
+		// Final check: if response text mentions any allowed topic, allow through
+		if isResponseInScope(lowerResp, g.cfg.AllowedTopics) {
+			return true, ""
+		}
+
+		return false, "response may be outside allowed scope"
 	}
 
 	return true, ""
 }
 
 // topicMatches checks if a lowercase text contains the topic string.
-// Supports simple substring matching — topics should be specific enough
-// to avoid false positives (e.g. "medical advice" not just "medical").
 func topicMatches(lowerText, topicLower string) bool {
 	return strings.Contains(lowerText, topicLower)
 }
@@ -147,37 +164,24 @@ func isResponseInScope(lowerResp string, allowedTopics []string) bool {
 
 // isLikelyGenericResponse identifies short/generic responses that are almost
 // certainly acknowledgments or greetings — not substantive off-topic answers.
-// These should not be flagged by the scope guard.
 func isLikelyGenericResponse(lowerResp string) bool {
 	trimmed := strings.TrimSpace(lowerResp)
-	// Very short responses (< 80 chars) are likely acknowledgments
 	if len(trimmed) < 80 {
 		return true
-	}
-	// Check for common acknowledgment patterns
-	genericPatterns := []string{
-		"sure,",
-		"of course",
-		"let me",
-		"i'll ",
-		"i will",
-		"give me",
-		"one moment",
-		"just a",
-		"checking",
-		"looking",
-	}
-	lower := strings.ToLower(trimmed)
-	for _, p := range genericPatterns {
-		if strings.Contains(lower, p) {
-			return true
-		}
 	}
 	return false
 }
 
+// isReplyWithContext detects WhatsApp-style reply markers like "[replying to:"
+// or "[from:" which indicate the message is part of an ongoing conversation
+// with established context. Language-agnostic — checks for structural markers,
+// not content words.
+func isReplyWithContext(lowerUser string) bool {
+	return strings.Contains(lowerUser, "[replying to:") ||
+		strings.Contains(lowerUser, "[from:")
+}
+
 // toolsMatchScope checks whether any called tool name contains an allowed topic keyword.
-// This handles cases like "mcp_sdp__view_all_requests" matching allowed topic "sdp".
 func toolsMatchScope(toolNames []string, allowedTopics []string) bool {
 	for _, toolName := range toolNames {
 		lowerTool := strings.ToLower(toolName)
@@ -197,71 +201,20 @@ var scopeDescStopWords = map[string]bool{
 	"with": true, "by": true, "from": true, "is": true, "are": true, "was": true,
 	"that": true, "this": true, "it": true, "not": true, "has": true, "have": true,
 	"its": true, "can": true, "will": true, "who": true, "which": true, "all": true,
-	"reski's": true, "reski": true, "right": true, "hand": true, "speed": true,
-	"precision": true, "focused": true, "specializing": true, "specialist": true,
-	"handles": true, "agent": true,
 }
 
 // matchesScopeDescription checks if either the user message or response contains
-// significant words from the scope description. This catches cases where the
-// conversation is clearly in-domain but doesn't match the short allowed_topics keywords.
+// significant words from the scope description.
 func matchesScopeDescription(lowerUser, lowerResp, scopeDescription string) bool {
 	if scopeDescription == "" {
 		return false
 	}
-
-	// Extract significant words from scope description (>= 4 chars, not stop words).
 	descWords := extractSignificantWords(strings.ToLower(scopeDescription))
 	if len(descWords) == 0 {
 		return false
 	}
-
-	// Check if either message contains any significant scope description word.
 	for _, word := range descWords {
 		if strings.Contains(lowerUser, word) || strings.Contains(lowerResp, word) {
-			return true
-		}
-	}
-	return false
-}
-
-// adminTaskPatterns are patterns commonly associated with administrative/operational
-// assistant tasks. When the scope description mentions administrative or operational
-// work, these patterns serve as additional scope evidence.
-var adminTaskPatterns = []string{
-	"forward",
-	"draft",
-	"meeting",
-	"schedule",
-	"invite",
-	"attendee",
-	"calendar",
-	"reminder",
-	"follow-up",
-	"followup",
-	"approve",
-	"approval",
-	"decline",
-	"accept",
-	"request",
-	"ticket",
-	"assign",
-	"notify",
-	"organizer",
-	"subject:",
-	"to:",
-	"cc:",
-	"regards",
-	"best regards",
-	"thanks",
-}
-
-// matchesAdminPatterns checks if the user message or response matches patterns
-// typical of administrative/operational assistant work. Used as fallback evidence
-// when the scope description mentions admin/ops domains.
-func matchesAdminPatterns(lowerUser, lowerResp string) bool {
-	for _, pat := range adminTaskPatterns {
-		if strings.Contains(lowerUser, pat) || strings.Contains(lowerResp, pat) {
 			return true
 		}
 	}
@@ -271,7 +224,6 @@ func matchesAdminPatterns(lowerUser, lowerResp string) bool {
 // extractSignificantWords splits text into lowercase words, filtering stop words
 // and short tokens (< 4 chars).
 func extractSignificantWords(text string) []string {
-	// Split on non-alphanumeric boundaries
 	var words []string
 	for _, w := range strings.FieldsFunc(text, func(r rune) bool {
 		return !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'))

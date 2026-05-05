@@ -714,7 +714,8 @@ In strict mode, the `FinalizeStage` runs `CheckScopeGuard` after sanitization bu
 - Checks allowed topics — if user asked outside scope and agent answered substantively, replace
 - Tool name matching — if the agent used tools whose names contain an allowed topic keyword (e.g., `mcp_sdp__view_all_requests` matches topic "sdp"), the response is considered in scope
 - Scope description matching — significant words from the scope description are also checked as evidence
-- Admin task patterns — when the scope description mentions administrative/operational work, common patterns (forward, draft, meeting, schedule, invite, etc.) serve as additional scope evidence
+- Reply context detection — messages with `[Replying to:` or `[From:` markers are treated as in-scope follow-ups to prior conversation context (language-agnostic)
+- Agent self-regulation — the system prompt instructs the agent to decline out-of-scope requests; short/generic responses are not blocked
 - Recognizes decline phrases (e.g., "I can't", "outside my scope") — if agent correctly declined, allow through
 
 **4. Skill Scope Guard** (`internal/skills/guard.go:97`)
