@@ -184,6 +184,7 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 		"provider", p.Name(), "model", model,
 		"provider_source", providerSource, "min_confidence", minConfidence)
 
+	batchStart := time.Now()
 	// Build full raw text (used for fallback path).
 	fullText := buildConversationTextFromRaw(msgs)
 	if fullText == "" {
@@ -226,6 +227,10 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 		})
 	}
 	g.Wait()
+
+	slog.Info("whatsapp extraction worker: summarization complete",
+		"agent_id", agentID, "graph_id", graphID,
+		"dates", len(dateGroups.order), "elapsed", time.Since(batchStart).Round(time.Millisecond))
 
 	// Build combined summary from ordered results.
 	var combinedSummary strings.Builder
@@ -284,6 +289,7 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 			"failed_dates", summarizeFailCount, "total_dates", len(dateGroups.order))
 	}
 
+	extractStart := time.Now()
 	// Extract KG from the combined per-date summaries using the default extraction prompt.
 	extractionText := combinedSummary.String()
 	extractor := knowledgegraph.NewExtractor(p, model, minConfidence)
@@ -294,6 +300,11 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 		recordExtractionFailure(deps, groupKey, agentID, graphID, fmt.Sprintf("summary extraction failed: %s", err), msgs)
 		return
 	}
+
+	slog.Info("whatsapp extraction worker: extraction complete",
+		"agent_id", agentID, "graph_id", graphID,
+		"extraction_elapsed", time.Since(extractStart).Round(time.Millisecond),
+		"total_elapsed", time.Since(batchStart).Round(time.Millisecond))
 
 	ingestAndFinalize(ctx, deps, result, agentID, graphID, msgs, groupKey)
 }
