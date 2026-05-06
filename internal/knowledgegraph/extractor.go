@@ -43,6 +43,7 @@ type Extractor struct {
 	minConfidence float64
 	systemPrompt  string         // override for default extraction prompt
 	limiter       LLMRateLimiter // optional: caps concurrent LLM calls
+	timeout       time.Duration  // per-call timeout (0 = defaultExtractionTimeout)
 }
 
 // NewExtractor creates a new Extractor with the given provider, model, and confidence threshold.
@@ -67,13 +68,16 @@ func NewExtractorWithPrompt(provider providers.Provider, model string, minConfid
 // SetRateLimiter sets an optional rate limiter that caps concurrent LLM calls.
 func (e *Extractor) SetRateLimiter(l LLMRateLimiter) { e.limiter = l }
 
+// SetTimeout sets the per-LLM-call timeout. Zero uses the default (90s).
+func (e *Extractor) SetTimeout(d time.Duration) { e.timeout = d }
+
 const (
-	maxChunkChars       = 12000
-	maxSplitDepth       = 2
-	lastResortSize      = 2000
-	maxConcurrentChunks = 3
-	extractionMaxTokens = 6144
-	extractionTimeout   = 90 * time.Second
+	maxChunkChars        = 12000
+	maxSplitDepth        = 2
+	lastResortSize       = 2000
+	maxConcurrentChunks  = 3
+	extractionMaxTokens  = 6144
+	defaultExtractionTimeout = 90 * time.Second
 )
 
 // Extract calls the LLM to extract entities and relations from text.
@@ -209,7 +213,11 @@ func (e *Extractor) extractChunkSplit(ctx context.Context, text string, depth in
 		defer e.limiter.Release()
 	}
 
-	callCtx, cancel := context.WithTimeout(ctx, extractionTimeout)
+	timeout := e.timeout
+	if timeout <= 0 {
+		timeout = defaultExtractionTimeout
+	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	resp, err := e.provider.Chat(callCtx, req)
 	if err != nil {

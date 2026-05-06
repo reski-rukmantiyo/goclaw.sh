@@ -41,7 +41,7 @@ func builtinToolSeedData() []store.BuiltinToolDef {
 			Requires: []string{"memory"},
 		},
 		{Name: "knowledge_graph_search", DisplayName: "Knowledge Graph Search", Description: "Search entities, relationships, and observations in the agent's knowledge graph", Category: "memory", Enabled: true,
-			Settings: json.RawMessage(`{"extract_on_memory_write":false,"extraction_provider":"","extraction_model":"","min_confidence":0.75}`),
+			Settings: json.RawMessage(`{"extract_on_memory_write":false,"extraction_provider":"","extraction_model":"","min_confidence":0.75,"extraction_fallback_providers":[],"extraction_timeout_sec":0}`),
 			Requires: []string{"knowledge_graph"},
 		},
 

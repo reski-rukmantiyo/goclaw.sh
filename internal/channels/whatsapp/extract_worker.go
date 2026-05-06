@@ -20,15 +20,16 @@ import (
 )
 
 const (
-	defaultExtractPollSec    = 30
-	extractBatchSize         = 20
-	maxRetryBackoffSec       = 600 // 10 minutes cap
-	providerCacheTTL         = 5 * time.Minute
-	maxConcurrentGroups      = 2
-	defaultMaxConcurrentLLM  = 8
-	summarizeMaxTokens       = 3072
-	summarizeCallTimeout     = 60 * time.Second
-	extractionCallTimeout    = 90 * time.Second
+	defaultExtractPollSec      = 30
+	extractBatchSize           = 20
+	maxRetryBackoffSec         = 600 // 10 minutes cap
+	providerCacheTTL           = 5 * time.Minute
+	maxConcurrentGroups        = 2
+	defaultMaxConcurrentLLM    = 8
+	summarizeMaxTokens         = 3072
+	summarizeCallTimeout       = 60 * time.Second
+	extractionCallTimeout      = 90 * time.Second
+	maxExtractionInputChars    = 24000 // cap combined summary text before extraction (2 chunks)
 )
 
 // llmSemaphore implements knowledgegraph.LLMRateLimiter using a channel-based semaphore.
@@ -67,6 +68,12 @@ type groupRetryState struct {
 	nextAttempt         time.Time
 }
 
+// fallbackEntry holds a secondary LLM provider to try when the primary fails.
+type fallbackEntry struct {
+	provider providers.Provider
+	model    string
+}
+
 // cachedProvider holds a resolved LLM provider with a TTL for reuse across ticks.
 type cachedProvider struct {
 	provider      providers.Provider
@@ -74,6 +81,8 @@ type cachedProvider struct {
 	minConfidence float64
 	source        string
 	resolvedAt    time.Time
+	fallbacks     []fallbackEntry
+	timeoutSec    int // configured extraction timeout (0 = default 90s)
 }
 
 // ExtractionWorkerDeps bundles dependencies for the listen-only KG extraction worker.
@@ -98,14 +107,24 @@ type ExtractionWorkerDeps struct {
 // resolveProvider returns a cached LLM provider or resolves a new one.
 // Safe for concurrent use via d.mu.
 func (d *ExtractionWorkerDeps) resolveProvider(ctx context.Context) (providers.Provider, string, float64, string) {
+	p, m, mc, s, _, _ := d.resolveAllProviders(ctx)
+	return p, m, mc, s
+}
+
+// resolveAllProviders resolves the primary LLM provider plus all available fallback providers.
+// Returns (primary, model, minConfidence, source, fallbacks).
+// Safe for concurrent use via d.mu.
+func (d *ExtractionWorkerDeps) resolveAllProviders(ctx context.Context) (providers.Provider, string, float64, string, []fallbackEntry, int) {
 	d.mu.Lock()
 	if d.provider != nil && time.Since(d.provider.resolvedAt) < providerCacheTTL {
 		p := d.provider.provider
 		m := d.provider.model
 		mc := d.provider.minConfidence
 		s := d.provider.source
+		fb := d.provider.fallbacks
+		ts := d.provider.timeoutSec
 		d.mu.Unlock()
-		return p, m, mc, s
+		return p, m, mc, s, fb, ts
 	}
 	d.mu.Unlock()
 
@@ -113,9 +132,11 @@ func (d *ExtractionWorkerDeps) resolveProvider(ctx context.Context) (providers.P
 	var model string
 	var minConfidence float64 = 0.75
 	var providerSource string
+	var configuredFallbacks []FallbackProviderConfig
+	var timeoutSec int
 
 	if d.BuiltinTools != nil {
-		p, model, minConfidence, providerSource = resolveKGProvider(ctx, d)
+		p, model, minConfidence, providerSource, configuredFallbacks, timeoutSec = resolveKGProvider(ctx, d)
 	}
 
 	if p == nil {
@@ -125,15 +146,53 @@ func (d *ExtractionWorkerDeps) resolveProvider(ctx context.Context) (providers.P
 		}
 	}
 
+	var fallbacks []fallbackEntry
+	if p != nil && d.Registry != nil {
+		primaryName := p.Name()
+		if len(configuredFallbacks) > 0 {
+			// Use configured fallback order from settings.
+			for _, fc := range configuredFallbacks {
+				if fc.Provider == primaryName {
+					continue
+				}
+				fp, err := d.Registry.GetForTenant(d.TenantID, fc.Provider)
+				if err != nil || fp == nil {
+					slog.Debug("whatsapp extraction worker: configured fallback provider not found",
+						"provider", fc.Provider, "error", err)
+					continue
+				}
+				fbModel := fc.Model
+				if fbModel == "" {
+					fbModel = fp.DefaultModel()
+				}
+				fallbacks = append(fallbacks, fallbackEntry{provider: fp, model: fbModel})
+			}
+		} else {
+			// No configured fallbacks: use all other registered providers.
+			names := d.Registry.ListForTenant(d.TenantID)
+			for _, name := range names {
+				if name == primaryName {
+					continue
+				}
+				fp, err := d.Registry.GetForTenant(d.TenantID, name)
+				if err != nil || fp == nil {
+					continue
+				}
+				fallbacks = append(fallbacks, fallbackEntry{provider: fp, model: fp.DefaultModel()})
+			}
+		}
+	}
+
 	if p != nil {
 		d.mu.Lock()
 		d.provider = &cachedProvider{
 			provider: p, model: model, minConfidence: minConfidence,
 			source: providerSource, resolvedAt: time.Now(),
+			fallbacks: fallbacks, timeoutSec: timeoutSec,
 		}
 		d.mu.Unlock()
 	}
-	return p, model, minConfidence, providerSource
+	return p, model, minConfidence, providerSource, fallbacks, timeoutSec
 }
 
 // RegisterExtractionWorker starts a background goroutine that periodically polls
@@ -203,6 +262,61 @@ func processAllPendingBatches(deps *ExtractionWorkerDeps) {
 	g.Wait()
 }
 
+// extractWithFallbacks tries extraction with the primary provider, then each fallback provider in order.
+// Returns the result from the first successful provider, or the last error if all fail.
+// An empty prompt string uses the default extraction prompt.
+// timeoutSec configures per-call timeout (0 = default 90s).
+func extractWithFallbacks(
+	ctx context.Context,
+	deps *ExtractionWorkerDeps,
+	primary providers.Provider, model string, minConfidence float64,
+	prompt string, text string,
+	fallbacks []fallbackEntry, logger *slog.Logger,
+	timeoutSec int,
+) (*knowledgegraph.ExtractionResult, error) {
+	var extractor *knowledgegraph.Extractor
+	if prompt != "" {
+		extractor = knowledgegraph.NewExtractorWithPrompt(primary, model, minConfidence, prompt)
+	} else {
+		extractor = knowledgegraph.NewExtractor(primary, model, minConfidence)
+	}
+	if deps.LLMSem != nil {
+		extractor.SetRateLimiter(deps.LLMSem)
+	}
+	if timeoutSec > 0 {
+		extractor.SetTimeout(time.Duration(timeoutSec) * time.Second)
+	}
+
+	result, err := extractor.Extract(ctx, text)
+	if err == nil {
+		return result, nil
+	}
+
+	// Try fallback providers.
+	for _, fb := range fallbacks {
+		logger.Info("whatsapp extraction worker: primary provider failed, trying fallback",
+			"primary", primary.Name(), "fallback", fb.provider.Name(), "fallback_model", fb.model, "error", err)
+		if prompt != "" {
+			extractor = knowledgegraph.NewExtractorWithPrompt(fb.provider, fb.model, minConfidence, prompt)
+		} else {
+			extractor = knowledgegraph.NewExtractor(fb.provider, fb.model, minConfidence)
+		}
+		if deps.LLMSem != nil {
+			extractor.SetRateLimiter(deps.LLMSem)
+		}
+		if timeoutSec > 0 {
+			extractor.SetTimeout(time.Duration(timeoutSec) * time.Second)
+		}
+		result, fbErr := extractor.Extract(ctx, text)
+		if fbErr == nil {
+			return result, nil
+		}
+		logger.Warn("whatsapp extraction worker: fallback provider also failed",
+			"fallback", fb.provider.Name(), "error", fbErr)
+	}
+	return nil, err
+}
+
 // processGroupBatch processes one batch of pending messages for a given (agentID, graphID).
 func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID, graphID string) {
 	groupKey := agentID + "/" + graphID
@@ -256,8 +370,8 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 		return
 	}
 
-	// Resolve KG extraction provider (cached for 5 minutes).
-	p, model, minConfidence, providerSource := deps.resolveProvider(ctx)
+	// Resolve KG extraction provider (cached for 5 minutes) + fallback providers.
+	p, model, minConfidence, providerSource, fallbacks, timeoutSec := deps.resolveAllProviders(ctx)
 
 	if p == nil {
 		logger.Warn("whatsapp extraction worker: no LLM provider available")
@@ -268,7 +382,8 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 	logger.Info("whatsapp extraction worker: extracting KG from batch",
 		"messages", len(msgs),
 		"provider", p.Name(), "model", model,
-		"provider_source", providerSource, "min_confidence", minConfidence)
+		"provider_source", providerSource, "min_confidence", minConfidence,
+		"fallbacks", len(fallbacks))
 
 	batchStart := time.Now()
 	// Build full raw text (used for fallback path).
@@ -295,18 +410,15 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 	// Reduces LLM calls from 2 (summarize + extract) to 1 for the common case.
 	if len(dateGroups.order) <= 1 {
 		setStep("extraction")
-		logger.Info("whatsapp extraction worker: single date, extracting directly",
-			"dates", len(dateGroups.order), "messages", len(msgs))
 		fullText = prependMediaDescs(msgs, fullText, mediaDescs)
-		extractor := knowledgegraph.NewExtractorWithPrompt(p, model, minConfidence, listenExtractSystemPrompt)
-		if deps.LLMSem != nil {
-			extractor.SetRateLimiter(deps.LLMSem)
-		}
+		logger.Info("whatsapp extraction worker: single date, extracting directly",
+			"dates", len(dateGroups.order), "messages", len(msgs),
+			"input_len", len(fullText), "provider", p.Name(), "model", model)
 		extractStart := time.Now()
-		result, err := extractor.Extract(ctx, fullText)
+		result, err := extractWithFallbacks(ctx, deps, p, model, minConfidence, listenExtractSystemPrompt, fullText, fallbacks, logger, timeoutSec)
 		rec.addStep("extraction", extractStart, err)
 		if err != nil {
-			logger.Warn("whatsapp extraction worker: direct extraction failed", "error", err)
+			logger.Warn("whatsapp extraction worker: direct extraction failed (all providers)", "error", err)
 			recordExtractionFailure(deps, groupKey, agentID, graphID, fmt.Sprintf("direct extraction failed: %s", err), msgs)
 			return
 		}
@@ -420,15 +532,11 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 		setStep("extraction")
 		logger.Warn("whatsapp extraction worker: all dates failed summarization, using full raw text")
 		fullText = prependMediaDescs(msgs, fullText, mediaDescs)
-		extractor := knowledgegraph.NewExtractorWithPrompt(p, model, minConfidence, listenExtractSystemPrompt)
-		if deps.LLMSem != nil {
-			extractor.SetRateLimiter(deps.LLMSem)
-		}
 		extractStart := time.Now()
-		result, err := extractor.Extract(ctx, fullText)
+		result, err := extractWithFallbacks(ctx, deps, p, model, minConfidence, listenExtractSystemPrompt, fullText, fallbacks, logger, timeoutSec)
 		rec.addStep("extraction", extractStart, err)
 		if err != nil {
-			logger.Warn("whatsapp extraction worker: extraction failed", "error", err)
+			logger.Warn("whatsapp extraction worker: extraction failed (all providers)", "error", err)
 			recordExtractionFailure(deps, groupKey, agentID, graphID, fmt.Sprintf("fallback extraction failed: %s", err), msgs)
 			return
 		}
@@ -447,14 +555,25 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 	extractStart := time.Now()
 	// Extract KG from the combined per-date summaries using the default extraction prompt.
 	extractionText := combinedSummary.String()
-	extractor := knowledgegraph.NewExtractor(p, model, minConfidence)
-	if deps.LLMSem != nil {
-		extractor.SetRateLimiter(deps.LLMSem)
+
+	// Cap extraction input to prevent excessive chunking and timeouts.
+	if len(extractionText) > maxExtractionInputChars {
+		logger.Warn("whatsapp extraction worker: combined summary exceeds size cap, truncating",
+			"input_len", len(extractionText), "cap", maxExtractionInputChars)
+		// Keep the most recent content (end of summary = latest dates).
+		extractionText = extractionText[len(extractionText)-maxExtractionInputChars:]
+		if idx := strings.IndexByte(extractionText, '\n'); idx >= 0 && idx < 200 {
+			extractionText = extractionText[idx+1:]
+		}
 	}
-	result, err := extractor.Extract(ctx, extractionText)
+	logger.Info("whatsapp extraction worker: extracting from combined summary",
+		"input_len", len(extractionText), "dates", len(dateGroups.order),
+		"provider", p.Name(), "model", model)
+
+	result, err := extractWithFallbacks(ctx, deps, p, model, minConfidence, "", extractionText, fallbacks, logger, timeoutSec)
 	rec.addStep("extraction", extractStart, err)
 	if err != nil {
-		logger.Warn("whatsapp extraction worker: extraction failed", "error", err)
+		logger.Warn("whatsapp extraction worker: extraction failed (all providers)", "error", err)
 		recordExtractionFailure(deps, groupKey, agentID, graphID, fmt.Sprintf("summary extraction failed: %s", err), msgs)
 		return
 	}
@@ -778,32 +897,40 @@ func buildConversationTextFromRaw(msgs []store.ListenRawMessage) string {
 
 // kgExtractionSettings mirrors the builtin_tools knowledge_graph_search settings JSON.
 type kgExtractionSettings struct {
-	ExtractionProvider string  `json:"extraction_provider"`
-	ExtractionModel    string  `json:"extraction_model"`
-	MinConfidence      float64 `json:"min_confidence"`
+	ExtractionProvider          string                    `json:"extraction_provider"`
+	ExtractionModel             string                    `json:"extraction_model"`
+	MinConfidence               float64                   `json:"min_confidence"`
+	ExtractionTimeoutSec        int                       `json:"extraction_timeout_sec"`
+	ExtractionFallbackProviders []FallbackProviderConfig  `json:"extraction_fallback_providers"`
+}
+
+// FallbackProviderConfig holds a single fallback provider+model pair.
+type FallbackProviderConfig struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
 }
 
 // resolveKGProvider reads KG extraction provider/model from builtin_tools settings.
-// Returns the provider, model, min confidence, and source description.
-func resolveKGProvider(ctx context.Context, deps *ExtractionWorkerDeps) (providers.Provider, string, float64, string) {
+// Returns the provider, model, min confidence, source description, configured fallback providers, and timeout seconds.
+func resolveKGProvider(ctx context.Context, deps *ExtractionWorkerDeps) (providers.Provider, string, float64, string, []FallbackProviderConfig, int) {
 	raw, err := deps.BuiltinTools.GetSettings(ctx, "knowledge_graph_search")
 	if err != nil || raw == nil {
 		slog.Debug("whatsapp extraction worker: no KG settings in builtin_tools", "error", err)
-		return nil, "", 0.75, ""
+		return nil, "", 0.75, "", nil, 0
 	}
 	var settings kgExtractionSettings
 	if err := json.Unmarshal(raw, &settings); err != nil {
 		slog.Debug("whatsapp extraction worker: invalid KG settings", "error", err)
-		return nil, "", 0.75, ""
+		return nil, "", 0.75, "", nil, 0
 	}
 	if settings.ExtractionProvider == "" {
-		return nil, "", 0.75, ""
+		return nil, "", 0.75, "", settings.ExtractionFallbackProviders, settings.ExtractionTimeoutSec
 	}
 	p, err := deps.Registry.Get(ctx, settings.ExtractionProvider)
 	if err != nil || p == nil {
 		slog.Warn("whatsapp extraction worker: KG provider not found",
 			"provider", settings.ExtractionProvider, "error", err)
-		return nil, "", 0.75, ""
+		return nil, "", 0.75, "", nil, 0
 	}
 	model := settings.ExtractionModel
 	if model == "" {
@@ -813,5 +940,5 @@ func resolveKGProvider(ctx context.Context, deps *ExtractionWorkerDeps) (provide
 	if minConf <= 0 {
 		minConf = 0.75
 	}
-	return p, model, minConf, "kg_settings"
+	return p, model, minConf, "kg_settings", settings.ExtractionFallbackProviders, settings.ExtractionTimeoutSec
 }
