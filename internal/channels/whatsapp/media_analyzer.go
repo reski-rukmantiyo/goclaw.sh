@@ -29,6 +29,7 @@ type MediaAnalyzer struct {
 	systemCfg    store.SystemConfigStore
 	builtinTools store.BuiltinToolStore
 	tenantID     uuid.UUID
+	LLMSem       *llmSemaphore // optional: caps concurrent LLM calls
 }
 
 // NewMediaAnalyzer creates a new MediaAnalyzer.
@@ -140,6 +141,14 @@ func (a *MediaAnalyzer) analyzeOne(ctx context.Context, ref store.RawMediaRef, l
 	// Inject user-configured tool settings into context so the provider
 	// chain resolver can find the user's configured provider for this media type.
 	analyzeCtx := a.contextWithToolSettings(ctx, mediaType)
+
+	// Rate-limit LLM calls via global semaphore.
+	if a.LLMSem != nil {
+		if err := a.LLMSem.Acquire(analyzeCtx); err != nil {
+			return "", fmt.Errorf("media analysis rate limit: %w", err)
+		}
+		defer a.LLMSem.Release()
+	}
 
 	// Delegate to tools package — uses built-in tool provider chains
 	// with proper provider-specific dispatch (Gemini native for PDFs, etc.).

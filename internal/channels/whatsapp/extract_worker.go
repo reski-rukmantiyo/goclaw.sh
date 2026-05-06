@@ -25,7 +25,38 @@ const (
 	maxRetryBackoffSec       = 600 // 10 minutes cap
 	providerCacheTTL         = 5 * time.Minute
 	maxConcurrentGroups      = 2
+	defaultMaxConcurrentLLM  = 8
 )
+
+// llmSemaphore implements knowledgegraph.LLMRateLimiter using a channel-based semaphore.
+type llmSemaphore struct {
+ sem chan struct{}
+}
+
+// NewLLMSemaphore creates an LLM concurrency limiter. maxConcurrent <= 0 uses the default (8).
+func NewLLMSemaphore(maxConcurrent int) *llmSemaphore {
+ if maxConcurrent <= 0 {
+  maxConcurrent = defaultMaxConcurrentLLM
+ }
+ return &llmSemaphore{sem: make(chan struct{}, maxConcurrent)}
+}
+
+func (s *llmSemaphore) Acquire(ctx context.Context) error {
+ select {
+ case s.sem <- struct{}{}:
+  return nil
+ case <-ctx.Done():
+  return ctx.Err()
+ }
+}
+
+func (s *llmSemaphore) Release() { <-s.sem }
+
+// Current returns the number of currently in-flight LLM calls.
+func (s *llmSemaphore) Current() int { return len(s.sem) }
+
+// Cap returns the maximum concurrent LLM calls allowed.
+func (s *llmSemaphore) Cap() int { return cap(s.sem) }
 
 // groupRetryState tracks consecutive extraction failures for a (agentID, graphID) group.
 type groupRetryState struct {
@@ -52,6 +83,8 @@ type ExtractionWorkerDeps struct {
 	TenantID      uuid.UUID
 	PollSec       int // poll interval in seconds (default 30)
 	MediaAnalyzer *MediaAnalyzer
+	LLMSem        *llmSemaphore // global LLM concurrency cap
+	DebugBuffer   *ExtractionDebugBuffer // optional: captures extraction debug records
 
 	mu           sync.Mutex                  // protects retryTracker and provider for concurrent group processing
 	retryTracker map[string]*groupRetryState // key: agentID+"/"+graphID
@@ -169,6 +202,17 @@ func processAllPendingBatches(deps *ExtractionWorkerDeps) {
 // processGroupBatch processes one batch of pending messages for a given (agentID, graphID).
 func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID, graphID string) {
 	groupKey := agentID + "/" + graphID
+	extractID := uuid.Must(uuid.NewV7()).String()[:8]
+	logger := slog.With("extract_id", extractID, "agent_id", agentID, "graph_id", graphID)
+
+	rec := newDebugRecord(agentID, graphID)
+	rec.ID = extractID
+	defer func() {
+		rec.finalize(nil)
+		if deps.DebugBuffer != nil {
+			deps.DebugBuffer.Add(rec)
+		}
+	}()
 
 	// Check backoff: skip this group if we're in a retry cooldown.
 	deps.mu.Lock()
@@ -177,8 +221,7 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 		failures := rs.consecutiveFailures
 		nextAttempt := rs.nextAttempt.Format("15:04:05")
 		deps.mu.Unlock()
-		slog.Debug("whatsapp extraction worker: skipping group due to retry backoff",
-			"agent_id", agentID, "graph_id", graphID,
+		logger.Debug("whatsapp extraction worker: skipping group due to retry backoff",
 			"consecutive_failures", failures,
 			"next_attempt", nextAttempt)
 		return
@@ -187,8 +230,7 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 
 	msgs, err := deps.RawMsgStore.ListPending(ctx, agentID, graphID, extractBatchSize)
 	if err != nil {
-		slog.Warn("whatsapp extraction worker: failed to list pending messages",
-			"agent_id", agentID, "graph_id", graphID, "error", err)
+		logger.Warn("whatsapp extraction worker: failed to list pending messages", "error", err)
 		return
 	}
 	if len(msgs) == 0 {
@@ -199,14 +241,12 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 	p, model, minConfidence, providerSource := deps.resolveProvider(ctx)
 
 	if p == nil {
-		slog.Warn("whatsapp extraction worker: no LLM provider available",
-			"agent_id", agentID, "graph_id", graphID)
+		logger.Warn("whatsapp extraction worker: no LLM provider available")
 		recordExtractionFailure(deps, groupKey, agentID, graphID, "no LLM provider available", msgs)
 		return
 	}
 
-	slog.Info("whatsapp extraction worker: extracting KG from batch",
-		"agent_id", agentID, "graph_id", graphID,
+	logger.Info("whatsapp extraction worker: extracting KG from batch",
 		"messages", len(msgs),
 		"provider", p.Name(), "model", model,
 		"provider_source", providerSource, "min_confidence", minConfidence)
@@ -246,18 +286,27 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 			}
 
 			// Analyze media for this date's messages.
-			dayText = appendMediaAnalysis(gctx, deps, dayMsgs, dayText, agentID, graphID)
+			dayText = appendMediaAnalysis(gctx, deps, dayMsgs, dayText, logger)
 
-			summary, err := summarizeConversation(gctx, p, model, dayText)
+			// Rate-limit LLM calls via global semaphore.
+			if deps.LLMSem != nil {
+				if err := deps.LLMSem.Acquire(gctx); err != nil {
+					results[i] = dateResult{date: date, err: err}
+					return nil
+				}
+				defer deps.LLMSem.Release()
+			}
+
+			summary, err := summarizeConversation(gctx, p, model, dayText, logger)
 			results[i] = dateResult{date: date, summary: summary, rawLen: len(dayText), err: err}
 			return nil // don't cancel others on individual date failure
 		})
 	}
 	g.Wait()
 
-	slog.Info("whatsapp extraction worker: summarization complete",
-		"agent_id", agentID, "graph_id", graphID,
+	logger.Info("whatsapp extraction worker: summarization complete",
 		"dates", len(dateGroups.order), "elapsed", time.Since(batchStart).Round(time.Millisecond))
+	rec.addStep("summarization", batchStart, nil)
 
 	// Build combined summary from ordered results.
 	var combinedSummary strings.Builder
@@ -268,14 +317,18 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 		}
 
 		summary := r.summary
+		ds := DateSummary{Date: r.date, RawLen: r.rawLen, SummaryLen: len(r.summary)}
 		if r.err != nil {
 			summarizeFailCount++
-			slog.Warn("whatsapp extraction worker: summarization failed for date, using raw text for this date",
-				"agent_id", agentID, "graph_id", graphID, "date", r.date, "error", r.err)
+			ds.Error = r.err.Error()
+			logger.Warn("whatsapp extraction worker: summarization failed for date, using raw text for this date",
+				"date", r.date, "error", r.err)
 			// Rebuild raw text for fallback.
 			dayMsgs := dateGroups.groups[r.date]
 			summary = buildConversationTextFromRaw(dayMsgs)
+			ds.SummaryLen = len(summary)
 		}
+		rec.DateSummaries = append(rec.DateSummaries, ds)
 
 		if combinedSummary.Len() > 0 {
 			combinedSummary.WriteString("\n\n")
@@ -287,32 +340,35 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 			if len(preview) > 300 {
 				preview = preview[:300] + "..."
 			}
-			slog.Info("whatsapp extraction worker: processed date",
-				"agent_id", agentID, "graph_id", graphID,
+			logger.Info("whatsapp extraction worker: processed date",
 				"date", r.date, "raw_len", r.rawLen, "summary_len", len(summary), "summary", preview)
 		}
 	}
 
 	// Only fall back to full raw text if ALL dates failed summarization.
 	if summarizeFailCount == len(dateGroups.order) && len(dateGroups.order) > 0 {
-		slog.Warn("whatsapp extraction worker: all dates failed summarization, using full raw text",
-			"agent_id", agentID, "graph_id", graphID)
-		fullText = appendMediaAnalysis(ctx, deps, msgs, fullText, agentID, graphID)
+		logger.Warn("whatsapp extraction worker: all dates failed summarization, using full raw text")
+		fullText = appendMediaAnalysis(ctx, deps, msgs, fullText, logger)
 		extractor := knowledgegraph.NewExtractorWithPrompt(p, model, minConfidence, listenExtractSystemPrompt)
+		if deps.LLMSem != nil {
+			extractor.SetRateLimiter(deps.LLMSem)
+		}
+		extractStart := time.Now()
 		result, err := extractor.Extract(ctx, fullText)
+		rec.addStep("extraction", extractStart, err)
 		if err != nil {
-			slog.Warn("whatsapp extraction worker: extraction failed",
-				"agent_id", agentID, "graph_id", graphID, "error", err)
+			logger.Warn("whatsapp extraction worker: extraction failed", "error", err)
 			recordExtractionFailure(deps, groupKey, agentID, graphID, fmt.Sprintf("fallback extraction failed: %s", err), msgs)
 			return
 		}
-		ingestAndFinalize(ctx, deps, result, agentID, graphID, msgs, groupKey)
+		rec.EntityCount = len(result.Entities)
+		rec.RelationCount = len(result.Relations)
+		ingestAndFinalize(ctx, deps, result, agentID, graphID, msgs, groupKey, logger, rec)
 		return
 	}
 
 	if summarizeFailCount > 0 {
-		slog.Info("whatsapp extraction worker: some dates used raw text fallback",
-			"agent_id", agentID, "graph_id", graphID,
+		logger.Info("whatsapp extraction worker: some dates used raw text fallback",
 			"failed_dates", summarizeFailCount, "total_dates", len(dateGroups.order))
 	}
 
@@ -320,36 +376,37 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 	// Extract KG from the combined per-date summaries using the default extraction prompt.
 	extractionText := combinedSummary.String()
 	extractor := knowledgegraph.NewExtractor(p, model, minConfidence)
+	if deps.LLMSem != nil {
+		extractor.SetRateLimiter(deps.LLMSem)
+	}
 	result, err := extractor.Extract(ctx, extractionText)
+	rec.addStep("extraction", extractStart, err)
 	if err != nil {
-		slog.Warn("whatsapp extraction worker: extraction failed",
-			"agent_id", agentID, "graph_id", graphID, "error", err)
+		logger.Warn("whatsapp extraction worker: extraction failed", "error", err)
 		recordExtractionFailure(deps, groupKey, agentID, graphID, fmt.Sprintf("summary extraction failed: %s", err), msgs)
 		return
 	}
+	rec.EntityCount = len(result.Entities)
+	rec.RelationCount = len(result.Relations)
 
-	slog.Info("whatsapp extraction worker: extraction complete",
-		"agent_id", agentID, "graph_id", graphID,
+	logger.Info("whatsapp extraction worker: extraction complete",
 		"extraction_elapsed", time.Since(extractStart).Round(time.Millisecond),
 		"total_elapsed", time.Since(batchStart).Round(time.Millisecond))
 
-	ingestAndFinalize(ctx, deps, result, agentID, graphID, msgs, groupKey)
+	ingestAndFinalize(ctx, deps, result, agentID, graphID, msgs, groupKey, logger, rec)
 }
 
 // ingestAndFinalize handles entity scoping, KG ingestion, dedup, and marking messages as processed.
-func ingestAndFinalize(ctx context.Context, deps *ExtractionWorkerDeps, result *knowledgegraph.ExtractionResult, agentID, graphID string, msgs []store.ListenRawMessage, groupKey string) {
+func ingestAndFinalize(ctx context.Context, deps *ExtractionWorkerDeps, result *knowledgegraph.ExtractionResult, agentID, graphID string, msgs []store.ListenRawMessage, groupKey string, logger *slog.Logger, rec *ExtractionDebugRecord) {
 	if len(result.Entities) == 0 && len(result.Relations) == 0 {
-		slog.Debug("whatsapp extraction worker: no entities extracted",
-			"agent_id", agentID, "graph_id", graphID, "messages", len(msgs))
+		logger.Debug("whatsapp extraction worker: no entities extracted", "messages", len(msgs))
 	} else {
 		for i, e := range result.Entities {
-			slog.Debug("whatsapp extraction worker: extracted entity",
-				"agent_id", agentID, "graph_id", graphID,
+			logger.Debug("whatsapp extraction worker: extracted entity",
 				"idx", i, "name", e.Name, "type", e.EntityType, "confidence", fmt.Sprintf("%.2f", e.Confidence))
 		}
 		for i, r := range result.Relations {
-			slog.Debug("whatsapp extraction worker: extracted relation",
-				"agent_id", agentID, "graph_id", graphID,
+			logger.Debug("whatsapp extraction worker: extracted relation",
 				"idx", i, "source", r.SourceEntityID, "target", r.TargetEntityID, "type", r.RelationType)
 		}
 	}
@@ -382,16 +439,17 @@ func ingestAndFinalize(ctx context.Context, deps *ExtractionWorkerDeps, result *
 
 	// Ingest into KG store.
 	if len(result.Entities) > 0 || len(result.Relations) > 0 {
+		ingestStart := time.Now()
 		entityIDs, err := deps.KGStore.IngestExtraction(ctx, agentID, graphID,
 			result.Entities, result.Relations)
+		rec.addStep("ingest", ingestStart, err)
 		if err != nil {
-			slog.Warn("whatsapp extraction worker: KG ingest failed",
-				"agent_id", agentID, "graph_id", graphID, "error", err)
+			logger.Warn("whatsapp extraction worker: KG ingest failed", "error", err)
 			recordExtractionFailure(deps, groupKey, agentID, graphID, fmt.Sprintf("KG ingest failed: %s", err), msgs)
 			return
 		} else {
-			slog.Info("whatsapp extraction worker: KG extraction complete",
-				"agent_id", agentID, "graph_id", graphID,
+			rec.IngestedIDs = len(entityIDs)
+			logger.Info("whatsapp extraction worker: KG extraction complete",
 				"entities", len(result.Entities),
 				"relations", len(result.Relations),
 				"ingested_ids", len(entityIDs))
@@ -400,15 +458,19 @@ func ingestAndFinalize(ctx context.Context, deps *ExtractionWorkerDeps, result *
 			if len(entityIDs) > 0 {
 				dedupCtx := context.WithoutCancel(ctx)
 				go func() {
-					if merged, flagged, dedupErr := deps.KGStore.DedupAfterExtraction(dedupCtx, agentID, graphID, entityIDs); dedupErr != nil {
-						slog.Debug("whatsapp extraction worker: dedup failed",
-							"agent_id", agentID, "graph_id", graphID, "error", dedupErr)
-					} else if merged > 0 || flagged > 0 {
-						slog.Info("whatsapp extraction worker: dedup results",
-							"agent_id", agentID, "graph_id", graphID,
-							"merged", merged, "flagged", flagged)
-					}
-				}()
+						dedupStart := time.Now()
+						if merged, flagged, dedupErr := deps.KGStore.DedupAfterExtraction(dedupCtx, agentID, graphID, entityIDs); dedupErr != nil {
+							logger.Debug("whatsapp extraction worker: dedup failed", "error", dedupErr)
+						} else {
+							rec.DedupMerged = merged
+							rec.DedupFlagged = flagged
+							if merged > 0 || flagged > 0 {
+								logger.Info("whatsapp extraction worker: dedup results",
+									"merged", merged, "flagged", flagged)
+							}
+						}
+						rec.addStep("dedup", dedupStart, nil)
+					}()
 			}
 		}
 	}
@@ -419,8 +481,7 @@ func ingestAndFinalize(ctx context.Context, deps *ExtractionWorkerDeps, result *
 		ids[i] = m.ID
 	}
 	if err := deps.RawMsgStore.MarkProcessed(ctx, ids); err != nil {
-		slog.Warn("whatsapp extraction worker: failed to mark processed",
-			"agent_id", agentID, "graph_id", graphID, "error", err)
+		logger.Warn("whatsapp extraction worker: failed to mark processed", "error", err)
 	} else {
 		// Reset retry tracker on success.
 		deps.mu.Lock()
@@ -471,13 +532,13 @@ func recordExtractionFailure(deps *ExtractionWorkerDeps, groupKey, agentID, grap
 // summarizeConversation calls the LLM to summarize raw WhatsApp text into polished narrative
 // while preserving specific details (names, IDs, timestamps, structured data).
 // On truncation, it recursively splits the input and summarizes each half.
-func summarizeConversation(ctx context.Context, p providers.Provider, model, text string) (string, error) {
-	return summarizeConversationDepth(ctx, p, model, text, 0)
+func summarizeConversation(ctx context.Context, p providers.Provider, model, text string, logger *slog.Logger) (string, error) {
+	return summarizeConversationDepth(ctx, p, model, text, 0, logger)
 }
 
 // summarizeConversationDepth performs summarization with recursive splitting on truncation.
 // depth limits recursion to prevent infinite loops.
-func summarizeConversationDepth(ctx context.Context, p providers.Provider, model, text string, depth int) (string, error) {
+func summarizeConversationDepth(ctx context.Context, p providers.Provider, model, text string, depth int, logger *slog.Logger) (string, error) {
 	req := providers.ChatRequest{
 		Messages: []providers.Message{
 			{Role: "system", Content: listenSummarizePrompt},
@@ -496,7 +557,7 @@ func summarizeConversationDepth(ctx context.Context, p providers.Provider, model
 	}
 
 	if resp.FinishReason == "length" && depth < 1 {
-		slog.Warn("whatsapp extraction worker: summarization truncated, splitting input",
+		logger.Warn("whatsapp extraction worker: summarization truncated, splitting input",
 			"input_len", len(text), "output_len", len(resp.Content), "depth", depth)
 
 		// Split at midpoint, preferring paragraph boundary.
@@ -505,17 +566,28 @@ func summarizeConversationDepth(ctx context.Context, p providers.Provider, model
 			half = idx
 		}
 
-		sum1, err1 := summarizeConversationDepth(ctx, p, model, text[:half], depth+1)
+		// Split concurrently (both halves in parallel).
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(2)
+		var sum1, sum2 string
+		var err1, err2 error
+		g.Go(func() error {
+			sum1, err1 = summarizeConversationDepth(gctx, p, model, text[:half], depth+1, logger)
+			return nil
+		})
+		g.Go(func() error {
+			sum2, err2 = summarizeConversationDepth(gctx, p, model, text[half:], depth+1, logger)
+			return nil
+		})
+		g.Wait()
+
 		if err1 != nil {
-			// Return partial summary rather than failing entirely.
-			slog.Warn("whatsapp extraction worker: first-half summary failed, using partial",
+			logger.Warn("whatsapp extraction worker: first-half summary failed, using partial",
 				"error", err1)
 			return strings.TrimSpace(resp.Content), nil
 		}
-
-		sum2, err2 := summarizeConversationDepth(ctx, p, model, text[half:], depth+1)
 		if err2 != nil {
-			slog.Warn("whatsapp extraction worker: second-half summary failed, using first half",
+			logger.Warn("whatsapp extraction worker: second-half summary failed, using first half",
 				"error", err2)
 			return sum1, nil
 		}
@@ -547,13 +619,12 @@ func groupMessagesByDate(msgs []store.ListenRawMessage) dateGroups {
 
 // appendMediaAnalysis analyzes media attachments for the given messages and appends
 // descriptions to the text. Returns text unchanged if no media or no analyzer.
-func appendMediaAnalysis(ctx context.Context, deps *ExtractionWorkerDeps, msgs []store.ListenRawMessage, text, agentID, graphID string) string {
+func appendMediaAnalysis(ctx context.Context, deps *ExtractionWorkerDeps, msgs []store.ListenRawMessage, text string, logger *slog.Logger) string {
 	mediaSummary := mediaRefsSummary(msgs)
 	if mediaSummary == "" {
 		return text
 	}
-	slog.Info("whatsapp extraction worker: analyzing media attachments",
-		"agent_id", agentID, "graph_id", graphID, "media", mediaSummary)
+	logger.Info("whatsapp extraction worker: analyzing media attachments", "media", mediaSummary)
 	mediaDescs := analyzeMediaAttachments(ctx, msgs, deps.MediaAnalyzer)
 	if len(mediaDescs) == 0 {
 		return text
@@ -567,8 +638,7 @@ func appendMediaAnalysis(ctx context.Context, deps *ExtractionWorkerDeps, msgs [
 		}
 	}
 	mediaStr := mediaText.String()
-	slog.Info("whatsapp extraction worker: media analysis result",
-		"agent_id", agentID, "graph_id", graphID,
+	logger.Info("whatsapp extraction worker: media analysis result",
 		"media_text_len", len(mediaStr))
 	return text + mediaStr
 }

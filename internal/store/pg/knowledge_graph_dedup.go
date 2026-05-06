@@ -32,63 +32,143 @@ func (s *PGKnowledgeGraphStore) DedupAfterExtraction(ctx context.Context, agentI
 	if err != nil {
 		return 0, 0, fmt.Errorf("kg dedup after extraction: %w", err)
 	}
-	var merged, flagged int
 
+	// Parse and validate entity IDs.
+	ids := make([]uuid.UUID, 0, len(newEntityIDs))
 	for _, eid := range newEntityIDs {
-		entityID, parseErr := uuid.Parse(eid)
+		id, parseErr := uuid.Parse(eid)
 		if parseErr != nil {
 			slog.Warn("kg.dedup: invalid entity ID", "id", eid, "error", parseErr)
 			continue
 		}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return 0, 0, nil
+	}
 
-		// Fetch entity details + embedding with tenant scope
-		var name, entityType string
-		var embeddingStr *string
-		var confidence float64
-		tc, tcArgs, _, err := scopeClause(ctx, 3)
-		if err != nil {
+	// Batch fetch all entity details in one query.
+	tc, tcArgs, _, scopeErr := scopeClause(ctx, 3)
+	if scopeErr != nil {
+		return 0, 0, scopeErr
+	}
+
+	type entityRow struct {
+		ID           uuid.UUID  `db:"id"`
+		Name         string     `db:"name"`
+		EntityType   string     `db:"entity_type"`
+		Confidence   float64    `db:"confidence"`
+		EmbeddingStr *string    `db:"embedding"`
+	}
+	var entities []entityRow
+	fetchQ := `SELECT id, name, entity_type, confidence, embedding::text
+		FROM kg_entities WHERE id = ANY($1::uuid[]) AND agent_id = $2` + tc
+	if err := pkgSqlxDB.SelectContext(ctx, &entities, fetchQ,
+		append([]any{ids, aid}, tcArgs...)...); err != nil {
+		return 0, 0, fmt.Errorf("kg.dedup: batch entity fetch failed: %w", err)
+	}
+
+	// Group entities by type for batch KNN via LATERAL JOIN.
+	typeByEntities := make(map[string][]entityRow)
+	for _, e := range entities {
+		if e.EmbeddingStr == nil {
 			continue
 		}
-		row := s.db.QueryRowContext(ctx,
-			`SELECT name, entity_type, confidence, embedding::text
-			 FROM kg_entities WHERE id = $1 AND agent_id = $2`+tc,
-			append([]any{entityID, aid}, tcArgs...)...)
-		if err := row.Scan(&name, &entityType, &confidence, &embeddingStr); err != nil {
-			continue // entity may have been deleted/merged already
-		}
-		if embeddingStr == nil {
-			continue // no embedding → can't compute similarity
+		typeByEntities[e.EntityType] = append(typeByEntities[e.EntityType], e)
+	}
+	if len(typeByEntities) == 0 {
+		return 0, 0, nil
+	}
+
+	// knnResult holds one entity-neighbor pair from the LATERAL JOIN.
+	type knnResult struct {
+		EntityID       uuid.UUID `db:"entity_id"`
+		EntityName     string    `db:"entity_name"`
+		EntityConf     float64   `db:"entity_confidence"`
+		NeighborID     string    `db:"neighbor_id"`
+		NeighborName   string    `db:"neighbor_name"`
+		NeighborConf   float64   `db:"neighbor_confidence"`
+		Similarity     float64   `db:"similarity"`
+	}
+
+	var allNeighbors []knnResult
+	for eType, ents := range typeByEntities {
+		entIDs := make([]uuid.UUID, len(ents))
+		for i, e := range ents {
+			entIDs[i] = e.ID
 		}
 
-		// KNN: find top-3 nearest existing entities of same type (exclude self)
-		neighbors, err := s.knnNeighbors(ctx, aid, userID, entityID, entityType, *embeddingStr, 3)
-		if err != nil {
-			slog.Warn("kg.dedup: knn query failed", "entity_id", eid, "error", err)
+		idx := 1
+		args := []any{aid, entIDs, eType}
+		idx += 3
+
+		userWhere, userArgs := kgUserWhere(ctx, userID, idx)
+		args = append(args, userArgs...)
+		idx += len(userArgs)
+
+		tScope, tScopeArgs, _, sErr := scopeClause(ctx, idx)
+		if sErr != nil {
+			continue
+		}
+		if tScope != "" {
+			args = append(args, tScopeArgs...)
+			idx += len(tScopeArgs)
+		}
+
+		q := fmt.Sprintf(`
+			SELECT e.id AS entity_id, e.name AS entity_name, e.confidence AS entity_confidence,
+			       n.id AS neighbor_id, n.name AS neighbor_name, n.confidence AS neighbor_confidence,
+			       1 - (e.embedding <=> n.embedding) AS similarity
+			FROM kg_entities e
+			CROSS JOIN LATERAL (
+				SELECT id, name, confidence, embedding
+				FROM kg_entities
+				WHERE agent_id = $1 AND entity_type = $3
+				  AND id != e.id AND embedding IS NOT NULL
+				  AND id != ALL($2::uuid[])%s%s
+				ORDER BY embedding <=> e.embedding
+				LIMIT 3
+			) n
+			WHERE e.id = ANY($2::uuid[]) AND e.agent_id = $1 AND e.embedding IS NOT NULL`,
+			userWhere, tScope)
+
+		var rows []knnResult
+		if err := pkgSqlxDB.SelectContext(ctx, &rows, q, args...); err != nil {
+			slog.Warn("kg.dedup: batch KNN query failed", "entity_type", eType, "error", err)
+			continue
+		}
+		allNeighbors = append(allNeighbors, rows...)
+	}
+
+	// Process results: auto-merge or flag candidates.
+	var merged, flagged int
+	mergedSet := make(map[uuid.UUID]bool) // skip neighbors of already-merged entities
+
+	for _, n := range allNeighbors {
+		if mergedSet[n.EntityID] {
 			continue
 		}
 
-		for _, n := range neighbors {
-			nameSim := kg.JaroWinkler(name, n.name)
+		nameSim := kg.JaroWinkler(n.EntityName, n.NeighborName)
 
-			if n.similarity >= dedupAutoMergeThreshold && nameSim >= dedupNameMatchThreshold {
-				// Auto-merge: keep the one with higher confidence
-				targetID, sourceID := eid, n.id
-				if n.confidence > confidence {
-					targetID, sourceID = n.id, eid
-				}
-				if err := s.MergeEntities(ctx, agentID, userID, targetID, sourceID); err != nil {
-					slog.Warn("kg.dedup: auto-merge failed", "target", targetID, "source", sourceID, "error", err)
-					continue
-				}
-				merged++
-				break // entity merged, stop checking neighbors
-			} else if n.similarity >= dedupCandidateThreshold {
-				// Flag as candidate for manual review
-				if err := s.insertDedupCandidate(ctx, aid, userID, eid, n.id, n.similarity); err != nil {
-					slog.Warn("kg.dedup: flag candidate failed", "error", err)
-				} else {
-					flagged++
-				}
+		if n.Similarity >= dedupAutoMergeThreshold && nameSim >= dedupNameMatchThreshold {
+			entityIDStr := n.EntityID.String()
+			targetID, sourceID := entityIDStr, n.NeighborID
+			if n.NeighborConf > n.EntityConf {
+				targetID, sourceID = n.NeighborID, entityIDStr
+			}
+			if err := s.MergeEntities(ctx, agentID, userID, targetID, sourceID); err != nil {
+				slog.Warn("kg.dedup: auto-merge failed", "target", targetID, "source", sourceID, "error", err)
+				continue
+			}
+			merged++
+			mergedSet[n.EntityID] = true
+		} else if n.Similarity >= dedupCandidateThreshold {
+			entityIDStr := n.EntityID.String()
+			if err := s.insertDedupCandidate(ctx, aid, userID, entityIDStr, n.NeighborID, n.Similarity); err != nil {
+				slog.Warn("kg.dedup: flag candidate failed", "error", err)
+			} else {
+				flagged++
 			}
 		}
 	}

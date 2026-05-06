@@ -12,6 +12,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/channels"
 	"github.com/nextlevelbuilder/goclaw/internal/channels/whatsapp"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
+	httpapi "github.com/nextlevelbuilder/goclaw/internal/http"
 	"github.com/nextlevelbuilder/goclaw/internal/edition"
 	"github.com/nextlevelbuilder/goclaw/internal/heartbeat"
 	mcpbridge "github.com/nextlevelbuilder/goclaw/internal/mcp"
@@ -250,7 +251,8 @@ func (d *gatewayDeps) runLifecycle(
 	// WhatsApp listen-only KG extraction worker.
 	// Registered here (after all setup) so the server is up before any extraction begins.
 	if d.pgStores.ListenRawMessages != nil && d.pgStores.KnowledgeGraph != nil && d.providerRegistry != nil {
-		cleanupExtraction := whatsapp.RegisterExtractionWorker(&whatsapp.ExtractionWorkerDeps{
+		llmSem := whatsapp.NewLLMSemaphore(0)
+		extractionDeps := &whatsapp.ExtractionWorkerDeps{
 			RawMsgStore:   d.pgStores.ListenRawMessages,
 			KGStore:       d.pgStores.KnowledgeGraph,
 			SystemConfigs: d.pgStores.SystemConfigs,
@@ -258,8 +260,16 @@ func (d *gatewayDeps) runLifecycle(
 			Registry:      d.providerRegistry,
 			TenantID:      store.MasterTenantID,
 			MediaAnalyzer: whatsapp.NewMediaAnalyzer(d.providerRegistry, d.pgStores.SystemConfigs, d.pgStores.BuiltinTools, store.MasterTenantID),
-		})
+			LLMSem:        llmSem,
+			DebugBuffer:   whatsapp.NewExtractionDebugBuffer(50),
+		}
+		cleanupExtraction := whatsapp.RegisterExtractionWorker(extractionDeps)
 		defer cleanupExtraction()
+
+		d.server.SetExtractionDebugHandler(httpapi.NewExtractionDebugHandler(
+			func(ctx context.Context) any { return extractionDeps.Status(ctx) },
+			whatsapp.NewDebugBufferAdapter(extractionDeps.DebugBuffer),
+		))
 	}
 
 	if err := d.server.Start(ctx); err != nil {

@@ -13,6 +13,12 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
 
+// LLMRateLimiter caps concurrent LLM API calls.
+type LLMRateLimiter interface {
+	Acquire(ctx context.Context) error
+	Release()
+}
+
 // ExtractionResult holds entities and relations extracted from text.
 type ExtractionResult struct {
 	Entities  []store.Entity   `json:"entities"`
@@ -34,7 +40,8 @@ type Extractor struct {
 	provider      providers.Provider
 	model         string
 	minConfidence float64
-	systemPrompt  string // override for default extraction prompt
+	systemPrompt  string         // override for default extraction prompt
+	limiter       LLMRateLimiter // optional: caps concurrent LLM calls
 }
 
 // NewExtractor creates a new Extractor with the given provider, model, and confidence threshold.
@@ -55,6 +62,9 @@ func NewExtractorWithPrompt(provider providers.Provider, model string, minConfid
 	}
 	return &Extractor{provider: provider, model: model, minConfidence: minConfidence, systemPrompt: systemPrompt}
 }
+
+// SetRateLimiter sets an optional rate limiter that caps concurrent LLM calls.
+func (e *Extractor) SetRateLimiter(l LLMRateLimiter) { e.limiter = l }
 
 const (
 	maxChunkChars      = 12000
@@ -187,6 +197,13 @@ func (e *Extractor) extractChunkSplit(ctx context.Context, text string, depth in
 		}
 		slog.Info("kg extraction: LLM request", "model", e.model, "depth", depth,
 			"input_len", len(text), "input", inputPreview)
+	}
+
+	if e.limiter != nil {
+		if err := e.limiter.Acquire(ctx); err != nil {
+			return nil, fmt.Errorf("kg extraction LLM rate limit (depth %d): %w", depth, err)
+		}
+		defer e.limiter.Release()
 	}
 
 	resp, err := e.provider.Chat(ctx, req)

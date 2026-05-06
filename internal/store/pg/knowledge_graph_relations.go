@@ -196,8 +196,8 @@ func (s *PGKnowledgeGraphStore) IngestExtraction(ctx context.Context, agentID, u
 			WITH new_e AS (
 				SELECT * FROM unnest(
 					$1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[],
-					$6::text[], $7::text::jsonb[], $8::text[], $9::float8[],
-					$10::uuid[], $11::timestamptz[], $12::timestamptz[], $13::timestamptz[]
+					$6::text[], $7::text[], $8::text[], $9::text[], $10::float8[],
+					$11::uuid[], $12::timestamptz[], $13::timestamptz[]
 				) AS t(id, agent_id, user_id, external_id, name, entity_type,
 				       description, properties, source_id, confidence, tenant_id,
 				       created_at, event_time)
@@ -206,7 +206,7 @@ func (s *PGKnowledgeGraphStore) IngestExtraction(ctx context.Context, agentID, u
 				(id, agent_id, user_id, external_id, name, entity_type, description,
 				 properties, source_id, confidence, tenant_id, created_at, updated_at, event_time)
 			SELECT id, agent_id, user_id, external_id, name, entity_type, description,
-			       properties, source_id, confidence, tenant_id, created_at, created_at, event_time
+			       properties::jsonb, source_id, confidence, tenant_id, created_at, created_at, event_time
 			FROM new_e
 			ON CONFLICT (agent_id, user_id, external_id) DO UPDATE SET
 				name        = EXCLUDED.name,
@@ -221,7 +221,7 @@ func (s *PGKnowledgeGraphStore) IngestExtraction(ctx context.Context, agentID, u
 			RETURNING id, external_id`,
 			pq.Array(ids), pq.Array(makeUUIDArr(len(entities), aid)), pq.Array(makeStringArr(len(entities), userID)),
 			pq.Array(extIDs), pq.Array(names), pq.Array(entTypes),
-			pq.Array(propsJSON), pq.Array(srcIDs), pq.Array(confidences),
+			pq.Array(descs), pq.Array(propsJSON), pq.Array(srcIDs), pq.Array(confidences),
 			pq.Array(makeUUIDArr(len(entities), tid)), pq.Array(makeTimeArr(len(entities), now)),
 			pq.Array(eventTimes),
 		)

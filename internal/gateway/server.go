@@ -482,6 +482,11 @@ func (s *Server) SetTenantsHandler(h *httpapi.TenantsHandler) {
 	s.handlers = append(s.handlers, h)
 }
 
+// SetExtractionDebugHandler sets the KG extraction debug handler.
+func (s *Server) SetExtractionDebugHandler(h routeRegistrar) {
+	s.handlers = append(s.handlers, h)
+}
+
 // SetAPIKeyStore sets the API key store for token-based auth lookup.
 func (s *Server) SetAPIKeyStore(st store.APIKeyStore) { s.apiKeyStore = st }
 

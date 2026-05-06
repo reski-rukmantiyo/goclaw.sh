@@ -264,6 +264,7 @@ func (h *KnowledgeGraphHandler) handleExtract(w http.ResponseWriter, r *http.Req
 		Provider string  `json:"provider"`
 		Model    string  `json:"model"`
 		MinConf  float64 `json:"min_confidence"`
+		DryRun   bool    `json:"dry_run"`
 	}
 	if !bindJSON(w, r, locale, &body) {
 		return
@@ -287,6 +288,18 @@ func (h *KnowledgeGraphHandler) handleExtract(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		slog.Warn("kg.extract failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Dry-run: return extraction results without persisting.
+	if body.DryRun {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"dry_run":        true,
+			"entities":       result.Entities,
+			"relations":      result.Relations,
+			"entity_count":   len(result.Entities),
+			"relation_count": len(result.Relations),
+		})
 		return
 	}
 
