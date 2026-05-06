@@ -124,13 +124,32 @@ func NewDebugBufferAdapter(buf *ExtractionDebugBuffer) debugBufferAdapter {
 func (a debugBufferAdapter) List(limit int) any    { return a.buf.List(limit) }
 func (a debugBufferAdapter) GetByID(id string) any { return a.buf.GetByID(id) }
 
+// InFlightExtraction tracks a currently running extraction batch.
+type InFlightExtraction struct {
+	ID           string           `json:"id"`
+	AgentID      string           `json:"agent_id"`
+	GraphID      string           `json:"graph_id"`
+	StartedAt    time.Time        `json:"started_at"`
+	CurrentStep  string           `json:"current_step"`
+	StepStarted  time.Time        `json:"step_started"`
+	Dates        []InFlightDate   `json:"dates,omitempty"`
+	MessageCount int              `json:"message_count"`
+}
+
+// InFlightDate tracks per-date status during extraction.
+type InFlightDate struct {
+	Date   string `json:"date"`
+	Status string `json:"status"` // "pending", "summarizing", "done", "failed"
+}
+
 // WorkerStatus is a point-in-time snapshot of the extraction worker state.
 type WorkerStatus struct {
-	PendingGroups    []PendingGroupStatus `json:"pending_groups,omitempty"`
-	RetryBackoffs    []RetryBackoffStatus `json:"retry_backoffs,omitempty"`
-	ProviderCache    *ProviderCacheStatus `json:"provider_cache,omitempty"`
-	LLMSemaphore     SemaphoreStatus      `json:"llm_semaphore"`
-	RecentExtractions int                 `json:"recent_extractions"`
+	PendingGroups     []PendingGroupStatus    `json:"pending_groups,omitempty"`
+	RetryBackoffs     []RetryBackoffStatus    `json:"retry_backoffs,omitempty"`
+	ProviderCache     *ProviderCacheStatus    `json:"provider_cache,omitempty"`
+	LLMSemaphore      SemaphoreStatus         `json:"llm_semaphore"`
+	RecentExtractions int                     `json:"recent_extractions"`
+	InFlight          []InFlightExtraction    `json:"in_flight,omitempty"`
 }
 
 // PendingGroupStatus describes a (agentID, graphID) group with pending messages.
@@ -209,6 +228,14 @@ func (d *ExtractionWorkerDeps) Status(ctx context.Context) *WorkerStatus {
 	if d.DebugBuffer != nil {
 		status.RecentExtractions = d.DebugBuffer.count
 	}
+
+	// Collect in-flight extractions.
+	d.InFlight.Range(func(key, value any) bool {
+		if f, ok := value.(*InFlightExtraction); ok {
+			status.InFlight = append(status.InFlight, *f)
+		}
+		return true
+	})
 
 	return status
 }

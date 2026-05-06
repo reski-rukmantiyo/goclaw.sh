@@ -26,6 +26,9 @@ const (
 	providerCacheTTL         = 5 * time.Minute
 	maxConcurrentGroups      = 2
 	defaultMaxConcurrentLLM  = 8
+	summarizeMaxTokens       = 3072
+	summarizeCallTimeout     = 60 * time.Second
+	extractionCallTimeout    = 90 * time.Second
 )
 
 // llmSemaphore implements knowledgegraph.LLMRateLimiter using a channel-based semaphore.
@@ -85,6 +88,7 @@ type ExtractionWorkerDeps struct {
 	MediaAnalyzer *MediaAnalyzer
 	LLMSem        *llmSemaphore // global LLM concurrency cap
 	DebugBuffer   *ExtractionDebugBuffer // optional: captures extraction debug records
+	InFlight      sync.Map               // key: extractID → value: *InFlightExtraction
 
 	mu           sync.Mutex                  // protects retryTracker and provider for concurrent group processing
 	retryTracker map[string]*groupRetryState // key: agentID+"/"+graphID
@@ -207,12 +211,27 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 
 	rec := newDebugRecord(agentID, graphID)
 	rec.ID = extractID
+
+	// In-flight tracking for real-time visibility.
+	flight := &InFlightExtraction{
+		ID: extractID, AgentID: agentID, GraphID: graphID,
+		StartedAt: rec.StartedAt, CurrentStep: "fetching",
+		StepStarted: rec.StartedAt,
+	}
+	deps.InFlight.Store(extractID, flight)
 	defer func() {
+		deps.InFlight.Delete(extractID)
 		rec.finalize(nil)
 		if deps.DebugBuffer != nil {
 			deps.DebugBuffer.Add(rec)
 		}
 	}()
+
+	setStep := func(step string) {
+		flight.CurrentStep = step
+		flight.StepStarted = time.Now()
+		logger.Info("whatsapp extraction worker: stage started", "stage", step)
+	}
 
 	// Check backoff: skip this group if we're in a retry cooldown.
 	deps.mu.Lock()
@@ -258,11 +277,54 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 		return
 	}
 
-	// Group messages by date, build text per date, analyze media per date,
+	// Pre-fetch media analysis for ALL messages before date grouping.
+	setStep("media_analysis")
+	mediaStart := time.Now()
+	mediaDescs := analyzeMediaAttachments(ctx, msgs, deps.MediaAnalyzer)
+	if len(mediaDescs) > 0 {
+		logger.Info("whatsapp extraction worker: media analysis complete",
+			"media_items", len(mediaDescs), "elapsed", time.Since(mediaStart).Round(time.Millisecond))
+	}
+	rec.addStep("media_analysis", mediaStart, nil)
+
+	// Group messages by date, build text per date,
 	// then summarize each date separately for coherent narratives.
 	dateGroups := groupMessagesByDate(msgs)
 
+	// Fast path: single-date batch — skip summarization, extract directly.
+	// Reduces LLM calls from 2 (summarize + extract) to 1 for the common case.
+	if len(dateGroups.order) <= 1 {
+		setStep("extraction")
+		logger.Info("whatsapp extraction worker: single date, extracting directly",
+			"dates", len(dateGroups.order), "messages", len(msgs))
+		fullText = prependMediaDescs(msgs, fullText, mediaDescs)
+		extractor := knowledgegraph.NewExtractorWithPrompt(p, model, minConfidence, listenExtractSystemPrompt)
+		if deps.LLMSem != nil {
+			extractor.SetRateLimiter(deps.LLMSem)
+		}
+		extractStart := time.Now()
+		result, err := extractor.Extract(ctx, fullText)
+		rec.addStep("extraction", extractStart, err)
+		if err != nil {
+			logger.Warn("whatsapp extraction worker: direct extraction failed", "error", err)
+			recordExtractionFailure(deps, groupKey, agentID, graphID, fmt.Sprintf("direct extraction failed: %s", err), msgs)
+			return
+		}
+		rec.EntityCount = len(result.Entities)
+		rec.RelationCount = len(result.Relations)
+		logger.Info("whatsapp extraction worker: direct extraction complete",
+			"entities", len(result.Entities), "relations", len(result.Relations),
+			"total_elapsed", time.Since(batchStart).Round(time.Millisecond))
+		ingestAndFinalize(ctx, deps, result, agentID, graphID, msgs, groupKey, logger, rec)
+		return
+	}
+
 	// Summarize date groups concurrently (up to 4 in parallel).
+	setStep("summarization")
+	flight.Dates = make([]InFlightDate, len(dateGroups.order))
+	for i, d := range dateGroups.order {
+		flight.Dates[i] = InFlightDate{Date: d, Status: "pending"}
+	}
 	type dateResult struct {
 		date    string
 		summary string
@@ -279,18 +341,21 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 		i, date := i, date
 		dayMsgs := dateGroups.groups[date]
 		g.Go(func() error {
+			flight.Dates[i].Status = "summarizing"
 			dayText := buildConversationTextFromRaw(dayMsgs)
 			if dayText == "" {
+				flight.Dates[i].Status = "done"
 				results[i] = dateResult{date: date}
 				return nil
 			}
 
-			// Analyze media for this date's messages.
-			dayText = appendMediaAnalysis(gctx, deps, dayMsgs, dayText, logger)
+			// Prepend pre-fetched media descriptions for this date's messages.
+			dayText = prependMediaDescs(dayMsgs, dayText, mediaDescs)
 
 			// Rate-limit LLM calls via global semaphore.
 			if deps.LLMSem != nil {
 				if err := deps.LLMSem.Acquire(gctx); err != nil {
+					flight.Dates[i].Status = "failed"
 					results[i] = dateResult{date: date, err: err}
 					return nil
 				}
@@ -298,6 +363,11 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 			}
 
 			summary, err := summarizeConversation(gctx, p, model, dayText, logger)
+			if err != nil {
+				flight.Dates[i].Status = "failed"
+			} else {
+				flight.Dates[i].Status = "done"
+			}
 			results[i] = dateResult{date: date, summary: summary, rawLen: len(dayText), err: err}
 			return nil // don't cancel others on individual date failure
 		})
@@ -347,8 +417,9 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 
 	// Only fall back to full raw text if ALL dates failed summarization.
 	if summarizeFailCount == len(dateGroups.order) && len(dateGroups.order) > 0 {
+		setStep("extraction")
 		logger.Warn("whatsapp extraction worker: all dates failed summarization, using full raw text")
-		fullText = appendMediaAnalysis(ctx, deps, msgs, fullText, logger)
+		fullText = prependMediaDescs(msgs, fullText, mediaDescs)
 		extractor := knowledgegraph.NewExtractorWithPrompt(p, model, minConfidence, listenExtractSystemPrompt)
 		if deps.LLMSem != nil {
 			extractor.SetRateLimiter(deps.LLMSem)
@@ -372,6 +443,7 @@ func processGroupBatch(ctx context.Context, deps *ExtractionWorkerDeps, agentID,
 			"failed_dates", summarizeFailCount, "total_dates", len(dateGroups.order))
 	}
 
+	setStep("extraction")
 	extractStart := time.Now()
 	// Extract KG from the combined per-date summaries using the default extraction prompt.
 	extractionText := combinedSummary.String()
@@ -546,12 +618,14 @@ func summarizeConversationDepth(ctx context.Context, p providers.Provider, model
 		},
 		Model: model,
 		Options: map[string]any{
-			"max_tokens":  8192,
+			"max_tokens":  summarizeMaxTokens,
 			"temperature": 0.3,
 		},
 	}
 
-	resp, err := p.Chat(ctx, req)
+	timeoutCtx, cancel := context.WithTimeout(ctx, summarizeCallTimeout)
+	resp, err := p.Chat(timeoutCtx, req)
+	cancel()
 	if err != nil {
 		return "", fmt.Errorf("summarize conversation: %w", err)
 	}
@@ -641,6 +715,30 @@ func appendMediaAnalysis(ctx context.Context, deps *ExtractionWorkerDeps, msgs [
 	logger.Info("whatsapp extraction worker: media analysis result",
 		"media_text_len", len(mediaStr))
 	return text + mediaStr
+}
+
+// prependMediaDescs appends pre-fetched media descriptions to the text.
+// Returns text unchanged if no descriptions are available.
+func prependMediaDescs(msgs []store.ListenRawMessage, text string, mediaDescs map[uuid.UUID]string) string {
+	if len(mediaDescs) == 0 {
+		return text
+	}
+	var mediaText strings.Builder
+	wrote := false
+	for _, m := range msgs {
+		if desc, ok := mediaDescs[m.ID]; ok {
+			if !wrote {
+				mediaText.WriteString("\n\n[Media Content Analysis]\n")
+				wrote = true
+			}
+			ts := m.MsgTimestamp.Format("2006-01-02 15:04:05")
+			fmt.Fprintf(&mediaText, "\n[%s] %s:\n%s\n", ts, m.Sender, desc)
+		}
+	}
+	if !wrote {
+		return text
+	}
+	return text + mediaText.String()
 }
 
 // buildConversationTextFromRaw formats raw messages into structured text for LLM extraction.

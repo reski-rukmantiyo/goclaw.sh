@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -67,10 +68,12 @@ func NewExtractorWithPrompt(provider providers.Provider, model string, minConfid
 func (e *Extractor) SetRateLimiter(l LLMRateLimiter) { e.limiter = l }
 
 const (
-	maxChunkChars      = 12000
-	maxSplitDepth      = 2
-	lastResortSize     = 2000
+	maxChunkChars       = 12000
+	maxSplitDepth       = 2
+	lastResortSize      = 2000
 	maxConcurrentChunks = 3
+	extractionMaxTokens = 6144
+	extractionTimeout   = 90 * time.Second
 )
 
 // Extract calls the LLM to extract entities and relations from text.
@@ -185,7 +188,7 @@ func (e *Extractor) extractChunkSplit(ctx context.Context, text string, depth in
 		},
 		Model: e.model,
 		Options: map[string]any{
-			"max_tokens":  8192,
+			"max_tokens":  extractionMaxTokens,
 			"temperature": 0.2,
 		},
 	}
@@ -206,7 +209,9 @@ func (e *Extractor) extractChunkSplit(ctx context.Context, text string, depth in
 		defer e.limiter.Release()
 	}
 
-	resp, err := e.provider.Chat(ctx, req)
+	callCtx, cancel := context.WithTimeout(ctx, extractionTimeout)
+	defer cancel()
+	resp, err := e.provider.Chat(callCtx, req)
 	if err != nil {
 		return nil, fmt.Errorf("kg extraction LLM call (depth %d): %w", depth, err)
 	}
