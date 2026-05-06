@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
 
@@ -163,20 +164,50 @@ func (s *PGKnowledgeGraphStore) IngestExtraction(ctx context.Context, agentID, u
 	now := time.Now()
 	tid := tenantIDForInsert(ctx)
 
-	// Upsert entities and build external_id → DB UUID lookup for relations
+	// Batch upsert entities using unnest for fewer DB round trips.
 	extIDToUUID := make(map[string]uuid.UUID, len(entities))
-	for i := range entities {
-		e := &entities[i]
-		e.AgentID = agentID
-		e.UserID = userID
-		props, _ := json.Marshal(e.Properties)
-		id := uuid.Must(uuid.NewV7())
-		// Use RETURNING to get the actual ID (could be existing row on conflict)
-		var actualID uuid.UUID
-		if err := tx.QueryRowContext(ctx, `
+	if len(entities) > 0 {
+		ids := make([]string, len(entities))
+		extIDs := make([]string, len(entities))
+		names := make([]string, len(entities))
+		entTypes := make([]string, len(entities))
+		descs := make([]string, len(entities))
+		propsJSON := make([]string, len(entities))
+		srcIDs := make([]string, len(entities))
+		confidences := make([]float64, len(entities))
+		eventTimes := make([]*time.Time, len(entities))
+
+		for i, e := range entities {
+			entities[i].AgentID = agentID
+			entities[i].UserID = userID
+			props, _ := json.Marshal(e.Properties)
+			ids[i] = uuid.Must(uuid.NewV7()).String()
+			extIDs[i] = e.ExternalID
+			names[i] = e.Name
+			entTypes[i] = e.EntityType
+			descs[i] = e.Description
+			propsJSON[i] = string(props)
+			srcIDs[i] = e.SourceID
+			confidences[i] = e.Confidence
+			eventTimes[i] = e.EventTime
+		}
+
+		rows, err := tx.QueryContext(ctx, `
+			WITH new_e AS (
+				SELECT * FROM unnest(
+					$1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[],
+					$6::text[], $7::text::jsonb[], $8::text[], $9::float8[],
+					$10::uuid[], $11::timestamptz[], $12::timestamptz[], $13::timestamptz[]
+				) AS t(id, agent_id, user_id, external_id, name, entity_type,
+				       description, properties, source_id, confidence, tenant_id,
+				       created_at, event_time)
+			)
 			INSERT INTO kg_entities
-				(id, agent_id, user_id, external_id, name, entity_type, description, properties, source_id, confidence, tenant_id, created_at, updated_at, event_time)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, $13)
+				(id, agent_id, user_id, external_id, name, entity_type, description,
+				 properties, source_id, confidence, tenant_id, created_at, updated_at, event_time)
+			SELECT id, agent_id, user_id, external_id, name, entity_type, description,
+			       properties, source_id, confidence, tenant_id, created_at, created_at, event_time
+			FROM new_e
 			ON CONFLICT (agent_id, user_id, external_id) DO UPDATE SET
 				name        = EXCLUDED.name,
 				entity_type = EXCLUDED.entity_type,
@@ -187,65 +218,80 @@ func (s *PGKnowledgeGraphStore) IngestExtraction(ctx context.Context, agentID, u
 				tenant_id   = EXCLUDED.tenant_id,
 				updated_at  = EXCLUDED.updated_at,
 				event_time  = CASE WHEN EXCLUDED.event_time IS NOT NULL THEN EXCLUDED.event_time ELSE kg_entities.event_time END
-			RETURNING id`,
-			id, aid, userID, e.ExternalID, e.Name, e.EntityType,
-			e.Description, props, e.SourceID, e.Confidence, tid, now, e.EventTime,
-		).Scan(&actualID); err != nil {
-			return nil, err
+			RETURNING id, external_id`,
+			pq.Array(ids), pq.Array(makeUUIDArr(len(entities), aid)), pq.Array(makeStringArr(len(entities), userID)),
+			pq.Array(extIDs), pq.Array(names), pq.Array(entTypes),
+			pq.Array(propsJSON), pq.Array(srcIDs), pq.Array(confidences),
+			pq.Array(makeUUIDArr(len(entities), tid)), pq.Array(makeTimeArr(len(entities), now)),
+			pq.Array(eventTimes),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("kg batch entity upsert: %w", err)
 		}
-		extIDToUUID[e.ExternalID] = actualID
-	}
-
-	// Batch-generate embeddings for all upserted entities (fire-and-forget on error).
-	if s.embProvider != nil && len(extIDToUUID) > 0 {
-		texts := make([]string, 0, len(entities))
-		ids := make([]uuid.UUID, 0, len(entities))
-		for _, e := range entities {
-			texts = append(texts, e.Name+" "+e.Description)
-			ids = append(ids, extIDToUUID[e.ExternalID])
-		}
-		embeddings, embErr := s.embProvider.Embed(ctx, texts)
-		if embErr != nil {
-			slog.Warn("kg entity embedding batch failed", "error", embErr)
-		} else {
-			for i, emb := range embeddings {
-				if len(emb) == 0 {
-					continue
-				}
-				vecStr := vectorToString(emb)
-				if _, err := tx.ExecContext(ctx,
-					`UPDATE kg_entities SET embedding = $1::vector WHERE id = $2`,
-					vecStr, ids[i],
-				); err != nil {
-					slog.Warn("kg entity embedding update failed", "entity_id", ids[i], "error", err)
-				}
+		for rows.Next() {
+			var actualID uuid.UUID
+			var extID string
+			if err := rows.Scan(&actualID, &extID); err != nil {
+				rows.Close()
+				return nil, err
 			}
+			extIDToUUID[extID] = actualID
 		}
+		rows.Close()
 	}
 
-	for i := range relations {
-		r := &relations[i]
-		r.AgentID = agentID
-		r.UserID = userID
-		// Resolve external_id references to actual DB UUIDs
-		src, ok1 := extIDToUUID[r.SourceEntityID]
-		tgt, ok2 := extIDToUUID[r.TargetEntityID]
-		if !ok1 || !ok2 {
-			continue // skip relations referencing unknown entities
+	// Batch upsert relations using unnest.
+	if len(relations) > 0 {
+		relIDs := make([]string, 0, len(relations))
+		relSrcIDs := make([]string, 0, len(relations))
+		relTypes := make([]string, 0, len(relations))
+		relTgtIDs := make([]string, 0, len(relations))
+		relConfs := make([]float64, 0, len(relations))
+		relProps := make([]string, 0, len(relations))
+
+		for _, r := range relations {
+			src, ok1 := extIDToUUID[r.SourceEntityID]
+			tgt, ok2 := extIDToUUID[r.TargetEntityID]
+			if !ok1 || !ok2 {
+				continue
+			}
+			props, _ := json.Marshal(r.Properties)
+			relIDs = append(relIDs, uuid.Must(uuid.NewV7()).String())
+			relSrcIDs = append(relSrcIDs, src.String())
+			relTypes = append(relTypes, r.RelationType)
+			relTgtIDs = append(relTgtIDs, tgt.String())
+			relConfs = append(relConfs, r.Confidence)
+			relProps = append(relProps, string(props))
 		}
-		props, _ := json.Marshal(r.Properties)
-		id := uuid.Must(uuid.NewV7())
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO kg_relations
-				(id, agent_id, user_id, source_entity_id, relation_type, target_entity_id, confidence, properties, tenant_id, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-			ON CONFLICT (agent_id, user_id, source_entity_id, relation_type, target_entity_id) DO UPDATE SET
-				confidence  = EXCLUDED.confidence,
-				properties  = EXCLUDED.properties,
-				tenant_id   = EXCLUDED.tenant_id`,
-			id, aid, userID, src, r.RelationType, tgt, r.Confidence, props, tid, now,
-		); err != nil {
-			return nil, err
+
+		if len(relIDs) > 0 {
+			_, err := tx.ExecContext(ctx, `
+				WITH new_r AS (
+					SELECT * FROM unnest(
+						$1::uuid[], $2::uuid[], $3::text[], $4::uuid[], $5::text[],
+						$6::uuid[], $7::float8[], $8::text::jsonb[], $9::uuid[], $10::timestamptz[]
+					) AS t(id, agent_id, user_id, source_entity_id, relation_type,
+					       target_entity_id, confidence, properties, tenant_id, created_at)
+				)
+				INSERT INTO kg_relations
+					(id, agent_id, user_id, source_entity_id, relation_type,
+					 target_entity_id, confidence, properties, tenant_id, created_at)
+				SELECT id, agent_id, user_id, source_entity_id, relation_type,
+				       target_entity_id, confidence, properties, tenant_id, created_at
+				FROM new_r
+				ON CONFLICT (agent_id, user_id, source_entity_id, relation_type, target_entity_id) DO UPDATE SET
+					confidence  = EXCLUDED.confidence,
+					properties  = EXCLUDED.properties,
+					tenant_id   = EXCLUDED.tenant_id`,
+				pq.Array(relIDs), pq.Array(makeUUIDStrArr(len(relIDs), aid.String())),
+				pq.Array(makeStringArr(len(relIDs), userID)), pq.Array(relSrcIDs),
+				pq.Array(relTypes), pq.Array(relTgtIDs), pq.Array(relConfs),
+				pq.Array(relProps), pq.Array(makeUUIDStrArr(len(relIDs), tid.String())),
+				pq.Array(makeTimeArr(len(relIDs), now)),
+			)
+			if err != nil {
+				return nil, fmt.Errorf("kg batch relation upsert: %w", err)
+			}
 		}
 	}
 
@@ -258,7 +304,93 @@ func (s *PGKnowledgeGraphStore) IngestExtraction(ctx context.Context, agentID, u
 	for _, uid := range extIDToUUID {
 		entityIDs = append(entityIDs, uid.String())
 	}
+
+	// Generate embeddings post-commit (best-effort, outside transaction).
+	if s.embProvider != nil && len(extIDToUUID) > 0 {
+		s.generateEmbeddingsAsync(ctx, entities, extIDToUUID)
+	}
+
 	return entityIDs, nil
+}
+
+// generateEmbeddingsAsync generates embeddings for entities outside the main transaction.
+// Failures are logged and skipped — BackfillKGEmbeddings handles missing ones.
+func (s *PGKnowledgeGraphStore) generateEmbeddingsAsync(ctx context.Context, entities []store.Entity, extIDToUUID map[string]uuid.UUID) {
+	texts := make([]string, 0, len(entities))
+	ids := make([]uuid.UUID, 0, len(entities))
+	for _, e := range entities {
+		if uid, ok := extIDToUUID[e.ExternalID]; ok {
+			texts = append(texts, e.Name+" "+e.Description)
+			ids = append(ids, uid)
+		}
+	}
+	if len(texts) == 0 {
+		return
+	}
+
+	embeddings, embErr := s.embProvider.Embed(ctx, texts)
+	if embErr != nil {
+		slog.Warn("kg entity embedding batch failed", "error", embErr)
+		return
+	}
+
+	// Batch update embeddings using unnest.
+	vecStrs := make([]string, 0, len(embeddings))
+	vecIDs := make([]string, 0, len(embeddings))
+	for i, emb := range embeddings {
+		if len(emb) == 0 {
+			continue
+		}
+		vecStrs = append(vecStrs, vectorToString(emb))
+		vecIDs = append(vecIDs, ids[i].String())
+	}
+	if len(vecStrs) == 0 {
+		return
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE kg_entities e SET embedding = d.vec::vector
+		FROM (SELECT * FROM unnest($1::uuid[], $2::text[]) AS d(id, vec))
+		WHERE e.id = d.id::uuid`,
+		pq.Array(vecIDs), pq.Array(vecStrs),
+	); err != nil {
+		slog.Warn("kg entity embedding batch update failed", "error", err)
+	}
+}
+
+// makeUUIDArr returns a slice with the same UUID repeated n times.
+func makeUUIDArr(n int, v uuid.UUID) []string {
+	s := make([]string, n)
+	for i := range s {
+		s[i] = v.String()
+	}
+	return s
+}
+
+// makeUUIDStrArr returns a slice with the same UUID string repeated n times.
+func makeUUIDStrArr(n int, v string) []string {
+	s := make([]string, n)
+	for i := range s {
+		s[i] = v
+	}
+	return s
+}
+
+// makeStringArr returns a slice with the same string repeated n times.
+func makeStringArr(n int, v string) []string {
+	s := make([]string, n)
+	for i := range s {
+		s[i] = v
+	}
+	return s
+}
+
+// makeTimeArr returns a slice with the same time repeated n times.
+func makeTimeArr(n int, v time.Time) []time.Time {
+	s := make([]time.Time, n)
+	for i := range s {
+		s[i] = v
+	}
+	return s
 }
 
 func (s *PGKnowledgeGraphStore) PruneByConfidence(ctx context.Context, agentID, userID string, minConfidence float64) (int, error) {

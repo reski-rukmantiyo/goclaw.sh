@@ -250,7 +250,7 @@ func (d *gatewayDeps) runLifecycle(
 	// WhatsApp listen-only KG extraction worker.
 	// Registered here (after all setup) so the server is up before any extraction begins.
 	if d.pgStores.ListenRawMessages != nil && d.pgStores.KnowledgeGraph != nil && d.providerRegistry != nil {
-		cleanupExtraction := whatsapp.RegisterExtractionWorker(whatsapp.ExtractionWorkerDeps{
+		cleanupExtraction := whatsapp.RegisterExtractionWorker(&whatsapp.ExtractionWorkerDeps{
 			RawMsgStore:   d.pgStores.ListenRawMessages,
 			KGStore:       d.pgStores.KnowledgeGraph,
 			SystemConfigs: d.pgStores.SystemConfigs,

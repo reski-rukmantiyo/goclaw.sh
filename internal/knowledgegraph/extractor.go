@@ -229,22 +229,40 @@ func (e *Extractor) extractChunkSplit(ctx context.Context, text string, depth in
 		"depth", depth, "input_len", len(text),
 		"left_len", half, "right_len", len(text)-half)
 
-	var merged *ExtractionResult
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(2)
 
-	left, err := e.extractChunkSplit(ctx, text[:half], depth+1)
-	if err != nil {
-		slog.Warn("kg extraction: left split failed", "depth", depth+1, "error", err)
-	} else {
+	var left, right *ExtractionResult
+	g.Go(func() error {
+		r, err := e.extractChunkSplit(gctx, text[:half], depth+1)
+		if err != nil {
+			slog.Warn("kg extraction: left split failed", "depth", depth+1, "error", err)
+			return nil
+		}
+		left = r
+		return nil
+	})
+	g.Go(func() error {
+		r, err := e.extractChunkSplit(gctx, text[half:], depth+1)
+		if err != nil {
+			slog.Warn("kg extraction: right split failed", "depth", depth+1, "error", err)
+			return nil
+		}
+		right = r
+		return nil
+	})
+	g.Wait()
+
+	var merged *ExtractionResult
+	if left != nil {
 		merged = left
 	}
-
-	right, err := e.extractChunkSplit(ctx, text[half:], depth+1)
-	if err != nil {
-		slog.Warn("kg extraction: right split failed", "depth", depth+1, "error", err)
-	} else if merged != nil {
-		merged = mergeResults(merged, right)
-	} else {
-		merged = right
+	if right != nil {
+		if merged != nil {
+			merged = mergeResults(merged, right)
+		} else {
+			merged = right
+		}
 	}
 
 	if merged == nil {

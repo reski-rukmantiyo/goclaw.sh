@@ -9,9 +9,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
@@ -67,7 +69,7 @@ func (a *MediaAnalyzer) contextWithToolSettings(ctx context.Context, mediaType s
 }
 
 // Analyze processes a list of media references and returns a concatenated
-// description of all media content. Each file is analyzed independently;
+// description of all media content. Each file is analyzed concurrently;
 // failures are logged and skipped (graceful degradation).
 // Returns ("", nil) if media analysis is disabled via system config.
 func (a *MediaAnalyzer) Analyze(ctx context.Context, refs []store.RawMediaRef) (string, error) {
@@ -80,17 +82,26 @@ func (a *MediaAnalyzer) Analyze(ctx context.Context, refs []store.RawMediaRef) (
 		return "", nil
 	}
 
-	var descs []string
-	for _, ref := range refs {
-		desc, err := a.analyzeOne(ctx, ref, lim)
-		if err != nil {
-			slog.Warn("whatsapp media analyzer: failed to analyze",
-				"media_type", ref.MediaType, "file", ref.FileName, "error", err)
-			descs = append(descs, fmt.Sprintf("[Media: %s — analysis failed]", ref.MediaType))
-			continue
-		}
-		descs = append(descs, desc)
+	descs := make([]string, len(refs))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(lim.concurrency)
+
+	for i, ref := range refs {
+		i, ref := i, ref
+		g.Go(func() error {
+			desc, err := a.analyzeOne(gctx, ref, lim)
+			if err != nil {
+				slog.Warn("whatsapp media analyzer: failed to analyze",
+					"media_type", ref.MediaType, "file", ref.FileName, "error", err)
+				descs[i] = fmt.Sprintf("[Media: %s — analysis failed]", ref.MediaType)
+				return nil
+			}
+			descs[i] = desc
+			return nil
+		})
 	}
+	g.Wait()
+
 	return strings.Join(descs, "\n"), nil
 }
 
@@ -155,7 +166,9 @@ const (
 	defaultMaxVideoMB   = 100
 	defaultMaxDefaultMB = 20
 
-	defaultMediaTimeoutSec = 30
+	defaultMediaTimeoutSec     = 30
+	defaultMediaConcurrency    = 4
+	defaultMsgMediaConcurrency = 4
 )
 
 // mediaLimits holds size limits loaded from system configs.
@@ -167,6 +180,7 @@ type mediaLimits struct {
 	maxVideoBytes   int64
 	maxDefaultBytes int64
 	timeout         time.Duration
+	concurrency     int
 }
 
 // sizeLimitForType returns the size limit for the given media type.
@@ -197,6 +211,7 @@ func (a *MediaAnalyzer) loadLimits(ctx context.Context) mediaLimits {
 		maxVideoBytes:   int64(defaultMaxVideoMB) * 1024 * 1024,
 		maxDefaultBytes: int64(defaultMaxDefaultMB) * 1024 * 1024,
 		timeout:         time.Duration(defaultMediaTimeoutSec) * time.Second,
+		concurrency:     defaultMediaConcurrency,
 	}
 	if a.systemCfg == nil {
 		return lim
@@ -237,6 +252,11 @@ func (a *MediaAnalyzer) loadLimits(ctx context.Context) mediaLimits {
 	}
 	if v := configs["listen.media_analysis.enabled"]; v == "false" || v == "0" {
 		lim.enabled = false
+	}
+	if v := configs["listen.media_analysis.concurrency"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			lim.concurrency = n
+		}
 	}
 	return lim
 }
@@ -300,27 +320,39 @@ func mimeFromExt(path string) string {
 }
 
 // analyzeMediaAttachments processes media attachments for a batch of messages.
+// Analyzes messages concurrently for improved throughput.
 // Returns a map of message ID → media description text.
 func analyzeMediaAttachments(ctx context.Context, msgs []store.ListenRawMessage, analyzer *MediaAnalyzer) map[uuid.UUID]string {
 	if analyzer == nil {
 		return nil
 	}
 
+	var mu sync.Mutex
 	result := make(map[uuid.UUID]string)
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(defaultMsgMediaConcurrency)
+
 	for _, m := range msgs {
 		if len(m.MediaRefs) == 0 {
 			continue
 		}
-		desc, err := analyzer.Analyze(ctx, m.MediaRefs)
-		if err != nil {
-			slog.Warn("whatsapp extraction: media analysis failed",
-				"msg_id", m.ID, "error", err)
-			continue
-		}
-		if desc != "" {
-			result[m.ID] = desc
-		}
+		m := m
+		g.Go(func() error {
+			desc, err := analyzer.Analyze(gctx, m.MediaRefs)
+			if err != nil {
+				slog.Warn("whatsapp extraction: media analysis failed",
+					"msg_id", m.ID, "error", err)
+				return nil
+			}
+			if desc != "" {
+				mu.Lock()
+				result[m.ID] = desc
+				mu.Unlock()
+			}
+			return nil
+		})
 	}
+	g.Wait()
 	return result
 }
 
