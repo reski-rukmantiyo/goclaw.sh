@@ -214,6 +214,15 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 	ingestAndFinalize(ctx, deps, result, agentID, graphID, msgs)
 }
 
+// rawMsgIDs extracts UUIDs from a slice of raw messages.
+func rawMsgIDs(msgs []store.ListenRawMessage) []uuid.UUID {
+	ids := make([]uuid.UUID, len(msgs))
+	for i, m := range msgs {
+		ids[i] = m.ID
+	}
+	return ids
+}
+
 // markMsgsFailed marks messages as failed with the given error for retry tracking.
 func markMsgsFailed(ctx context.Context, deps ExtractionWorkerDeps, msgs []store.ListenRawMessage, extractErr error) {
 	ids := make([]uuid.UUID, len(msgs))
