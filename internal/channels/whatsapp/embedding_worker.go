@@ -4,22 +4,93 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/nextlevelbuilder/goclaw/internal/memory"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
 
 const (
-	defaultEmbeddingPollSec = 30
-	embeddingBatchSize      = 50
-	embeddingChunkSize      = 1000
-	embeddingChunkOverlap   = 200
-	embeddingEmbBatch       = 50
+	defaultEmbeddingPollSec   = 30
+	embeddingMinPollSec       = 5
+	embeddingBatchSize        = 100
+	embeddingEmbBatch         = 50
+	embeddingMaxConcurrent    = 3
+	embeddingBacklogThreshold = 100
 )
+
+type embeddingConfig struct {
+	batchSize        int
+	maxConcurrent    int
+	defaultPollSec   int
+	minPollSec       int
+	backlogThreshold int
+	maxChunkLen      int // 0 = evaluate from messages + model
+	chunkOverlap     int // 0 = evaluate from messages + model
+}
+
+func defaultEmbeddingConfig() embeddingConfig {
+	return embeddingConfig{
+		batchSize:        embeddingBatchSize,
+		maxConcurrent:    embeddingMaxConcurrent,
+		defaultPollSec:   defaultEmbeddingPollSec,
+		minPollSec:       embeddingMinPollSec,
+		backlogThreshold: embeddingBacklogThreshold,
+	}
+}
+
+func loadEmbeddingConfig(ctx context.Context, sysCfg store.SystemConfigStore) embeddingConfig {
+	cfg := defaultEmbeddingConfig()
+	if sysCfg == nil {
+		return cfg
+	}
+	configs, err := sysCfg.List(ctx)
+	if err != nil {
+		return cfg
+	}
+	if v := configs["listen.embedding.batch_size"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.batchSize = n
+		}
+	}
+	if v := configs["listen.embedding.max_concurrent"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.maxConcurrent = n
+		}
+	}
+	if v := configs["listen.embedding.poll_sec"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.defaultPollSec = n
+		}
+	}
+	if v := configs["listen.embedding.min_poll_sec"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.minPollSec = n
+		}
+	}
+	if v := configs["listen.embedding.backlog_threshold"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.backlogThreshold = n
+		}
+	}
+	if v := configs["listen.embedding.chunk_size"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.maxChunkLen = n
+		}
+	}
+	if v := configs["listen.embedding.chunk_overlap"]; v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.chunkOverlap = n
+		}
+	}
+	return cfg
+}
 
 // EmbeddingWorkerDeps bundles dependencies for the raw message embedding worker.
 type EmbeddingWorkerDeps struct {
@@ -39,20 +110,30 @@ func RegisterEmbeddingWorker(deps EmbeddingWorkerDeps) func() {
 		return func() {}
 	}
 
-	pollSec := deps.PollSec
-	if pollSec <= 0 {
-		pollSec = defaultEmbeddingPollSec
+	basePollSec := deps.PollSec
+	if basePollSec <= 0 {
+		basePollSec = defaultEmbeddingPollSec
 	}
-	pollInterval := time.Duration(pollSec) * time.Second
 
 	stopCh := make(chan struct{})
 	go func() {
-		ticker := time.NewTicker(pollInterval)
-		defer ticker.Stop()
 		for {
+			ctx := store.WithTenantID(context.Background(), deps.TenantID)
+			cfg := loadEmbeddingConfig(ctx, deps.SystemConfigs)
+			if basePollSec > 0 {
+				cfg.defaultPollSec = basePollSec
+			}
+
+			processAllEmbeddingBatches(deps, cfg)
+
+			pending, _, _ := deps.RawMsgStore.EmbeddingStats(ctx)
+			nextInterval := time.Duration(cfg.defaultPollSec) * time.Second
+			if pending > cfg.backlogThreshold {
+				nextInterval = time.Duration(cfg.minPollSec) * time.Second
+			}
+
 			select {
-			case <-ticker.C:
-				processAllEmbeddingBatches(deps)
+			case <-time.After(nextInterval):
 			case <-stopCh:
 				return
 			}
@@ -60,11 +141,13 @@ func RegisterEmbeddingWorker(deps EmbeddingWorkerDeps) func() {
 	}()
 
 	slog.Info("whatsapp embedding worker: started",
-		"poll_interval", pollInterval, "batch_size", embeddingBatchSize)
+		"poll_interval", fmt.Sprintf("%ds/%ds", basePollSec, embeddingMinPollSec),
+		"batch_size", embeddingBatchSize, "max_concurrent", embeddingMaxConcurrent,
+		"chunk_eval", "auto")
 	return func() { close(stopCh) }
 }
 
-func processAllEmbeddingBatches(deps EmbeddingWorkerDeps) {
+func processAllEmbeddingBatches(deps EmbeddingWorkerDeps, cfg embeddingConfig) {
 	ctx := store.WithTenantID(context.Background(), deps.TenantID)
 
 	groups, err := deps.RawMsgStore.ListPendingEmbeddingGroups(ctx)
@@ -78,13 +161,25 @@ func processAllEmbeddingBatches(deps EmbeddingWorkerDeps) {
 
 	slog.Debug("whatsapp embedding worker: processing groups", "count", len(groups))
 
+	sem := semaphore.NewWeighted(int64(cfg.maxConcurrent))
+	var wg sync.WaitGroup
+
 	for _, g := range groups {
-		processEmbeddingGroupBatch(ctx, deps, g.AgentID, g.GraphID)
+		if err := sem.Acquire(ctx, 1); err != nil {
+			break
+		}
+		wg.Add(1)
+		go func(agentID, graphID string) {
+			defer wg.Done()
+			defer sem.Release(1)
+			processEmbeddingGroupBatch(ctx, deps, agentID, graphID, cfg)
+		}(g.AgentID, g.GraphID)
 	}
+	wg.Wait()
 }
 
-func processEmbeddingGroupBatch(ctx context.Context, deps EmbeddingWorkerDeps, agentID, graphID string) {
-	msgs, err := deps.RawMsgStore.ListPendingEmbeddings(ctx, agentID, graphID, embeddingBatchSize)
+func processEmbeddingGroupBatch(ctx context.Context, deps EmbeddingWorkerDeps, agentID, graphID string, cfg embeddingConfig) {
+	msgs, err := deps.RawMsgStore.ListPendingEmbeddings(ctx, agentID, graphID, cfg.batchSize)
 	if err != nil {
 		slog.Warn("whatsapp embedding worker: failed to list pending embeddings",
 			"agent_id", agentID, "graph_id", graphID, "error", err)
@@ -94,12 +189,33 @@ func processEmbeddingGroupBatch(ctx context.Context, deps EmbeddingWorkerDeps, a
 		return
 	}
 
-	// Get embedding provider from the PG chunk store
 	provider, hasProvider := getEmbeddingProvider(deps.ChunkStore)
 	if !hasProvider {
 		slog.Warn("whatsapp embedding worker: no embedding provider, skipping batch",
 			"agent_id", agentID, "graph_id", graphID)
 		return
+	}
+
+	// Resolve chunk params: system_configs override > evaluator from actual messages
+	maxChunkLen := cfg.maxChunkLen
+	chunkOverlap := cfg.chunkOverlap
+	if maxChunkLen == 0 || chunkOverlap == 0 {
+		bodies := make([]string, len(msgs))
+		for i, m := range msgs {
+			bodies[i] = m.Body
+		}
+		stats := memory.EvaluateRawMessages(bodies)
+		evalLen, evalOverlap := memory.EvaluateChunkParams(provider.Model(), stats)
+		if maxChunkLen == 0 {
+			maxChunkLen = evalLen
+		}
+		if chunkOverlap == 0 {
+			chunkOverlap = evalOverlap
+		}
+		slog.Debug("whatsapp embedding worker: evaluated chunk params",
+			"model", provider.Model(), "max_chunk_len", maxChunkLen,
+			"chunk_overlap", chunkOverlap, "msg_count", stats.TotalMsgs,
+			"avg_body_len", stats.AvgBodyLen, "p95_body_len", stats.P95BodyLen)
 	}
 
 	chatGroups := groupRawMsgsByChat(msgs)
@@ -110,52 +226,55 @@ func processEmbeddingGroupBatch(ctx context.Context, deps EmbeddingWorkerDeps, a
 
 	for _, chatID := range chatGroups.order {
 		chatMsgs := chatGroups.groups[chatID]
-		chatText := buildEmbeddingTextFromRaw(chatMsgs)
-		if strings.TrimSpace(chatText) == "" {
-			continue
-		}
+		dayGroups := groupRawMsgsByDay(chatMsgs)
 
-		chunks := memory.ChunkText(chatText, embeddingChunkSize, embeddingChunkOverlap)
-		for ci, chunk := range chunks {
-			if strings.TrimSpace(chunk.Text) == "" {
+		for _, dayKey := range dayGroups.order {
+			dayMsgs := dayGroups.groups[dayKey]
+			dayText := buildEmbeddingTextFromRaw(dayMsgs)
+			if strings.TrimSpace(dayText) == "" {
 				continue
 			}
 
-			timeFrom, timeTo := chunkTimeRange(chatMsgs)
-			senders := uniqueSenders(chatMsgs)
-			msgIDs := chunkSourceIDs(chatMsgs)
+			chunks := memory.ChunkText(dayText, maxChunkLen, chunkOverlap)
+			for ci, chunk := range chunks {
+				if strings.TrimSpace(chunk.Text) == "" {
+					continue
+				}
 
-			allChunks = append(allChunks, store.RawMessageChunk{
-				AgentID:      agentID,
-				GraphID:      graphID,
-				ChatID:       chatMsgs[0].ChatID,
-				ChatName:     chatMsgs[0].ChatName,
-				Sender:       senders,
-				SenderID:     chatMsgs[0].SenderID,
-				MsgTimeFrom:  timeFrom,
-				MsgTimeTo:    timeTo,
-				ChunkIndex:   ci,
-				Text:         chunk.Text,
-				ContentHash:  memory.ContentHash(chunk.Text),
-				SourceMsgIDs: msgIDs,
-			})
-			allTexts = append(allTexts, chunk.Text)
-		}
+				timeFrom, timeTo := chunkTimeRange(dayMsgs)
+				senders := uniqueSenders(dayMsgs)
+				msgIDs := chunkSourceIDs(dayMsgs)
 
-		for _, m := range chatMsgs {
-			processedIDs = append(processedIDs, m.ID)
+				allChunks = append(allChunks, store.RawMessageChunk{
+					AgentID:      agentID,
+					GraphID:      graphID,
+					ChatID:       chatMsgs[0].ChatID,
+					ChatName:     chatMsgs[0].ChatName,
+					Sender:       senders,
+					SenderID:     dayMsgs[0].SenderID,
+					MsgTimeFrom:  timeFrom,
+					MsgTimeTo:    timeTo,
+					ChunkIndex:   ci,
+					Text:         chunk.Text,
+					ContentHash:  memory.ContentHash(chunk.Text),
+					SourceMsgIDs: msgIDs,
+				})
+				allTexts = append(allTexts, chunk.Text)
+			}
+
+			for _, m := range dayMsgs {
+				processedIDs = append(processedIDs, m.ID)
+			}
 		}
 	}
 
 	if len(allChunks) == 0 {
 		slog.Debug("whatsapp embedding worker: no chunks produced",
 			"agent_id", agentID, "graph_id", graphID)
-		// Still mark as embedded to avoid reprocessing empty batches
 		_ = deps.RawMsgStore.MarkEmbedded(ctx, processedIDs)
 		return
 	}
 
-	// Embed in batches
 	var embeddings [][]float32
 	for start := 0; start < len(allTexts); start += embeddingEmbBatch {
 		end := min(start+embeddingEmbBatch, len(allTexts))
@@ -215,6 +334,23 @@ func groupRawMsgsByChat(msgs []store.ListenRawMessage) chatGroupOrder {
 		cg.groups[m.ChatID] = append(cg.groups[m.ChatID], m)
 	}
 	return cg
+}
+
+type dayGroupOrder struct {
+	order  []string
+	groups map[string][]store.ListenRawMessage
+}
+
+func groupRawMsgsByDay(msgs []store.ListenRawMessage) dayGroupOrder {
+	dg := dayGroupOrder{groups: make(map[string][]store.ListenRawMessage)}
+	for _, m := range msgs {
+		dayKey := m.MsgTimestamp.Format("2006-01-02")
+		if _, ok := dg.groups[dayKey]; !ok {
+			dg.order = append(dg.order, dayKey)
+		}
+		dg.groups[dayKey] = append(dg.groups[dayKey], m)
+	}
+	return dg
 }
 
 func buildEmbeddingTextFromRaw(msgs []store.ListenRawMessage) string {

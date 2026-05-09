@@ -152,23 +152,23 @@ func (s *PGRawMessageChunkStore) Search(ctx context.Context, query, agentID stri
 }
 
 func (s *PGRawMessageChunkStore) ftsSearch(ctx context.Context, query string, agentID uuid.UUID, opts store.RawMessageChunkSearchOptions, limit int) ([]scoredRawChunk, error) {
-	tc, tcArgs, _, err := scopeClause(ctx, 5)
-	if err != nil {
-		return nil, err
+	// When GraphID is set (shared knowledge search), scope by graph_id instead of agent_id.
+	// Multiple agents can contribute chunks to the same graph.
+	var primaryCol string
+	var primaryVal any
+	if opts.GraphID != "" {
+		primaryCol, primaryVal = "graph_id", opts.GraphID
+	} else {
+		primaryCol, primaryVal = "agent_id", agentID
 	}
 
-	args := []any{query, agentID, query}
+	args := []any{query, primaryVal, query}
 	paramIdx := 4
 
 	var extraWhere string
 	if opts.ChatID != "" {
 		extraWhere += fmt.Sprintf(" AND chat_id = $%d", paramIdx)
 		args = append(args, opts.ChatID)
-		paramIdx++
-	}
-	if opts.GraphID != "" {
-		extraWhere += fmt.Sprintf(" AND graph_id = $%d", paramIdx)
-		args = append(args, opts.GraphID)
 		paramIdx++
 	}
 	if opts.FromTime != nil {
@@ -182,13 +182,21 @@ func (s *PGRawMessageChunkStore) ftsSearch(ctx context.Context, query string, ag
 		paramIdx++
 	}
 
+	tc, tcArgs, _, err := scopeClause(ctx, paramIdx)
+	if err != nil {
+		return nil, err
+	}
+
 	limitN := paramIdx + len(tcArgs)
+	// Use OR logic for FTS: any token match contributes to score.
+	// plainto_tsquery produces AND-connected tokens; we convert to OR
+	// to avoid excluding chunks missing a single token.
 	q := fmt.Sprintf(`SELECT id, agent_id, graph_id, chat_id, chat_name, sender, sender_id,
 			msg_time_from, msg_time_to, chunk_index, text, source_msg_ids,
-			ts_rank(tsv, plainto_tsquery('simple', $1)) AS score
+			ts_rank(tsv, (SELECT replace(plainto_tsquery('simple', $1)::text, '&', '|')::tsquery)) AS score
 		FROM raw_message_chunks
-		WHERE agent_id = $2 AND tsv @@ plainto_tsquery('simple', $3)%s%s
-		ORDER BY score DESC LIMIT $%d`, extraWhere, tc, limitN)
+		WHERE %s = $2 AND tsv @@ (SELECT replace(plainto_tsquery('simple', $3)::text, '&', '|')::tsquery)%s%s
+		ORDER BY score DESC LIMIT $%d`, primaryCol, extraWhere, tc, limitN)
 
 	args = append(args, tcArgs...)
 	args = append(args, limit)
@@ -215,23 +223,21 @@ func (s *PGRawMessageChunkStore) ftsSearch(ctx context.Context, query string, ag
 func (s *PGRawMessageChunkStore) vectorSearch(ctx context.Context, embedding []float32, agentID uuid.UUID, opts store.RawMessageChunkSearchOptions, limit int) ([]scoredRawChunk, error) {
 	vecStr := vectorToString(embedding)
 
-	tc, tcArgs, _, err := scopeClause(ctx, 4)
-	if err != nil {
-		return nil, err
+	var primaryCol string
+	var primaryVal any
+	if opts.GraphID != "" {
+		primaryCol, primaryVal = "graph_id", opts.GraphID
+	} else {
+		primaryCol, primaryVal = "agent_id", agentID
 	}
 
-	args := []any{vecStr, agentID}
+	args := []any{vecStr, primaryVal}
 	paramIdx := 3
 
 	var extraWhere string
 	if opts.ChatID != "" {
 		extraWhere += fmt.Sprintf(" AND chat_id = $%d", paramIdx)
 		args = append(args, opts.ChatID)
-		paramIdx++
-	}
-	if opts.GraphID != "" {
-		extraWhere += fmt.Sprintf(" AND graph_id = $%d", paramIdx)
-		args = append(args, opts.GraphID)
 		paramIdx++
 	}
 	if opts.FromTime != nil {
@@ -245,14 +251,19 @@ func (s *PGRawMessageChunkStore) vectorSearch(ctx context.Context, embedding []f
 		paramIdx++
 	}
 
+	tc, tcArgs, _, err := scopeClause(ctx, paramIdx)
+	if err != nil {
+		return nil, err
+	}
+
 	orderN := paramIdx + len(tcArgs)
 	limitN := orderN + 1
 	q := fmt.Sprintf(`SELECT id, agent_id, graph_id, chat_id, chat_name, sender, sender_id,
 			msg_time_from, msg_time_to, chunk_index, text, source_msg_ids,
 			1 - (embedding <=> $1::vector) AS score
 		FROM raw_message_chunks
-		WHERE agent_id = $2 AND embedding IS NOT NULL%s%s
-		ORDER BY embedding <=> $%d::vector LIMIT $%d`, extraWhere, tc, orderN, limitN)
+		WHERE %s = $2 AND embedding IS NOT NULL%s%s
+		ORDER BY embedding <=> $%d::vector LIMIT $%d`, primaryCol, extraWhere, tc, orderN, limitN)
 
 	args = append(args, tcArgs...)
 	args = append(args, vecStr, limit)
@@ -377,6 +388,108 @@ func (r chunkRow) toChunk() store.RawMessageChunk {
 		ContentHash: r.ContentHash, SourceMsgIDs: []string(r.SourceMsgIDs),
 		CreatedAt: r.CreatedAt, HasEmbedding: r.HasEmbedding,
 	}
+}
+
+// ReEmbedChunks generates embeddings for chunks that lack them, scoped by opts filters.
+func (s *PGRawMessageChunkStore) ReEmbedChunks(ctx context.Context, opts store.RawMessageChunkListOpts) (int, int, error) {
+	if s.provider == nil {
+		return 0, 0, fmt.Errorf("no embedding provider configured")
+	}
+
+	tClause, tArgs, _, err := scopeClause(ctx, 1)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	paramIdx := len(tArgs) + 1
+	var where []string
+	var args []any
+
+	if opts.AgentID != "" {
+		where = append(where, fmt.Sprintf("agent_id = $%d", paramIdx))
+		args = append(args, opts.AgentID)
+		paramIdx++
+	}
+	if opts.ChatID != "" {
+		where = append(where, fmt.Sprintf("chat_id = $%d", paramIdx))
+		args = append(args, opts.ChatID)
+		paramIdx++
+	}
+	if opts.GraphID != "" {
+		where = append(where, fmt.Sprintf("graph_id = $%d", paramIdx))
+		args = append(args, opts.GraphID)
+		paramIdx++
+	}
+	where = append(where, "embedding IS NULL")
+
+	whereClause := " AND " + strings.Join(where, " AND ")
+
+	const batchSize = 50
+	processed, failed := 0, 0
+
+	for {
+		queryArgs := append(tArgs, args...)
+		queryArgs = append(queryArgs, batchSize)
+		limitIdx := paramIdx
+
+		rows, err := s.db.QueryContext(ctx,
+			`SELECT id, text FROM raw_message_chunks WHERE 1=1`+tClause+whereClause+
+				` ORDER BY id ASC LIMIT $`+fmt.Sprintf("%d", limitIdx),
+			queryArgs...)
+		if err != nil {
+			return processed, failed, fmt.Errorf("query chunks without embeddings: %w", err)
+		}
+
+		type row struct {
+			ID   string `db:"id"`
+			Text string `db:"text"`
+		}
+		var batch []row
+		for rows.Next() {
+			var r row
+			if err := rows.Scan(&r.ID, &r.Text); err != nil {
+				rows.Close()
+				return processed, failed, fmt.Errorf("scan chunk: %w", err)
+			}
+			batch = append(batch, r)
+		}
+		rows.Close()
+
+		if len(batch) == 0 {
+			break
+		}
+
+		texts := make([]string, len(batch))
+		for i, r := range batch {
+			texts[i] = r.Text
+		}
+
+		embeddings, err := s.provider.Embed(ctx, texts)
+		if err != nil {
+			return processed, failed, fmt.Errorf("generate embeddings: %w", err)
+		}
+
+		for i, r := range batch {
+			if i >= len(embeddings) {
+				break
+			}
+			vecStr := vectorToString(embeddings[i])
+			if _, err := s.db.ExecContext(ctx,
+				"UPDATE raw_message_chunks SET embedding = $1::vector WHERE id = $2",
+				vecStr, r.ID,
+			); err != nil {
+				failed++
+				continue
+			}
+			processed++
+		}
+
+		if len(batch) < batchSize {
+			break
+		}
+	}
+
+	return processed, failed, nil
 }
 
 // List returns paginated chunks with optional filters.
