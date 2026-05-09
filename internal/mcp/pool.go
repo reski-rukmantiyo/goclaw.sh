@@ -662,7 +662,9 @@ func (p *Pool) poolHealthLoop(ctx context.Context, ss *serverState) {
 			return
 		case <-ticker.C:
 			start := time.Now()
-			err := ss.client.Ping(ctx)
+			pingCtx, pingCancel := context.WithTimeout(ctx, 10*time.Second)
+			err := ss.client.Ping(pingCtx)
+			pingCancel()
 			latencyMs := int(time.Since(start).Milliseconds())
 			if err != nil {
 				if isMethodNotFound(err) {
@@ -673,6 +675,17 @@ func (p *Pool) poolHealthLoop(ctx context.Context, ss *serverState) {
 					p.writeHealthCheck(ctx, ss, "healthy", latencyMs, "")
 					continue
 				}
+
+				// Permanent failure: subprocess exited. Skip threshold, reconnect now.
+				if isTransportClosed(err) {
+					slog.Warn("mcp.pool.transport_closed", "server", ss.name, "error", err)
+					p.writeHealthCheck(ctx, ss, "unhealthy", 0, err.Error())
+					ss.connected.Store(false)
+					p.writeHealthCheck(ctx, ss, "reconnecting", 0, err.Error())
+					poolTryReconnect(ctx, ss)
+					continue
+				}
+
 				ss.mu.Lock()
 				ss.healthFailures++
 				failures := ss.healthFailures
@@ -736,7 +749,10 @@ func poolUserHealthLoop(ctx context.Context, ss *serverState) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := ss.client.Ping(ctx); err != nil {
+			pingCtx, pingCancel := context.WithTimeout(ctx, 10*time.Second)
+			err := ss.client.Ping(pingCtx)
+			pingCancel()
+			if err != nil {
 				if isMethodNotFound(err) {
 					ss.connected.Store(true)
 					ss.mu.Lock()
@@ -744,6 +760,15 @@ func poolUserHealthLoop(ctx context.Context, ss *serverState) {
 					ss.mu.Unlock()
 					continue
 				}
+
+				// Permanent failure: subprocess exited. Skip threshold, reconnect now.
+				if isTransportClosed(err) {
+					slog.Warn("mcp.pool.transport_closed", "server", ss.name, "error", err)
+					ss.connected.Store(false)
+					poolTryReconnect(ctx, ss)
+					continue
+				}
+
 				ss.mu.Lock()
 				ss.healthFailures++
 				failures := ss.healthFailures

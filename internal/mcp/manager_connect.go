@@ -98,6 +98,14 @@ func connectAndDiscover(ctx context.Context, name, transportType, command string
 	ss.connected.Store(true)
 	ss.lastUsed.Store(time.Now().Unix())
 
+	// Register connection-lost callback for transports that support it (SSE).
+	// Marks server disconnected immediately when transport detects failure,
+	// avoiding delay until next health tick discovers the broken connection.
+	client.OnConnectionLost(func(err error) {
+		slog.Warn("mcp.server.connection_lost", "server", name, "error", err)
+		ss.connected.Store(false)
+	})
+
 	return ss, toolsResult.Tools, nil
 }
 
@@ -303,6 +311,12 @@ func isMethodNotFound(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "method not found")
 }
 
+// isTransportClosed returns true if the error indicates the transport was closed.
+// This is a permanent failure (subprocess exited) — not transient.
+func isTransportClosed(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "transport closed")
+}
+
 // healthLoop periodically pings the MCP server and attempts reconnection on failure.
 func (m *Manager) healthLoop(ctx context.Context, ss *serverState) {
 	ticker := time.NewTicker(time.Duration(ss.getHealthCheckInterval()) * time.Second)
@@ -329,7 +343,10 @@ func (m *Manager) healthLoop(ctx context.Context, ss *serverState) {
 			}
 
 			start := time.Now()
-			if err := ss.client.Ping(ctx); err != nil {
+			pingCtx, pingCancel := context.WithTimeout(ctx, 10*time.Second)
+			err := ss.client.Ping(pingCtx)
+			pingCancel()
+			if err != nil {
 				if isMethodNotFound(err) {
 					ss.connected.Store(true)
 					ss.mu.Lock()
@@ -340,6 +357,17 @@ func (m *Manager) healthLoop(ctx context.Context, ss *serverState) {
 					m.writeHealthCheck(ctx, ss, "healthy", int(time.Since(start).Milliseconds()), "")
 					continue
 				}
+
+				// Permanent failure: subprocess exited. Skip threshold, reconnect now.
+				if isTransportClosed(err) {
+					slog.Warn("mcp.server.transport_closed", "server", ss.name, "error", err)
+					m.writeHealthCheck(ctx, ss, "unhealthy", 0, err.Error())
+					ss.connected.Store(false)
+					m.writeHealthCheck(ctx, ss, "reconnecting", 0, err.Error())
+					m.tryReconnect(ctx, ss)
+					continue
+				}
+
 				ss.mu.Lock()
 				ss.healthFailures++
 				failures := ss.healthFailures
@@ -538,6 +566,13 @@ func fullReconnect(ctx context.Context, ss *serverState) bool {
 	ss.client = newClient
 	ss.clientPtr.Store(newClient)
 	ss.connected.Store(true)
+
+	// Re-register connection-lost callback on new client
+	newClient.OnConnectionLost(func(err error) {
+		slog.Warn("mcp.server.connection_lost", "server", ss.name, "error", err)
+		ss.connected.Store(false)
+	})
+
 	ss.mu.Lock()
 	ss.reconnAttempts = 0
 	ss.healthFailures = 0
