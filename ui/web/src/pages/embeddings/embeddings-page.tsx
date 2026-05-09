@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { FileText, RefreshCw, X, Filter, RotateCcw, CheckCircle, Clock, AlertTriangle, Layers } from "lucide-react";
+import { Layers, RefreshCw, X, Filter, Trash2 } from "lucide-react";
 import { toast } from "@/stores/use-toast-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,46 +18,48 @@ import { formatDate } from "@/lib/format";
 import { useMinLoading } from "@/hooks/use-min-loading";
 import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { useAgents } from "@/pages/agents/hooks/use-agents";
-import { useRawMessages } from "./hooks/use-raw-messages";
-import type { RawMessage } from "./hooks/use-raw-messages";
-import { RawMessageDetailDialog } from "./raw-message-detail-dialog";
+import { useEmbeddings } from "./hooks/use-embeddings";
+import type { EmbeddingChunk } from "./hooks/use-embeddings";
+import { EmbeddingDetailDialog } from "./embedding-detail-dialog";
 
 const PAGE_SIZE = 50;
 
-export function RawMessagesPage() {
-  const { t } = useTranslation("raw-messages");
+export function EmbeddingsPage() {
+  const { t } = useTranslation("embeddings");
   const { t: tc } = useTranslation("common");
   const { agents } = useAgents();
-  const { messages, total, loading, stats, loadMessages, loadStats, resetToPending } = useRawMessages();
+  const { chunks, total, loading, loadChunks, deleteChunks } = useEmbeddings();
 
   const spinning = useMinLoading(loading);
-  const showSkeleton = useDeferredLoading(loading && messages.length === 0);
+  const showSkeleton = useDeferredLoading(loading && chunks.length === 0);
   const [offset, setOffset] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
-  const [selectedMsg, setSelectedMsg] = useState<RawMessage | null>(null);
+  const [selectedChunk, setSelectedChunk] = useState<EmbeddingChunk | null>(null);
 
   // Server-side filters
-  const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "extracted" | "failed">("all");
   const [filterAgentId, setFilterAgentId] = useState<string>("__all__");
-  const [filterChannel, setFilterChannel] = useState("");
+  const [filterChatId, setFilterChatId] = useState("");
   const [filterGraphId, setFilterGraphId] = useState("");
+  const [filterSender, setFilterSender] = useState("");
+  const [filterEmbedding, setFilterEmbedding] = useState<"all" | "yes" | "no">("all");
+  const [filterFromTime, setFilterFromTime] = useState("");
+  const [filterToTime, setFilterToTime] = useState("");
 
   // Client-side text search
-  const [searchChat, setSearchChat] = useState("");
-  const [searchSender, setSearchSender] = useState("");
-  const [searchBody, setSearchBody] = useState("");
+  const [searchText, setSearchText] = useState("");
 
   // Row selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Debounced text inputs for server-side filters
-  const channelTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Debounced text inputs
+  const chatTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const graphTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const senderTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const handleChannelChange = useCallback((v: string) => {
-    setFilterChannel(v);
-    clearTimeout(channelTimer.current);
-    channelTimer.current = setTimeout(() => setOffset(0), 400);
+  const handleChatIdChange = useCallback((v: string) => {
+    setFilterChatId(v);
+    clearTimeout(chatTimer.current);
+    chatTimer.current = setTimeout(() => setOffset(0), 400);
   }, []);
 
   const handleGraphIdChange = useCallback((v: string) => {
@@ -66,60 +68,57 @@ export function RawMessagesPage() {
     graphTimer.current = setTimeout(() => setOffset(0), 400);
   }, []);
 
-  // Reset offset when server-side filters change
-  useEffect(() => { setOffset(0); setSelectedIds(new Set()); }, [filterStatus, filterAgentId]);
+  const handleSenderChange = useCallback((v: string) => {
+    setFilterSender(v);
+    clearTimeout(senderTimer.current);
+    senderTimer.current = setTimeout(() => setOffset(0), 400);
+  }, []);
 
-  // Load stats on mount
-  useEffect(() => { loadStats(); }, [loadStats]);
+  // Reset offset when server-side filters change
+  useEffect(() => { setOffset(0); setSelectedIds(new Set()); }, [filterAgentId, filterEmbedding, filterFromTime, filterToTime]);
 
   // Fetch data
   useEffect(() => {
     const params: {
-      extraction_status?: string;
+      agentId?: string;
+      chatId?: string;
+      graphId?: string;
+      sender?: string;
+      hasEmbedding?: boolean;
+      fromTime?: string;
+      toTime?: string;
       limit: number;
       offset: number;
-      channelName?: string;
-      agentId?: string;
-      graphId?: string;
     } = { limit: PAGE_SIZE, offset };
-    if (filterStatus !== "all") params.extraction_status = filterStatus;
-    if (filterChannel) params.channelName = filterChannel;
     if (filterAgentId !== "__all__") params.agentId = filterAgentId;
+    if (filterChatId) params.chatId = filterChatId;
     if (filterGraphId) params.graphId = filterGraphId;
-    loadMessages(params);
-  }, [offset, filterStatus, filterAgentId, filterChannel, filterGraphId, loadMessages]);
+    if (filterSender) params.sender = filterSender;
+    if (filterEmbedding === "yes") params.hasEmbedding = true;
+    if (filterEmbedding === "no") params.hasEmbedding = false;
+    if (filterFromTime) params.fromTime = new Date(filterFromTime).toISOString();
+    if (filterToTime) params.toTime = new Date(filterToTime + "T23:59:59").toISOString();
+    loadChunks(params);
+  }, [offset, filterAgentId, filterChatId, filterGraphId, filterSender, filterEmbedding, filterFromTime, filterToTime, loadChunks]);
 
-  // Client-side filtered messages
+  // Client-side filtered chunks
   const filtered = useMemo(() => {
-    let result = messages;
-    if (searchChat) {
-      const q = searchChat.toLowerCase();
-      result = result.filter(
-        (m) => m.chat_name.toLowerCase().includes(q) || m.chat_id.toLowerCase().includes(q),
-      );
-    }
-    if (searchSender) {
-      const q = searchSender.toLowerCase();
-      result = result.filter(
-        (m) => m.sender.toLowerCase().includes(q) || m.sender_id.toLowerCase().includes(q),
-      );
-    }
-    if (searchBody) {
-      const q = searchBody.toLowerCase();
-      result = result.filter((m) => m.body.toLowerCase().includes(q));
-    }
-    return result;
-  }, [messages, searchChat, searchSender, searchBody]);
+    if (!searchText) return chunks;
+    const q = searchText.toLowerCase();
+    return chunks.filter((c) => c.text.toLowerCase().includes(q));
+  }, [chunks, searchText]);
 
   // Active filter count
   const activeFilterCount = useMemo(() => {
     let count = 0;
-    if (filterStatus !== "all") count++;
     if (filterAgentId !== "__all__") count++;
-    if (filterChannel) count++;
+    if (filterChatId) count++;
     if (filterGraphId) count++;
+    if (filterSender) count++;
+    if (filterEmbedding !== "all") count++;
+    if (filterFromTime || filterToTime) count++;
     return count;
-  }, [filterStatus, filterAgentId, filterChannel, filterGraphId]);
+  }, [filterAgentId, filterChatId, filterGraphId, filterSender, filterEmbedding, filterFromTime, filterToTime]);
 
   // Selection helpers
   const toggleSelect = useCallback((id: string) => {
@@ -134,7 +133,7 @@ export function RawMessagesPage() {
   const toggleSelectAll = useCallback(() => {
     setSelectedIds((prev) => {
       if (prev.size === filtered.length) return new Set();
-      return new Set(filtered.map((m) => m.id));
+      return new Set(filtered.map((c) => c.id));
     });
   }, [filtered]);
 
@@ -143,62 +142,60 @@ export function RawMessagesPage() {
     setSelectedIds((prev) => {
       const ids = new Set<string>();
       for (const id of prev) {
-        if (filtered.some((m) => m.id === id)) ids.add(id);
+        if (filtered.some((c) => c.id === id)) ids.add(id);
       }
       return ids.size === prev.size ? prev : ids;
     });
   }, [filtered]);
 
   const handleClearFilters = () => {
-    setFilterStatus("all");
     setFilterAgentId("__all__");
-    setFilterChannel("");
+    setFilterChatId("");
     setFilterGraphId("");
-    setSearchChat("");
-    setSearchSender("");
-    setSearchBody("");
+    setFilterSender("");
+    setFilterEmbedding("all");
+    setFilterFromTime("");
+    setFilterToTime("");
+    setSearchText("");
     setOffset(0);
   };
 
   const handleRefresh = () => {
-    loadStats();
-    const params: {
-      extraction_status?: string;
-      limit: number;
-      offset: number;
-      channelName?: string;
-      agentId?: string;
-      graphId?: string;
-    } = { limit: PAGE_SIZE, offset };
-    if (filterStatus !== "all") params.extraction_status = filterStatus;
-    if (filterChannel) params.channelName = filterChannel;
-    if (filterAgentId !== "__all__") params.agentId = filterAgentId;
-    if (filterGraphId) params.graphId = filterGraphId;
-    loadMessages(params);
+    loadChunks({
+      agentId: filterAgentId !== "__all__" ? filterAgentId : undefined,
+      chatId: filterChatId || undefined,
+      graphId: filterGraphId || undefined,
+      sender: filterSender || undefined,
+      hasEmbedding: filterEmbedding === "yes" ? true : filterEmbedding === "no" ? false : undefined,
+      fromTime: filterFromTime ? new Date(filterFromTime).toISOString() : undefined,
+      toTime: filterToTime ? new Date(filterToTime + "T23:59:59").toISOString() : undefined,
+      limit: PAGE_SIZE,
+      offset,
+    });
   };
 
-  const handleResetToPending = async () => {
+  const handleDeleteSelected = async () => {
     if (selectedIds.size === 0) return;
     try {
-      const count = await resetToPending([...selectedIds]);
+      const count = await deleteChunks([...selectedIds]);
       setSelectedIds(new Set());
       handleRefresh();
-      toast.success(t("actions.resetSuccess", { count }));
+      toast.success(t("actions.deleteSuccess", { count }));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error(t("actions.resetFailed"), msg);
+      toast.error(t("actions.deleteFailed"), msg);
     }
   };
 
-  const handleResetSingle = async (msg: RawMessage) => {
+  const handleDeleteSingle = async (chunk: EmbeddingChunk) => {
     try {
-      await resetToPending([msg.id]);
-      setSelectedMsg(null);
+      await deleteChunks([chunk.id]);
+      setSelectedChunk(null);
       handleRefresh();
-      toast.success(t("actions.resetSuccess", { count: 1 }));
+      toast.success(t("actions.deleteSuccess", { count: 1 }));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error(t("actions.resetFailed"), msg);
+      toast.error(t("actions.deleteFailed"), msg);
     }
   };
 
@@ -234,54 +231,19 @@ export function RawMessagesPage() {
         }
       />
 
-      {/* Stats bar */}
-      {stats && (
-        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
-            <Clock className="h-4 w-4 text-yellow-500" />
-            <div>
-              <div className="text-xs text-muted-foreground">{t("stats.extractionPending")}</div>
-              <div className="text-sm font-semibold">{stats.extraction.pending ?? 0}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
-            <CheckCircle className="h-4 w-4 text-green-500" />
-            <div>
-              <div className="text-xs text-muted-foreground">{t("stats.extractionExtracted")}</div>
-              <div className="text-sm font-semibold">{stats.extraction.extracted ?? 0}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
-            <AlertTriangle className="h-4 w-4 text-red-500" />
-            <div>
-              <div className="text-xs text-muted-foreground">{t("stats.extractionFailed")}</div>
-              <div className="text-sm font-semibold">{stats.extraction.failed ?? 0}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
-            <Layers className="h-4 w-4 text-blue-500" />
-            <div>
-              <div className="text-xs text-muted-foreground">{t("stats.embeddingEmbedded")}</div>
-              <div className="text-sm font-semibold">{stats.embedding.embedded ?? 0}</div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showFilters && (
         <div className="mt-3 rounded-lg border bg-card p-3 space-y-3">
           {/* Server-side filters row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            {/* Status */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {/* Embedding status */}
             <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value as "all" | "pending" | "extracted" | "failed")}
+              value={filterEmbedding}
+              onChange={(e) => setFilterEmbedding(e.target.value as "all" | "yes" | "no")}
               className="h-8 rounded-md border bg-background px-2 text-sm text-base md:text-sm"
             >
               <option value="all">{t("filters.all")}</option>
-              <option value="pending">{t("filters.pending")}</option>
-              <option value="extracted">{t("filters.extracted")}</option>
-              <option value="failed">{t("filters.failed")}</option>
+              <option value="yes">{t("filters.hasEmbedding")}</option>
+              <option value="no">{t("filters.noEmbedding")}</option>
             </select>
 
             {/* Agent dropdown */}
@@ -299,15 +261,17 @@ export function RawMessagesPage() {
               </SelectContent>
             </Select>
 
-            {/* Channel */}
+            {/* Chat ID */}
             <input
               type="text"
-              placeholder={t("filters.channel")}
-              value={filterChannel}
-              onChange={(e) => handleChannelChange(e.target.value)}
+              placeholder={t("filters.chatId")}
+              value={filterChatId}
+              onChange={(e) => handleChatIdChange(e.target.value)}
               className="h-8 rounded-md border bg-background px-2 text-sm text-base md:text-sm placeholder:text-muted-foreground"
             />
+          </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             {/* Graph ID */}
             <input
               type="text"
@@ -316,29 +280,40 @@ export function RawMessagesPage() {
               onChange={(e) => handleGraphIdChange(e.target.value)}
               className="h-8 rounded-md border bg-background px-2 text-sm text-base md:text-sm placeholder:text-muted-foreground"
             />
+
+            {/* Sender */}
+            <input
+              type="text"
+              placeholder={t("filters.sender")}
+              value={filterSender}
+              onChange={(e) => handleSenderChange(e.target.value)}
+              className="h-8 rounded-md border bg-background px-2 text-sm text-base md:text-sm placeholder:text-muted-foreground"
+            />
+
+            {/* Date from */}
+            <input
+              type="date"
+              value={filterFromTime}
+              onChange={(e) => { setFilterFromTime(e.target.value); setOffset(0); }}
+              className="h-8 rounded-md border bg-background px-2 text-sm text-base md:text-sm placeholder:text-muted-foreground"
+            />
+
+            {/* Date to */}
+            <input
+              type="date"
+              value={filterToTime}
+              onChange={(e) => { setFilterToTime(e.target.value); setOffset(0); }}
+              className="h-8 rounded-md border bg-background px-2 text-sm text-base md:text-sm placeholder:text-muted-foreground"
+            />
           </div>
 
-          {/* Client-side search row */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {/* Client-side search */}
+          <div className="grid grid-cols-1 gap-2">
             <input
               type="text"
-              placeholder={t("filters.searchChat")}
-              value={searchChat}
-              onChange={(e) => setSearchChat(e.target.value)}
-              className="h-8 rounded-md border bg-background px-2 text-sm text-base md:text-sm placeholder:text-muted-foreground"
-            />
-            <input
-              type="text"
-              placeholder={t("filters.searchSender")}
-              value={searchSender}
-              onChange={(e) => setSearchSender(e.target.value)}
-              className="h-8 rounded-md border bg-background px-2 text-sm text-base md:text-sm placeholder:text-muted-foreground"
-            />
-            <input
-              type="text"
-              placeholder={t("filters.searchBody")}
-              value={searchBody}
-              onChange={(e) => setSearchBody(e.target.value)}
+              placeholder={t("filters.searchText")}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
               className="h-8 rounded-md border bg-background px-2 text-sm text-base md:text-sm placeholder:text-muted-foreground"
             />
           </div>
@@ -346,10 +321,10 @@ export function RawMessagesPage() {
           {/* Active filter chips */}
           {activeFilterCount > 0 && (
             <div className="flex flex-wrap items-center gap-2">
-              {filterStatus !== "all" && (
+              {filterEmbedding !== "all" && (
                 <Badge variant="secondary" className="gap-1 text-xs">
-                  {t("filters.status")}: {t(`filters.${filterStatus}`)}
-                  <button onClick={() => setFilterStatus("all")} className="ml-0.5 hover:text-foreground">
+                  {t("filters.embedding")}: {filterEmbedding === "yes" ? t("filters.hasEmbedding") : t("filters.noEmbedding")}
+                  <button onClick={() => setFilterEmbedding("all")} className="ml-0.5 hover:text-foreground">
                     <X className="h-3 w-3" />
                   </button>
                 </Badge>
@@ -362,10 +337,10 @@ export function RawMessagesPage() {
                   </button>
                 </Badge>
               )}
-              {filterChannel && (
+              {filterChatId && (
                 <Badge variant="secondary" className="gap-1 text-xs">
-                  {t("filters.channel")}: {filterChannel}
-                  <button onClick={() => { setFilterChannel(""); setOffset(0); }} className="ml-0.5 hover:text-foreground">
+                  {t("filters.chatId")}: {filterChatId}
+                  <button onClick={() => { setFilterChatId(""); setOffset(0); }} className="ml-0.5 hover:text-foreground">
                     <X className="h-3 w-3" />
                   </button>
                 </Badge>
@@ -374,6 +349,22 @@ export function RawMessagesPage() {
                 <Badge variant="secondary" className="gap-1 text-xs">
                   {t("filters.graphId")}: {filterGraphId}
                   <button onClick={() => { setFilterGraphId(""); setOffset(0); }} className="ml-0.5 hover:text-foreground">
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {filterSender && (
+                <Badge variant="secondary" className="gap-1 text-xs">
+                  {t("filters.sender")}: {filterSender}
+                  <button onClick={() => { setFilterSender(""); setOffset(0); }} className="ml-0.5 hover:text-foreground">
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {(filterFromTime || filterToTime) && (
+                <Badge variant="secondary" className="gap-1 text-xs">
+                  {t("filters.dateRange")}
+                  <button onClick={() => { setFilterFromTime(""); setFilterToTime(""); setOffset(0); }} className="ml-0.5 hover:text-foreground">
                     <X className="h-3 w-3" />
                   </button>
                 </Badge>
@@ -395,11 +386,11 @@ export function RawMessagesPage() {
           <Button
             size="sm"
             variant="outline"
-            className="ml-auto h-7 gap-1 text-xs"
-            onClick={handleResetToPending}
+            className="ml-auto h-7 gap-1 text-xs text-destructive hover:text-destructive"
+            onClick={handleDeleteSelected}
           >
-            <RotateCcw className="h-3 w-3" />
-            {t("actions.resetToPending")}
+            <Trash2 className="h-3 w-3" />
+            {t("actions.deleteSelected")}
           </Button>
         </div>
       )}
@@ -409,7 +400,7 @@ export function RawMessagesPage() {
           <TableSkeleton rows={6} />
         ) : filtered.length === 0 ? (
           <EmptyState
-            icon={FileText}
+            icon={Layers}
             title={t("emptyTitle")}
             description={t("emptyDescription")}
           />
@@ -432,54 +423,52 @@ export function RawMessagesPage() {
                     </th>
                     <th className="px-4 py-3 text-left font-medium">{t("columns.chatName")}</th>
                     <th className="px-4 py-3 text-left font-medium">{t("columns.sender")}</th>
-                    <th className="px-4 py-3 text-left font-medium">{t("columns.body")}</th>
-                    <th className="px-4 py-3 text-left font-medium">{t("columns.agent")}</th>
-                    <th className="px-4 py-3 text-left font-medium">{t("columns.graphId")}</th>
-                    <th className="px-4 py-3 text-left font-medium">{t("columns.timestamp")}</th>
-                    <th className="px-4 py-3 text-left font-medium">{t("columns.status")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("columns.text")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("columns.chunkIndex")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("columns.embedding")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("columns.msgTime")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("columns.createdAt")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((msg) => (
+                  {filtered.map((chunk) => (
                     <tr
-                      key={msg.id}
-                      className={`cursor-pointer border-b last:border-0 hover:bg-muted/30 ${selectedIds.has(msg.id) ? "bg-primary/5" : ""}`}
-                      onClick={() => setSelectedMsg(msg)}
+                      key={chunk.id}
+                      className={`cursor-pointer border-b last:border-0 hover:bg-muted/30 ${selectedIds.has(chunk.id) ? "bg-primary/5" : ""}`}
+                      onClick={() => setSelectedChunk(chunk)}
                     >
                       <td className="px-2 py-3" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
-                          checked={selectedIds.has(msg.id)}
-                          onChange={() => toggleSelect(msg.id)}
+                          checked={selectedIds.has(chunk.id)}
+                          onChange={() => toggleSelect(chunk.id)}
                           className="h-4 w-4 rounded border-border"
                         />
                       </td>
-                      <td className="max-w-[180px] truncate px-4 py-3 font-medium">
-                        {msg.chat_name || msg.chat_id}
+                      <td className="max-w-[160px] truncate px-4 py-3 font-medium">
+                        {chunk.chat_name || chunk.chat_id}
                       </td>
                       <td className="max-w-[140px] truncate px-4 py-3">
-                        {msg.sender}
+                        {chunk.sender}
                       </td>
                       <td className="max-w-[300px] truncate px-4 py-3 text-muted-foreground">
-                        {msg.body}
+                        {chunk.text}
                       </td>
-                      <td className="max-w-[120px] truncate px-4 py-3">
-                        {msg.agent_name || (msg.agent_id ? msg.agent_id.slice(0, 8) + "…" : "")}
-                      </td>
-                      <td className="max-w-[150px] truncate px-4 py-3 font-mono text-xs text-muted-foreground">
-                        {msg.graph_id}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                        {formatDate(msg.msg_timestamp || msg.created_at)}
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {chunk.chunk_index}
                       </td>
                       <td className="px-4 py-3">
-                        {msg.extraction_status === "extracted" ? (
-                          <Badge variant="success" className="text-xs">{t("status.extracted")}</Badge>
-                        ) : msg.extraction_status === "failed" ? (
-                          <Badge variant="destructive" className="text-xs">{t("status.failed")}</Badge>
+                        {chunk.has_embedding ? (
+                          <Badge variant="success" className="text-xs">{t("status.embedded")}</Badge>
                         ) : (
-                          <Badge variant="secondary" className="text-xs">{t("status.pending")}</Badge>
+                          <Badge variant="secondary" className="text-xs">{t("status.noVector")}</Badge>
                         )}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                        {formatDate(chunk.msg_time_from)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                        {formatDate(chunk.created_at)}
                       </td>
                     </tr>
                   ))}
@@ -518,11 +507,11 @@ export function RawMessagesPage() {
         )}
       </div>
 
-      {selectedMsg && (
-        <RawMessageDetailDialog
-          message={selectedMsg}
-          onClose={() => setSelectedMsg(null)}
-          onReset={selectedMsg.processed_at ? () => handleResetSingle(selectedMsg) : undefined}
+      {selectedChunk && (
+        <EmbeddingDetailDialog
+          chunk={selectedChunk}
+          onClose={() => setSelectedChunk(null)}
+          onDelete={() => handleDeleteSingle(selectedChunk)}
         />
       )}
     </div>
