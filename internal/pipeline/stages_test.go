@@ -1262,6 +1262,7 @@ func TestObserveStage_FinalAnswer_NotCountedAsBlockReply(t *testing.T) {
 	if state.Observe.FinalContent != "final answer" {
 		t.Errorf("FinalContent = %q, want 'final answer'", state.Observe.FinalContent)
 	}
+	}
 
 // --- ObserveStage image accumulation (regression for mid-loop image loss) ---
 //

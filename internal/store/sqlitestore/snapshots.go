@@ -23,7 +23,7 @@ func NewSQLiteSnapshotStore(db *sql.DB) *SQLiteSnapshotStore {
 	return &SQLiteSnapshotStore{db: db}
 }
 
-const snapshotFieldCount = 22
+const snapshotFieldCount = 23
 
 // sqliteSnapshotBatchSize limits each INSERT to stay under SQLite's 999-variable limit (999 / 22 ≈ 45 → use 40).
 const sqliteSnapshotBatchSize = 40
@@ -62,6 +62,7 @@ func (s *SQLiteSnapshotStore) upsertBatch(ctx context.Context, snapshots []store
 			snap.TotalCost, snap.RequestCount, snap.LLMCallCount, snap.ToolCallCount,
 			snap.ErrorCount, snap.UniqueUsers, snap.AvgDurationMS,
 			snap.MemoryDocs, snap.MemoryChunks, snap.KGEntities, snap.KGRelations,
+			snap.EmbeddedChunks,
 			tenantID,
 		)
 	}
@@ -72,6 +73,7 @@ func (s *SQLiteSnapshotStore) upsertBatch(ctx context.Context, snapshots []store
 		total_cost, request_count, llm_call_count, tool_call_count,
 		error_count, unique_users, avg_duration_ms,
 		memory_docs, memory_chunks, kg_entities, kg_relations,
+		embedded_chunks,
 		tenant_id
 	) VALUES ` + strings.Join(vals, ", ") + `
 	ON CONFLICT (bucket_hour, COALESCE(agent_id, '00000000-0000-0000-0000-000000000000'), COALESCE(provider, ''), COALESCE(model, ''), COALESCE(channel, ''), tenant_id)
@@ -91,7 +93,8 @@ func (s *SQLiteSnapshotStore) upsertBatch(ctx context.Context, snapshots []store
 		memory_docs         = excluded.memory_docs,
 		memory_chunks       = excluded.memory_chunks,
 		kg_entities         = excluded.kg_entities,
-		kg_relations        = excluded.kg_relations`
+		kg_relations        = excluded.kg_relations,
+		embedded_chunks    = excluded.embedded_chunks`
 
 	_, err := s.db.ExecContext(ctx, query, args...)
 	return err
@@ -116,7 +119,8 @@ func (s *SQLiteSnapshotStore) GetTimeSeries(ctx context.Context, q store.Snapsho
 			THEN SUM(avg_duration_ms * request_count) / SUM(request_count)
 			ELSE 0 END,
 		SUM(memory_docs), SUM(memory_chunks),
-		SUM(kg_entities), SUM(kg_relations)
+		SUM(kg_entities), SUM(kg_relations),
+		SUM(embedded_chunks)
 	FROM (
 		SELECT
 			%s as bucket_time,
@@ -135,7 +139,8 @@ func (s *SQLiteSnapshotStore) GetTimeSeries(ctx context.Context, q store.Snapsho
 			CASE WHEN provider = '' AND model = '' THEN memory_docs ELSE 0 END as memory_docs,
 			CASE WHEN provider = '' AND model = '' THEN memory_chunks ELSE 0 END as memory_chunks,
 			CASE WHEN provider = '' AND model = '' THEN kg_entities ELSE 0 END as kg_entities,
-			CASE WHEN provider = '' AND model = '' THEN kg_relations ELSE 0 END as kg_relations
+			CASE WHEN provider = '' AND model = '' THEN kg_relations ELSE 0 END as kg_relations,
+		CASE WHEN provider = '' AND model = '' THEN embedded_chunks ELSE 0 END as embedded_chunks
 		FROM usage_snapshots
 		%s
 	) sub
@@ -160,6 +165,7 @@ func (s *SQLiteSnapshotStore) GetTimeSeries(ctx context.Context, q store.Snapsho
 			&ts.ErrorCount, &ts.UniqueUsers, &ts.AvgDurationMS,
 			&ts.MemoryDocs, &ts.MemoryChunks,
 			&ts.KGEntities, &ts.KGRelations,
+			&ts.EmbeddedChunks,
 		); err != nil {
 			return nil, fmt.Errorf("scan timeseries: %w", err)
 		}

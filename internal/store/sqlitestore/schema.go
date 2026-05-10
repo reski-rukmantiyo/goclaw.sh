@@ -16,7 +16,7 @@ var schemaSQL string
 
 // SchemaVersion is the current SQLite schema version.
 // Bump this when adding new migration steps below.
-const SchemaVersion = 30
+const SchemaVersion = 31
 
 // migrations maps version → SQL to apply when upgrading FROM that version.
 // schema.sql always represents the LATEST full schema (for fresh DBs).
@@ -605,6 +605,8 @@ CREATE INDEX IF NOT EXISTS idx_mcp_health_tenant_time ON mcp_health_checks(tenan
 	ALTER TABLE listen_raw_messages ADD COLUMN extraction_attempts INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE listen_raw_messages ADD COLUMN last_attempted_at TEXT;
 	UPDATE listen_raw_messages SET extraction_status = 'extracted' WHERE processed_at IS NOT NULL;`,
+		// Version 30 → 31: add embedded_chunks column to usage_snapshots (mirrors PG migration 000067).
+		30: `ALTER TABLE usage_snapshots ADD COLUMN embedded_chunks INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // addHooksTables is the SQLite incremental migration for schema v19 → v20.

@@ -18,6 +18,7 @@ export interface SnapshotTimeSeries {
   memory_chunks: number;
   kg_entities: number;
   kg_relations: number;
+  embedded_chunks: number;
   total_cost: number;
 }
 

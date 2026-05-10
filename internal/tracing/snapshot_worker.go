@@ -281,9 +281,10 @@ func querySpanAggregates(ctx context.Context, db *sql.DB, from, to time.Time) ([
 
 // agentMemoryCounts holds point-in-time memory counts for one agent.
 type agentMemoryCounts struct {
-	AgentID uuid.UUID
-	Docs    int
-	Chunks  int
+	AgentID        uuid.UUID
+	Docs           int
+	Chunks         int
+	EmbeddedChunks int
 }
 
 // agentKGCounts holds point-in-time KG counts for one agent.
@@ -317,21 +318,22 @@ func queryMemoryCounts(ctx context.Context, db *sql.DB) (map[uuid.UUID]agentMemo
 		return nil, err
 	}
 
-	// Chunk counts
-	rows2, err := db.QueryContext(ctx, `SELECT agent_id, COUNT(*) FROM memory_chunks GROUP BY agent_id`)
+	// Chunk counts (total + embedded)
+	rows2, err := db.QueryContext(ctx, `SELECT agent_id, COUNT(*), COUNT(embedding) FROM memory_chunks GROUP BY agent_id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows2.Close()
 	for rows2.Next() {
 		var agentID uuid.UUID
-		var count int
-		if err := rows2.Scan(&agentID, &count); err != nil {
+		var total, embedded int
+		if err := rows2.Scan(&agentID, &total, &embedded); err != nil {
 			return nil, err
 		}
 		mc := result[agentID]
 		mc.AgentID = agentID
-		mc.Chunks = count
+		mc.Chunks = total
+		mc.EmbeddedChunks = embedded
 		result[agentID] = mc
 	}
 	return result, rows2.Err()
@@ -421,6 +423,7 @@ func mergeTraceAndSpanRows(
 			if mc, ok := memoryCounts[*tr.AgentID]; ok {
 				snap.MemoryDocs = mc.Docs
 				snap.MemoryChunks = mc.Chunks
+				snap.EmbeddedChunks = mc.EmbeddedChunks
 			}
 			if kc, ok := kgCounts[*tr.AgentID]; ok {
 				snap.KGEntities = kc.Entities
@@ -474,6 +477,7 @@ func mergeTraceAndSpanRows(
 			if mc, ok := memoryCounts[agentID]; ok {
 				snap.MemoryDocs = mc.Docs
 				snap.MemoryChunks = mc.Chunks
+				snap.EmbeddedChunks = mc.EmbeddedChunks
 			}
 			if kc, ok := kgCounts[agentID]; ok {
 				snap.KGEntities = kc.Entities

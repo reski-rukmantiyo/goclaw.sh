@@ -1158,6 +1158,7 @@ CREATE TABLE IF NOT EXISTS usage_snapshots (
     memory_chunks       INTEGER NOT NULL DEFAULT 0,
     kg_entities         INTEGER NOT NULL DEFAULT 0,
     kg_relations        INTEGER NOT NULL DEFAULT 0,
+    embedded_chunks     INTEGER NOT NULL DEFAULT 0,
     tenant_id           TEXT NOT NULL REFERENCES tenants(id),
     created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
