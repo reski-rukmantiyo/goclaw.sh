@@ -91,7 +91,8 @@ func (s *PGSnapshotStore) upsertBatch(ctx context.Context, snapshots []store.Usa
 		memory_docs = EXCLUDED.memory_docs,
 		memory_chunks = EXCLUDED.memory_chunks,
 		kg_entities = EXCLUDED.kg_entities,
-		kg_relations = EXCLUDED.kg_relations`
+		kg_relations = EXCLUDED.kg_relations,
+			embedded_chunks = EXCLUDED.embedded_chunks`
 
 	_, err := s.db.ExecContext(ctx, query, args...)
 	return err
@@ -116,7 +117,8 @@ func (s *PGSnapshotStore) GetTimeSeries(ctx context.Context, q store.SnapshotQue
 			THEN SUM(avg_duration_ms * request_count) / SUM(request_count)
 			ELSE 0 END,
 		SUM(memory_docs), SUM(memory_chunks),
-		SUM(kg_entities), SUM(kg_relations)
+		SUM(kg_entities), SUM(kg_relations),
+		SUM(embedded_chunks)
 	FROM (
 		SELECT
 			%s as bucket_time,
@@ -135,7 +137,8 @@ func (s *PGSnapshotStore) GetTimeSeries(ctx context.Context, q store.SnapshotQue
 			CASE WHEN provider = '' AND model = '' THEN memory_docs ELSE 0 END as memory_docs,
 			CASE WHEN provider = '' AND model = '' THEN memory_chunks ELSE 0 END as memory_chunks,
 			CASE WHEN provider = '' AND model = '' THEN kg_entities ELSE 0 END as kg_entities,
-			CASE WHEN provider = '' AND model = '' THEN kg_relations ELSE 0 END as kg_relations
+			CASE WHEN provider = '' AND model = '' THEN kg_relations ELSE 0 END as kg_relations,
+		CASE WHEN provider = '' AND model = '' THEN embedded_chunks ELSE 0 END as embedded_chunks
 		FROM usage_snapshots
 		%s
 	) sub
@@ -160,6 +163,7 @@ func (s *PGSnapshotStore) GetTimeSeries(ctx context.Context, q store.SnapshotQue
 			&ts.ErrorCount, &ts.UniqueUsers, &ts.AvgDurationMS,
 			&ts.MemoryDocs, &ts.MemoryChunks,
 			&ts.KGEntities, &ts.KGRelations,
+			&ts.EmbeddedChunks,
 		); err != nil {
 			return nil, fmt.Errorf("scan timeseries: %w", err)
 		}
