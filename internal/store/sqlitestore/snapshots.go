@@ -23,7 +23,7 @@ func NewSQLiteSnapshotStore(db *sql.DB) *SQLiteSnapshotStore {
 	return &SQLiteSnapshotStore{db: db}
 }
 
-const snapshotFieldCount = 22
+const snapshotFieldCount = 23
 
 // sqliteSnapshotBatchSize limits each INSERT to stay under SQLite's 999-variable limit (999 / 22 ≈ 45 → use 40).
 const sqliteSnapshotBatchSize = 40
@@ -62,6 +62,7 @@ func (s *SQLiteSnapshotStore) upsertBatch(ctx context.Context, snapshots []store
 			snap.TotalCost, snap.RequestCount, snap.LLMCallCount, snap.ToolCallCount,
 			snap.ErrorCount, snap.UniqueUsers, snap.AvgDurationMS,
 			snap.MemoryDocs, snap.MemoryChunks, snap.KGEntities, snap.KGRelations,
+			snap.EmbeddedChunks,
 			tenantID,
 		)
 	}

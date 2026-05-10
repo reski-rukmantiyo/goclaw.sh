@@ -76,7 +76,8 @@
       "memoryDocs": "记忆文档",
       "memoryChunks": "记忆片段",
       "kgEntities": "KG实体",
-      "kgRelations": "KG关系"
+      "kgRelations": "KG关系",
+      "embeddedChunks": "已嵌入片段"
     },
     "topModels": {
       "title": "热门模型",

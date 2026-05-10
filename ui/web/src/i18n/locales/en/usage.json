@@ -76,7 +76,8 @@
       "memoryDocs": "Memory Docs",
       "memoryChunks": "Memory Chunks",
       "kgEntities": "KG Entities",
-      "kgRelations": "KG Relations"
+      "kgRelations": "KG Relations",
+      "embeddedChunks": "Embedded Chunks"
     },
     "topModels": {
       "title": "Top Models",

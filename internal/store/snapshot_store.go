@@ -31,6 +31,7 @@ type UsageSnapshot struct {
 	MemoryChunks      int        `json:"memory_chunks" db:"memory_chunks"`
 	KGEntities        int        `json:"kg_entities" db:"kg_entities"`
 	KGRelations       int        `json:"kg_relations" db:"kg_relations"`
+	EmbeddedChunks    int        `json:"embedded_chunks" db:"embedded_chunks"`
 	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
 }
 
@@ -64,6 +65,7 @@ type SnapshotTimeSeries struct {
 	MemoryChunks      int       `json:"memory_chunks" db:"memory_chunks"`
 	KGEntities        int       `json:"kg_entities" db:"kg_entities"`
 	KGRelations       int       `json:"kg_relations" db:"kg_relations"`
+	EmbeddedChunks    int       `json:"embedded_chunks" db:"embedded_chunks"`
 }
 
 // SnapshotBreakdown is a grouped aggregation row (by provider, model, etc.).

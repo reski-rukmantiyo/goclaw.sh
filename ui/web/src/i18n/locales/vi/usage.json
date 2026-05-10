@@ -76,7 +76,8 @@
       "memoryDocs": "Tài liệu",
       "memoryChunks": "Đoạn nhớ",
       "kgEntities": "Thực thể KG",
-      "kgRelations": "Quan hệ KG"
+      "kgRelations": "Quan hệ KG",
+      "embeddedChunks": "Đoạn đã nhúng"
     },
     "topModels": {
       "title": "Model hàng đầu",

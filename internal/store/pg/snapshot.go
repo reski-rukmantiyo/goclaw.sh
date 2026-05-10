@@ -21,7 +21,7 @@ func NewPGSnapshotStore(db *sql.DB) *PGSnapshotStore {
 	return &PGSnapshotStore{db: db}
 }
 
-const snapshotFieldCount = 22
+const snapshotFieldCount = 23
 
 // maxBatchRows limits each INSERT to stay under PG's 65535 param limit (65535 / 21 ≈ 3120).
 const maxBatchRows = 3000
@@ -60,6 +60,7 @@ func (s *PGSnapshotStore) upsertBatch(ctx context.Context, snapshots []store.Usa
 			snap.TotalCost, snap.RequestCount, snap.LLMCallCount, snap.ToolCallCount,
 			snap.ErrorCount, snap.UniqueUsers, snap.AvgDurationMS,
 			snap.MemoryDocs, snap.MemoryChunks, snap.KGEntities, snap.KGRelations,
+			snap.EmbeddedChunks,
 			tenantID,
 		)
 	}
@@ -70,6 +71,7 @@ func (s *PGSnapshotStore) upsertBatch(ctx context.Context, snapshots []store.Usa
 		total_cost, request_count, llm_call_count, tool_call_count,
 		error_count, unique_users, avg_duration_ms,
 		memory_docs, memory_chunks, kg_entities, kg_relations,
+		embedded_chunks,
 		tenant_id
 	) VALUES ` + strings.Join(vals, ", ") + `
 	ON CONFLICT (bucket_hour, COALESCE(agent_id, '00000000-0000-0000-0000-000000000000'), provider, model, channel, tenant_id)
