@@ -10,6 +10,7 @@ export const TIMEZONE_OPTIONS = [
   { value: "Asia/Tokyo", label: "Tokyo (JST)" },
   { value: "Asia/Shanghai", label: "Shanghai (CST)" },
   { value: "Asia/Ho_Chi_Minh", label: "Ho Chi Minh (ICT)" },
+  { value: "Asia/Jakarta", label: "Jakarta (WIB)" },
   { value: "Asia/Singapore", label: "Singapore (SGT)" },
   { value: "Australia/Sydney", label: "Sydney (AEST)" },
 ] as const;
@@ -35,7 +36,7 @@ let _cachedTimezones: TzOption[] | undefined;
 const FALLBACK_TIMEZONES: string[] = [
   "UTC", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
   "America/Halifax", "America/Sao_Paulo", "Europe/London", "Europe/Paris", "Europe/Berlin",
-  "Europe/Moscow", "Asia/Dubai", "Asia/Kolkata", "Asia/Bangkok", "Asia/Ho_Chi_Minh",
+  "Europe/Moscow", "Asia/Dubai", "Asia/Kolkata", "Asia/Bangkok", "Asia/Ho_Chi_Minh", "Asia/Jakarta",
   "Asia/Shanghai", "Asia/Tokyo", "Asia/Seoul", "Asia/Singapore", "Australia/Sydney",
   "Pacific/Auckland",
 ];
