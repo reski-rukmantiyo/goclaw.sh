@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	githubRepo         = "nextlevelbuilder/goclaw"
+	githubRepo         = "reski-rukmantiyo/rclaw.sh"
 	liteTagPrefix      = "lite-v"
 	updateCheckInterval = 1 * time.Hour
 	maxResponseBody    = 2 << 20 // 2 MB
@@ -136,6 +136,10 @@ func (uc *UpdateChecker) check() {
 			continue
 		}
 		if !strings.HasPrefix(rel.TagName, "v") {
+			continue
+		}
+		parsed := version.Parse(rel.TagName)
+		if parsed == [3]int{} {
 			continue
 		}
 

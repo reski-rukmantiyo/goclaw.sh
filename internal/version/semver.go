@@ -41,7 +41,31 @@ func Parse(s string) [3]int {
 	}
 	var parts [3]int
 	for i, p := range strings.SplitN(s, ".", 3) {
-		parts[i], _ = strconv.Atoi(p)
+		v, err := strconv.Atoi(p)
+		if err != nil && i == 2 {
+			v = parsePatchWithLetter(p)
+		}
+		parts[i] = v
 	}
 	return parts
+}
+
+// parsePatchWithLetter handles patch strings like "3A", "3B", "3C".
+// Encodes as basePatch*26 + letterIndex to preserve ordering.
+func parsePatchWithLetter(s string) int {
+	if len(s) < 2 {
+		return 0
+	}
+	last := s[len(s)-1]
+	if last >= 'a' && last <= 'z' {
+		last -= 32
+	}
+	if last < 'A' || last > 'Z' {
+		return 0
+	}
+	base, err := strconv.Atoi(s[:len(s)-1])
+	if err != nil {
+		return 0
+	}
+	return base*26 + int(last-'A')
 }
