@@ -19,7 +19,9 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 	supportsThoughtSignature := strings.Contains(strings.ToLower(p.providerType), "gemini") ||
 		strings.Contains(strings.ToLower(p.name), "gemini") ||
 		strings.Contains(strings.ToLower(p.apiBase), "generativelanguage") ||
-		strings.Contains(strings.ToLower(model), "gemini")
+		strings.Contains(strings.ToLower(model), "gemini") ||
+		strings.ToLower(p.providerType) == "vertex" ||
+		strings.Contains(strings.ToLower(p.apiBase), "aiplatform")
 
 	if supportsThoughtSignature {
 		inputMessages = collapseToolCallsWithoutSig(inputMessages)
