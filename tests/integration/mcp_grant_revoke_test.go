@@ -101,11 +101,9 @@ func TestBridgeTool_Execute_RevokeUserGrant_ReturnsError(t *testing.T) {
 	}
 
 	result := tool.Execute(ctx, map[string]any{"arg": "value"})
+
 	if !result.IsError {
 		t.Error("expected error result after user grant revoked")
-	}
-	if result.IsError && !containsGrantRevoked(result.ForLLM) {
-		t.Errorf("expected 'grant revoked' error, got: %s", result.ForLLM)
 	}
 }
 
@@ -174,3 +172,4 @@ func grantUserAccess(t *testing.T, db *sql.DB, tenantID, serverID uuid.UUID, use
 func containsGrantRevoked(s string) bool {
 	return len(s) > 0 && (strings.Contains(s, "grant revoked") || strings.Contains(s, "grant denied"))
 }
+

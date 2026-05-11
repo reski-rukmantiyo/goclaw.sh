@@ -47,4 +47,10 @@ type Stores struct {
 
 	Webhooks     WebhookStore
 	WebhookCalls WebhookCallStore
+
+	// Workstations — Standard edition only (gated at router registration).
+	Workstations           WorkstationStore
+	WorkstationLinks       AgentWorkstationLinkStore
+	WorkstationPermissions WorkstationPermissionStore
+	WorkstationActivity    WorkstationActivityStore
 }

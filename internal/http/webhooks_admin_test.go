@@ -199,16 +199,13 @@ func (a *adminTenantStore) CreateTenantUserReturning(context.Context, uuid.UUID,
 
 // ---- helpers ----
 
-func tenantAdminCtx(tenantID uuid.UUID, userID string) context.Context {
+// webhookTenantAdminCtx builds a tenant-admin context for webhook admin tests.
+// Named distinctly to avoid colliding with the packages_updates_test.go helper
+// which has a different signature (base context.Context param).
+func webhookTenantAdminCtx(tenantID uuid.UUID, userID string) context.Context {
 	ctx := context.Background()
 	ctx = store.WithTenantID(ctx, tenantID)
 	ctx = store.WithUserID(ctx, userID)
-	return ctx
-}
-
-func ownerCtx() context.Context {
-	ctx := context.Background()
-	ctx = store.WithRole(ctx, store.RoleOwner)
 	return ctx
 }
 
@@ -255,7 +252,7 @@ func TestWebhookAdmin_Create_HappyPath(t *testing.T) {
 	ws := newAdminWebhookStore()
 	h := newAdminHandler(ws, ts)
 
-	ctx := tenantAdminCtx(tenantID, userID)
+	ctx := webhookTenantAdminCtx(tenantID, userID)
 	w := doRequest(t, h, http.MethodPost, "/v1/webhooks", map[string]any{
 		"name": "my webhook",
 		"kind": "llm",
@@ -302,7 +299,7 @@ func TestWebhookAdmin_Create_NonAdmin_403(t *testing.T) {
 	ws := newAdminWebhookStore()
 	h := newAdminHandler(ws, ts)
 
-	ctx := tenantAdminCtx(tenantID, userID)
+	ctx := webhookTenantAdminCtx(tenantID, userID)
 	w := doRequest(t, h, http.MethodPost, "/v1/webhooks", map[string]any{
 		"name": "x",
 		"kind": "llm",
@@ -326,7 +323,7 @@ func TestWebhookAdmin_Create_InvalidKind_400(t *testing.T) {
 	ws := newAdminWebhookStore()
 	h := newAdminHandler(ws, ts)
 
-	ctx := tenantAdminCtx(tenantID, userID)
+	ctx := webhookTenantAdminCtx(tenantID, userID)
 	w := doRequest(t, h, http.MethodPost, "/v1/webhooks", map[string]any{
 		"name": "x",
 		"kind": "unknown",
@@ -354,7 +351,7 @@ func TestWebhookAdmin_Create_LiteMessageKind_403(t *testing.T) {
 	ws := newAdminWebhookStore()
 	h := newAdminHandler(ws, ts)
 
-	ctx := tenantAdminCtx(tenantID, userID)
+	ctx := webhookTenantAdminCtx(tenantID, userID)
 	w := doRequest(t, h, http.MethodPost, "/v1/webhooks", map[string]any{
 		"name": "x",
 		"kind": "message",
@@ -381,7 +378,7 @@ func TestWebhookAdmin_Create_LiteForcesLocalhostOnly(t *testing.T) {
 	ws := newAdminWebhookStore()
 	h := newAdminHandler(ws, ts)
 
-	ctx := tenantAdminCtx(tenantID, userID)
+	ctx := webhookTenantAdminCtx(tenantID, userID)
 	// Client sends localhost_only=false — server must override to true.
 	w := doRequest(t, h, http.MethodPost, "/v1/webhooks", map[string]any{
 		"name":           "x",
@@ -426,7 +423,7 @@ func TestWebhookAdmin_Get_CrossTenant_404(t *testing.T) {
 	h := newAdminHandler(ws, ts)
 
 	// Request from tenant A.
-	ctx := tenantAdminCtx(tenantA, userA)
+	ctx := webhookTenantAdminCtx(tenantA, userA)
 	r := httptest.NewRequest(http.MethodGet, "/v1/webhooks/"+webhookID.String(), nil)
 	r = r.WithContext(ctx)
 	w := httptest.NewRecorder()
@@ -452,7 +449,7 @@ func TestWebhookAdmin_FullFlow_CreateListGetRotateRevoke(t *testing.T) {
 	}
 	ws := newAdminWebhookStore()
 	h := newAdminHandler(ws, ts)
-	ctx := tenantAdminCtx(tenantID, userID)
+	ctx := webhookTenantAdminCtx(tenantID, userID)
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
@@ -587,7 +584,7 @@ func TestWebhookAdmin_Patch_NonAdmin_403(t *testing.T) {
 	ws := newAdminWebhookStore()
 	h := newAdminHandler(ws, ts)
 
-	ctx := tenantAdminCtx(tenantID, userID)
+	ctx := webhookTenantAdminCtx(tenantID, userID)
 	w := doRequest(t, h, http.MethodPatch, "/v1/webhooks/"+uuid.New().String(), map[string]any{
 		"name": "new name",
 	}, ctx)
@@ -608,7 +605,7 @@ func TestWebhookAdmin_Rotate_NonAdmin_403(t *testing.T) {
 	ws := newAdminWebhookStore()
 	h := newAdminHandler(ws, ts)
 
-	ctx := tenantAdminCtx(tenantID, userID)
+	ctx := webhookTenantAdminCtx(tenantID, userID)
 	r := httptest.NewRequest(http.MethodPost, "/v1/webhooks/"+uuid.New().String()+"/rotate", nil)
 	r = r.WithContext(ctx)
 	w := httptest.NewRecorder()
@@ -633,7 +630,7 @@ func TestWebhookAdmin_Revoke_NonAdmin_403(t *testing.T) {
 	ws := newAdminWebhookStore()
 	h := newAdminHandler(ws, ts)
 
-	ctx := tenantAdminCtx(tenantID, userID)
+	ctx := webhookTenantAdminCtx(tenantID, userID)
 	r := httptest.NewRequest(http.MethodDelete, "/v1/webhooks/"+uuid.New().String(), nil)
 	r = r.WithContext(ctx)
 	w := httptest.NewRecorder()

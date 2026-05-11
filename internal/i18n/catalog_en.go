@@ -218,6 +218,16 @@ func init() {
 		MsgSTTWhatsappPrivacyWarning: "Enabling STT for WhatsApp breaks end-to-end encryption for voice messages sent to this agent.",
 		MsgVoiceMessageFallback:      "[Voice message]",
 
+		// Workstation
+		MsgWorkstationNotFound:     "workstation not found: %s",
+		MsgWorkstationKeyExists:    "workstation key already in use: %s",
+		MsgInvalidBackend:          "invalid backend type: %s (must be ssh|docker)",
+		MsgWorkstationInactive:     "workstation is inactive: %s",
+		MsgInvalidMetadataShape:    "invalid metadata for %s backend: %s",
+		MsgWorkstationRequired:     "no workstation bound to agent; pass workstation_id",
+		MsgWorkstationAccessDenied: "agent %s not authorized for workstation %s",
+		MsgBackendNotReady:         "workstation backend not ready: %s",
+
 		// Webhooks
 		MsgWebhookAuthFailed:              "webhook authentication failed",
 		MsgWebhookHMACInvalid:             "HMAC signature is invalid",

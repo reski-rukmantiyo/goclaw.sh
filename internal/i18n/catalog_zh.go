@@ -243,6 +243,16 @@ func init() {
 		MsgWebhookEncryptionUnavailable:   "Webhook 加密密钥未配置；请设置 GOCLAW_ENCRYPTION_KEY 以启用 Webhook",
 
 		// Hooks
+		// Workstation
+		MsgWorkstationNotFound:     "未找到工作站：%s",
+		MsgWorkstationKeyExists:    "工作站键已被使用：%s",
+		MsgInvalidBackend:          "无效的后端类型：%s（必须是 ssh|docker）",
+		MsgWorkstationInactive:     "工作站未激活：%s",
+		MsgInvalidMetadataShape:    "%s 后端的元数据无效：%s",
+		MsgWorkstationRequired:     "Agent 未绑定工作站，请提供 workstation_id",
+		MsgWorkstationAccessDenied: "Agent %s 无权访问工作站 %s",
+		MsgBackendNotReady:         "工作站后端未就绪：%s",
+
 		MsgHookInvalidMatcher:          "无效的匹配器正则表达式: %s",
 		MsgHookCommandDisabledStandard: "命令类型钩子仅在 Lite 版本可用",
 		MsgHookPromptRequiresMatcher:   "prompt 钩子必须指定 matcher 或 if_expr(成本失控保护)",

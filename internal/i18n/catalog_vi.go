@@ -243,6 +243,16 @@ func init() {
 		MsgWebhookEncryptionUnavailable:   "khóa mã hóa webhook chưa được cấu hình; hãy đặt GOCLAW_ENCRYPTION_KEY để kích hoạt webhook",
 
 		// Hooks
+		// Workstation
+		MsgWorkstationNotFound:     "không tìm thấy máy trạm: %s",
+		MsgWorkstationKeyExists:    "khóa máy trạm đã được sử dụng: %s",
+		MsgInvalidBackend:          "loại backend không hợp lệ: %s (phải là ssh|docker)",
+		MsgWorkstationInactive:     "máy trạm không hoạt động: %s",
+		MsgInvalidMetadataShape:    "metadata không hợp lệ cho backend %s: %s",
+		MsgWorkstationRequired:     "agent chưa được gắn máy trạm; hãy truyền workstation_id",
+		MsgWorkstationAccessDenied: "agent %s không được phép truy cập máy trạm %s",
+		MsgBackendNotReady:         "backend máy trạm chưa sẵn sàng: %s",
+
 		MsgHookInvalidMatcher:          "biểu thức regex matcher không hợp lệ: %s",
 		MsgHookCommandDisabledStandard: "hook loại command chỉ khả dụng trên phiên bản Lite",
 		MsgHookPromptRequiresMatcher:   "hook prompt bắt buộc có matcher hoặc if_expr (chống chi phí vượt kiểm soát)",
