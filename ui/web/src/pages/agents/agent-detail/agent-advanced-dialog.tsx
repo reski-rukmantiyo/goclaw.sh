@@ -156,7 +156,7 @@ export function AgentAdvancedDialog({ open, onOpenChange, agent, onUpdate }: Age
           <WorkspaceSection workspace={agent.workspace} />
 
           {/* Bound Channels (read-only) */}
-          <BoundChannelsSection agentId={agent.id} />
+          <BoundChannelsSection agentId={agent.id} agentKey={agent.agent_key} />
 
           {/* Workspace Sharing */}
           <WorkspaceSharingSection value={wsSharing} onChange={setWsSharing} />

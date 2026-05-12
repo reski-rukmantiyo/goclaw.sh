@@ -796,7 +796,8 @@
       "title": "Bound Channels",
       "description": "Channel instances currently bound to this agent",
       "empty": "No channels bound to this agent",
-      "disabled": "disabled"
+      "disabled": "disabled",
+      "inheritedGroup": "inherited"
     },
     "compaction": {
       "title": "Compaction",

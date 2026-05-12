@@ -781,7 +781,8 @@
       "title": "Kênh đã liên kết",
       "description": "Các kênh hiện đang liên kết với agent này",
       "empty": "Không có kênh nào liên kết với agent này",
-      "disabled": "đã tắt"
+      "disabled": "đã tắt",
+      "inheritedGroup": "kế thừa"
     },
     "compaction": {
       "title": "Nén ngữ cảnh",
