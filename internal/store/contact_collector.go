@@ -59,3 +59,8 @@ func (c *ContactCollector) EnsureContact(ctx context.Context, channelType, chann
 func (c *ContactCollector) ResolveTenantUserID(ctx context.Context, channelType, senderID string) (string, error) {
 	return c.store.ResolveTenantUserID(ctx, channelType, senderID)
 }
+
+// DeleteStaleGroupContacts delegates to the underlying ContactStore.
+func (c *ContactCollector) DeleteStaleGroupContacts(ctx context.Context, channelType string, activeJIDs []string) (int, error) {
+	return c.store.DeleteStaleGroupContacts(ctx, channelType, activeJIDs)
+}

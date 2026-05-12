@@ -320,3 +320,40 @@ func (s *PGContactStore) GetContactsByMergedID(ctx context.Context, mergedID uui
 	}
 	return contacts, rows.Err()
 }
+
+func (s *PGContactStore) DeleteStaleGroupContacts(ctx context.Context, channelType string, activeJIDs []string) (int, error) {
+	tid := store.TenantIDFromContext(ctx)
+	if tid == uuid.Nil {
+		tid = store.MasterTenantID
+	}
+
+	if len(activeJIDs) == 0 {
+		res, err := s.db.ExecContext(ctx,
+			`DELETE FROM channel_contacts WHERE tenant_id = $1 AND channel_type = $2 AND contact_type = 'group'`,
+			tid, channelType)
+		if err != nil {
+			return 0, err
+		}
+		n, _ := res.RowsAffected()
+		return int(n), nil
+	}
+
+	placeholders := make([]string, len(activeJIDs))
+	args := make([]any, 0, len(activeJIDs)+2)
+	args = append(args, tid, channelType)
+	for i, jid := range activeJIDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+3)
+		args = append(args, jid)
+	}
+
+	q := fmt.Sprintf(
+		`DELETE FROM channel_contacts WHERE tenant_id = $1 AND channel_type = $2 AND contact_type = 'group' AND sender_id NOT IN (%s)`,
+		strings.Join(placeholders, ","),
+	)
+	res, err := s.db.ExecContext(ctx, q, args...)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
