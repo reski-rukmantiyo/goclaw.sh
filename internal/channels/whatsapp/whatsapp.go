@@ -526,6 +526,7 @@ func (c *Channel) RefreshGroups(ctx context.Context) ([]RefreshedGroup, error) {
 	result := make([]RefreshedGroup, 0, len(groups))
 	for _, g := range groups {
 		jidStr := g.JID.String()
+		slog.Info("whatsapp: group", "jid", jidStr, "name", g.Name, "isParent", g.IsParent, "participants", g.ParticipantCount)
 		if cc != nil {
 			cc.EnsureContact(ctx, c.Type(), c.Name(), jidStr, "", g.Name, "", "group", "group", "", "")
 		}
