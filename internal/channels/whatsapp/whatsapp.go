@@ -524,8 +524,11 @@ func (c *Channel) RefreshGroups(ctx context.Context) ([]RefreshedGroup, error) {
 
 	cc := c.ContactCollector()
 	result := make([]RefreshedGroup, 0, len(groups))
+	activeJIDs := make([]string, 0, len(groups))
 	for _, g := range groups {
 		jidStr := g.JID.String()
+		slog.Info("whatsapp: group", "jid", jidStr, "name", g.Name, "isParent", g.IsParent, "participants", g.ParticipantCount)
+		activeJIDs = append(activeJIDs, jidStr)
 		if cc != nil {
 			cc.EnsureContact(ctx, c.Type(), c.Name(), jidStr, "", g.Name, "", "group", "group", "", "")
 		}
@@ -534,6 +537,15 @@ func (c *Channel) RefreshGroups(ctx context.Context) ([]RefreshedGroup, error) {
 			Name:             g.Name,
 			ParticipantCount: g.ParticipantCount,
 		})
+	}
+
+	if cc != nil {
+		deleted, err := cc.DeleteStaleGroupContacts(ctx, c.Type(), activeJIDs)
+		if err != nil {
+			slog.Warn("whatsapp: failed to delete stale group contacts", "error", err)
+		} else if deleted > 0 {
+			slog.Info("whatsapp: removed stale group contacts", "count", deleted, "channel", c.Name())
+		}
 	}
 
 	slog.Info("whatsapp: refreshed groups", "count", len(result), "channel", c.Name())
