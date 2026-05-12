@@ -144,6 +144,21 @@ func CheckCronPermission(ctx context.Context, permStore ConfigPermissionStore) e
 	if isAdminRole(ctx) {
 		return nil // RBAC bypass (admin/operator/owner)
 	}
+	// Bootstrap: if no cron allow grants exist for this agent+scope, allow.
+	// Matches CheckFileWriterPermission's fail-open pattern.
+	cronPerms, cErr := permStore.List(ctx, agentID, ConfigTypeCron, userID)
+	if cErr == nil {
+		hasAllow := false
+		for _, p := range cronPerms {
+			if p.Permission == "allow" {
+				hasAllow = true
+				break
+			}
+		}
+		if !hasAllow {
+			return nil
+		}
+	}
 	senderID := SenderIDFromContext(ctx)
 	if senderID == "" || isSyntheticSender(senderID) {
 		return fmt.Errorf("permission denied: system context cannot manage cron jobs in group chats")
