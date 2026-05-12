@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 
 	"github.com/nextlevelbuilder/goclaw/internal/agent"
 	"github.com/nextlevelbuilder/goclaw/internal/channels"
@@ -128,6 +129,29 @@ func (m *ConfigPermissionsMethods) handleGrant(ctx context.Context, client *gate
 		}
 	}
 
+	// Validate userId format for group scopes.
+	if params.UserID != "*" && strings.HasPrefix(params.Scope, "group:") {
+		channelName, _, _ := channels.ParseGroupScope(params.Scope)
+		if strings.HasPrefix(channelName, "whatsapp") && !strings.Contains(params.UserID, "@") {
+			// Auto-format bare phone numbers to WhatsApp JID.
+			cleaned := strings.TrimSpace(params.UserID)
+			cleaned = strings.TrimPrefix(cleaned, "+")
+			if isDigitsOnly(cleaned) {
+				params.UserID = cleaned + "@s.whatsapp.net"
+			} else {
+				client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+					"Invalid userId for WhatsApp group: use a phone number, WhatsApp JID (e.g. 1234567890@s.whatsapp.net), or '*' for all users"))
+				return
+			}
+		}
+		// Reject obvious display names (spaces without @ sign).
+		if strings.Contains(params.UserID, " ") && !strings.Contains(params.UserID, "@") {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+				"Invalid userId: must be a platform user ID, not a display name. Use '*' for all users"))
+			return
+		}
+	}
+
 	perm := &store.ConfigPermission{
 		AgentID:    agentUUID,
 		Scope:      params.Scope,
@@ -190,4 +214,13 @@ func (m *ConfigPermissionsMethods) handleRevoke(ctx context.Context, client *gat
 func configPermInternalErr(action string, err error) string {
 	slog.Error("config.permissions RPC error", "action", action, "error", err)
 	return "internal error"
+}
+
+func isDigitsOnly(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return len(s) > 0
 }
