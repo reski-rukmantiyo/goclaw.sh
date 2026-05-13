@@ -458,7 +458,12 @@ Dependencies are wired in order: ListenBuffer requires `ListenRawMessageStore`, 
 
 ### Bound Channels Section
 
-The agent detail page shows which channel instances are bound to each agent, including WhatsApp instances with group overrides. Uses `useChannelInstances()` hook to fetch instances and filter by `agent_id`.
+The agent detail page shows which channel instances are bound to each agent, including WhatsApp groups with per-group agent overrides. Uses `useChannelInstances()` hook and a two-pass matching algorithm:
+
+1. **UUID match** (`inst.agent_id === agentId`): Agent is the channel's default agent. All WhatsApp groups from `config.groups` are collected and shown as inherited (groups without explicit `agent_id` override inherit the channel default).
+2. **Agent key match** (`config.groups[x].agent_id === agentKey`): Agent is assigned to specific groups via per-group override. Only matched groups are shown.
+
+Groups render as indented badges under the parent WhatsApp channel badge with a `Users` icon. Inherited groups show an "(inherited)" label.
 
 ### WebSocket Methods
 
