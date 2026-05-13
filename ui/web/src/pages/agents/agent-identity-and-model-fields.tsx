@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
+import { EmojiPicker } from "@/components/shared/emoji-picker";
 import { slugify } from "@/lib/slug";
 import type { AgentCreateFormData } from "@/schemas/agent.schema";
 import type { ProviderData } from "@/pages/providers/hooks/use-providers";
@@ -55,13 +56,17 @@ export function AgentIdentityAndModelFields({
         <div className="space-y-2">
           <Label htmlFor="displayName">{t("create.displayName")}</Label>
           <div className="flex gap-2">
-            <Input
-              id="emoji"
-              {...register("emoji")}
-              placeholder="🤖"
-              className="w-14 shrink-0 text-center text-lg"
-              maxLength={2}
-              title={t("create.emojiHint")}
+            <Controller
+              control={control}
+              name="emoji"
+              render={({ field }) => (
+                <EmojiPicker
+                  value={field.value ?? ""}
+                  onChange={(v) => field.onChange(v)}
+                  size="sm"
+                  className="shrink-0"
+                />
+              )}
             />
             <Input
               id="displayName"

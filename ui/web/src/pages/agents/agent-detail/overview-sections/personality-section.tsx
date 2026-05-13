@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Bot, Check, Copy } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,13 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-
-/** Extract the first emoji grapheme cluster from a string, or return empty. */
-function extractSingleEmoji(str: string): string {
-  const match = str.match(/\p{Emoji_Presentation}(\u200D\p{Emoji_Presentation})*/u)
-    ?? str.match(/\p{Extended_Pictographic}(\uFE0F?\u200D\p{Extended_Pictographic})*/u);
-  return match?.[0] ?? "";
-}
+import { EmojiPicker } from "@/components/shared/emoji-picker";
 
 interface PersonalitySectionProps {
   agentKey: string;
@@ -37,7 +31,6 @@ export function PersonalitySection({
 }: PersonalitySectionProps) {
   const { t } = useTranslation("agents");
   const [copied, setCopied] = useState(false);
-  const [emojiEditing, setEmojiEditing] = useState(false);
 
   const copyAgentKey = async () => {
     await navigator.clipboard.writeText(agentKey);
@@ -51,30 +44,10 @@ export function PersonalitySection({
 
       {/* 2-column: emoji left, fields right */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-[auto_1fr]">
-        {/* Emoji large preview */}
+        {/* Emoji picker */}
         <div className="flex flex-col items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setEmojiEditing(true)}
-            className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-            title={t("identity.emojiHint")}
-          >
-            {emoji
-              ? <span className="text-2xl leading-none">{emoji}</span>
-              : <Bot className="h-6 w-6 text-muted-foreground" />}
-          </button>
-          {emojiEditing ? (
-            <Input
-              autoFocus
-              value={emoji}
-              onChange={(e) => onEmojiChange(extractSingleEmoji(e.target.value))}
-              onBlur={() => setEmojiEditing(false)}
-              placeholder="🤖"
-              className="w-14 text-center text-base md:text-sm"
-            />
-          ) : (
-            <span className="text-2xs text-muted-foreground">{t("identity.emoji")}</span>
-          )}
+          <EmojiPicker value={emoji} onChange={onEmojiChange} />
+          <span className="text-2xs text-muted-foreground">{t("identity.emoji")}</span>
         </div>
 
         {/* Fields */}
