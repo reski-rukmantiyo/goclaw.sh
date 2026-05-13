@@ -781,7 +781,8 @@
       "title": "已绑定频道",
       "description": "当前绑定到此 agent 的频道实例",
       "empty": "没有频道绑定到此 agent",
-      "disabled": "已禁用"
+      "disabled": "已禁用",
+      "inheritedGroup": "继承"
     },
     "compaction": {
       "title": "压缩",
