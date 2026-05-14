@@ -65,6 +65,7 @@ export function AutoApprovedCommandsSection({ data, onSave, saving }: Props) {
               <SelectItem value="always">Always</SelectItem>
             </SelectContent>
           </Select>
+          <p className="text-xs text-muted-foreground">{t(`tools.execAskMode_${exec.ask ?? "off"}`)}</p>
         </div>
 
         <div className="grid gap-1.5">
