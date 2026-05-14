@@ -421,6 +421,14 @@ sequenceDiagram
 | `exec.approval.approve` | Approve (optionally always for this command) |
 | `exec.approval.deny` | Deny command execution |
 
+**Parameters:**
+
+| Method | Params | Description |
+|--------|--------|-------------|
+| `exec.approval.list` | — | Returns all pending approvals with ID, command, agentID, short code, createdAt |
+| `exec.approval.approve` | `{id: string, always?: boolean}` | `always: true` adds the command's binary to persistent allowlist (survives restart) |
+| `exec.approval.deny` | `{id: string}` | Blocks the command |
+
 ---
 
 ## 12. Usage & Quotas

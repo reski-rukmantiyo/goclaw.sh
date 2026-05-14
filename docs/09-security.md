@@ -67,6 +67,60 @@ The input guard scans for 6 injection patterns.
 
 Commands are scanned at execution time via regex deny lists. Patterns can be configured per-binary via `exec_settings.deny_patterns` (default set hardened for destructive/exfil operations). Verbose flag blocking (deny_verbose list) prevents leakage of sensitive output.
 
+#### Exec Approval Workflow
+
+The exec approval system gates shell command execution behind a configurable approval pipeline. Controlled via `tools.execApproval` in config.json5:
+
+```json5
+{
+  "tools": {
+    "execApproval": {
+      "security": "full",     // "deny" | "allowlist" | "full"
+      "ask": "on-miss",       // "off" | "on-miss" | "always"
+      "allowlist": ["git", "npm", "python"]
+    }
+  }
+}
+```
+
+**Security modes:**
+
+| Mode | Behavior |
+|------|----------|
+| `deny` | Block all commands |
+| `allowlist` | Only allow commands matching the allowlist (subject to ask mode) |
+| `full` (default) | Allow all commands in principle (subject to ask mode) |
+
+**Ask modes:**
+
+| Mode | Behavior |
+|------|----------|
+| `off` | Never ask — auto-approve everything (within security mode) |
+| `on-miss` (default) | Ask only when command is not in allowlist or `safeBins` |
+| `always` | Ask for every command regardless |
+
+**`safeBins`** — Hardcoded list of safe binary names that bypass approval under `on-miss`: `cat`, `ls`, `git`, `npm`, `python`, `go`, etc. Infrastructure tools (`docker`, `kubectl`, `curl`, `ssh`) are intentionally excluded.
+
+**Approval decisions:**
+
+| Decision | Behavior |
+|----------|----------|
+| `allow-once` | Approve this command once |
+| `allow-always` | Approve and add binary to persistent allowlist (survives restart) |
+| `deny` | Block the command |
+
+When a user chooses `allow-always`, the binary is appended to `tools.execApproval.allowlist` in the config file. On restart, it loads into the allowlist and is matched by `CheckCommand()`, bypassing future approval requests.
+
+**Resolution methods:**
+
+| Method | Use Case |
+|--------|----------|
+| By approval ID | `exec.approval.approve` / `exec.approval.deny` RPC |
+| By short code (6-char) | Text-based approval via channels: `/approve CODE`, `/deny CODE`, `/always CODE` |
+| By channel + chatID | Channel-specific handlers (WhatsApp numbered replies: `1`=approve, `2`=deny, `3`=always) |
+
+**Hot-reload:** Config changes applied at runtime via `TopicConfigChanged` event bus subscription — no restart needed when modifying ask mode or allowlist through the UI.
+
 **SSRF protection** -- 3-step validation:
 
 ```mermaid

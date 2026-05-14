@@ -424,7 +424,7 @@ Audit logging for compliance and troubleshooting. Logs all significant actions w
 
 ### SnapshotStore
 
-Pre-computed usage snapshots (hourly aggregations) for analytics dashboards. Tracks token usage, cost, request counts, and tool utilization.
+Pre-computed usage snapshots (hourly aggregations) for analytics dashboards. Tracks token usage, cost, request counts, tool utilization, and embedded memory chunks.
 
 | Method | Purpose |
 |--------|---------|
@@ -548,6 +548,7 @@ flowchart TD
 | `cron_jobs` | Scheduled tasks | `schedule_kind` (at/every/cron), `payload` (JSONB) |
 | `mcp_servers` | MCP server configs | `transport`, `api_key` (encrypted), `tool_prefix` |
 | `custom_tools` | Dynamic tool definitions | `command` (template), `agent_id` (NULL = global), `env` (encrypted) |
+| `usage_snapshots` | Hourly usage aggregations | `bucket_hour`, `agent_id`, `model`, `provider`, `tokens_in`, `tokens_out`, `cost`, `request_count`, `memory_docs`, `memory_chunks`, `embedded_chunks`, `kg_entities`, `kg_relations` |
 
 ### Migrations
 

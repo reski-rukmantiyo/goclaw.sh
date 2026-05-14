@@ -121,8 +121,7 @@ make desktop-dev                      # Dev mode with hot reload
 Desktop uses independent versioning with `lite-v*` tags:
 ```bash
 git tag lite-v0.1.0 && git push origin lite-v0.1.0
-# → GitHub Actions builds macOS (.dmg + .tar.gz) + Windows (.zip)
-# → Creates GitHub Release with all assets
+# → Build locally with make desktop-build or make desktop-dmg
 ```
 
 ## Architecture

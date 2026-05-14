@@ -81,9 +81,44 @@ Capabilities are inferred from tool name when no explicit metadata is registered
 
 | Tool | Description |
 |---|---|
-| `exec` | Execute a shell command; supports credentialed CLI mode for secure credential injection |
+| `exec` | Execute a shell command; supports credentialed CLI mode for secure credential injection. Approval workflow with persistent allowlisting (see `tools.execApproval` config) |
 
 **Credentialed CLI mode** — when the invoked binary is registered in `secure_cli_binaries`, the exec tool injects encrypted env vars directly into the child process (no shell involved) and verifies the agent has an explicit grant. Shell-wrapper unwrapping (up to depth 3) prevents bypass via `sh -c`. Fail-closed on DB error.
+
+**Exec approval flow:**
+
+```mermaid
+flowchart TD
+    CMD["Agent calls exec"] --> CHECK["CheckCommand()"]
+    CHECK --> MODE{"Security mode?"}
+    MODE -->|deny| BLOCK["Block"]
+    MODE -->|allowlist| AL{"In allowlist?"}
+    AL -->|Yes| ASK1{"Ask mode?"}
+    AL -->|No| ASK1
+    MODE -->|full| ASK2{"Ask mode?"}
+    ASK2 -->|off| ALLOW["Auto-approve"]
+    ASK2 -->|always| PROMPT["Request approval"]
+    ASK2 -->|on-miss| SAFE{"In allowlist or safeBins?"}
+    SAFE -->|Yes| ALLOW
+    SAFE -->|No| PROMPT
+    ASK1 -->|off| DENY_OR_ALLOW["Allow if in list, deny if not"]
+    ASK1 -->|on-miss| PROMPT
+    ASK1 -->|always| PROMPT
+    PROMPT --> USER["User decides"]
+    USER -->|allow-once| EXEC["Execute once"]
+    USER -->|allow-always| PERM["Add to persistent allowlist<br/>+ Execute"]
+    USER -->|deny| BLOCK2["Block"]
+```
+
+**Configuration** (`tools.execApproval` in config.json5):
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `security` | string | `"full"` | `"deny"` / `"allowlist"` / `"full"` |
+| `ask` | string | `"on-miss"` | `"off"` / `"on-miss"` / `"always"` |
+| `allowlist` | string[] | `[]` | Glob patterns for auto-approved binaries |
+
+Default behavior: all commands allowed in principle, but commands not in the allowlist or hardcoded `safeBins` require user approval. Users can choose `allow-always` to permanently add a binary to the allowlist (persists across restarts). Config changes are hot-reloaded without restart.
 
 ### Web (`group:web`)
 

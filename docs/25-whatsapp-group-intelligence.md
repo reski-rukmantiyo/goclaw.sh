@@ -452,6 +452,17 @@ flowchart TD
 
 Dependencies are wired in order: ListenBuffer requires `ListenRawMessageStore`, extraction worker requires both `ListenRawMessageStore` and `KnowledgeGraphStore`. If any dependency is missing, the corresponding component is silently skipped.
 
+### Flusher Lifecycle
+
+The group history flusher runs as a background goroutine for pending message DB writes:
+
+- **`Start()`** calls `gh.StartFlusher()` to begin the background DB flush goroutine
+- **`Stop()`** calls `gh.StopFlusher()` to flush pending message history to DB before shutdown
+- **`SetPendingCompaction(cfg)`** configures LLM-based auto-compaction for pending messages
+- **`SetPendingHistoryTenantID(id)`** propagates tenant_id to the pending history for DB operations
+
+All methods are nil-safe — no-op if group history is not initialized.
+
 ---
 
 ## 11. UI Integration
@@ -476,6 +487,10 @@ The refresh method resolves the WhatsApp channel from the manager with up to 10 
 ### Group Discovery
 
 Groups are discovered via `RefreshGroups()` which calls `whatsmeow.GetJoinedGroups()`. Results are upserted as contacts with the group JID as the ID and the group name as the display name. The UI can then show available groups for configuration.
+
+### Stale Contact Cleanup
+
+During `RefreshGroups()`, contacts for groups the bot is no longer a member of are automatically removed via `DeleteStaleGroupContacts()`. After upserting all active groups, the method collects active JIDs and deletes contacts matching the channel type whose `sender_id` is not in the active set. Both PostgreSQL and SQLite implementations are tenant-scoped. If no active JIDs exist (bot left all groups), all group contacts for that channel type are removed.
 
 ---
 

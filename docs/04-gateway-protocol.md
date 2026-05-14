@@ -238,9 +238,9 @@ flowchart TD
 
 | Method | Description |
 |--------|-------------|
-| `exec.approval.list` | List pending exec approval requests |
-| `exec.approval.approve` | Approve an exec request |
-| `exec.approval.deny` | Deny an exec request |
+| `exec.approval.list` | List pending exec approval requests (returns ID, command, agentID, short code, createdAt) |
+| `exec.approval.approve` | Approve an exec request. Params: `{id: string, always?: boolean}` — `always: true` adds the binary to persistent allowlist |
+| `exec.approval.deny` | Deny an exec request. Params: `{id: string}` |
 
 ### Usage and Send
 

@@ -670,6 +670,12 @@ Commands are intercepted before the normal message pipeline:
 
 `/stop` and `/stopall` publish inbound messages with `metadata["command"]` — feedback is sent by the consumer after the cancel result is known.
 
+### Group Contact Management
+
+When `RefreshGroups()` runs (triggered via `whatsapp.groups.refresh` WS method or at startup), the bot fetches all joined groups and upserts them as contacts. Stale contacts for groups the bot is no longer a member of are automatically removed via `DeleteStaleGroupContacts()`.
+
+When granting config permissions with WhatsApp user IDs, bare phone numbers (e.g., `1234567890`) are automatically formatted to WhatsApp JIDs by appending `@s.whatsapp.net`. Display names containing spaces are rejected — only JIDs or phone numbers are accepted.
+
 ### Reconnect Watchdog
 
 On disconnect, a background goroutine attempts reconnection:
