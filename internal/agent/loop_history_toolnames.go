@@ -35,6 +35,16 @@ func (l *Loop) filteredToolNames() []string {
 	for i, d := range defs {
 		names[i] = d.Function.Name
 	}
+	// Hide shared_knowledge_search when no shared KG scopes configured.
+	if len(l.sharedKGIDs()) == 0 {
+		filtered := names[:0:0]
+		for _, n := range names {
+			if n != "shared_knowledge_search" {
+				filtered = append(filtered, n)
+			}
+		}
+		names = filtered
+	}
 	return names
 }
 

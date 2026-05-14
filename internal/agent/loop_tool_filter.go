@@ -100,6 +100,18 @@ func (l *Loop) buildFilteredTools(req *RunRequest, hadBootstrap bool, iteration,
 		toolDefs = filtered
 	}
 
+	// Hide shared_knowledge_search when no shared KG scopes are configured.
+	// The tool searches data from WhatsApp listen-only groups — useless without scopes.
+	if len(l.sharedKGIDs()) == 0 {
+		filtered := toolDefs[:0:0]
+		for _, td := range toolDefs {
+			if td.Function.Name != "shared_knowledge_search" {
+				filtered = append(filtered, td)
+			}
+		}
+		toolDefs = filtered
+	}
+
 	// Final iteration: strip all tools to force a text-only response.
 	// Without this the model may keep requesting tools and exit with "...".
 	if iteration == maxIter {
