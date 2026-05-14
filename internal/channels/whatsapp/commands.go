@@ -121,6 +121,10 @@ func (c *Channel) handleCommand(ctx context.Context, text, senderID, chatID, pee
 	case "/deny":
 		c.handleExecApprovalCommand(ctx, text, chatJID, tools.ApprovalDeny)
 		return true
+
+	case "/always":
+		c.handleExecApprovalCommand(ctx, text, chatJID, tools.ApprovalAllowAlways)
+		return true
 	}
 
 	return false
@@ -143,7 +147,7 @@ func (c *Channel) handleExecApprovalCommand(ctx context.Context, text string, ch
 
 	parts := strings.SplitN(strings.TrimSpace(text), " ", 2)
 	if len(parts) < 2 || strings.TrimSpace(parts[1]) == "" {
-		c.sendText(chatJID, "Usage: /approve <code> or /deny <code>")
+		c.sendText(chatJID, "Usage: /approve <code>, /deny <code>, or /always <code>")
 		return
 	}
 	code := strings.ToUpper(strings.TrimSpace(parts[1]))
@@ -156,6 +160,8 @@ func (c *Channel) handleExecApprovalCommand(ctx context.Context, text string, ch
 
 	if decision == tools.ApprovalDeny {
 		c.sendText(chatJID, "Command denied.")
+	} else if decision == tools.ApprovalAllowAlways {
+		c.sendText(chatJID, "Command approved and added to auto-approve list.")
 	} else {
 		c.sendText(chatJID, "Command approved.")
 	}
@@ -183,11 +189,13 @@ func (c *Channel) TryExecApprovalText(text string, chatJID types.JID, chatID str
 	channelName := c.Name()
 	lower := strings.ToLower(text)
 
-	// Priority 1: Simple numbered reply — "1" (approve) or "2" (deny).
-	if lower == "1" || lower == "2" {
+	// Priority 1: Simple numbered reply — "1" (approve), "2" (deny), "3" (always approve).
+	if lower == "1" || lower == "2" || lower == "3" {
 		decision := tools.ApprovalAllowOnce
 		if lower == "2" {
 			decision = tools.ApprovalDeny
+		} else if lower == "3" {
+			decision = tools.ApprovalAllowAlways
 		}
 		code, cmd, err := c.execApprovalMgr.ResolveByChannel(channelName, chatID, decision)
 		if err != nil {
@@ -197,6 +205,8 @@ func (c *Channel) TryExecApprovalText(text string, chatJID types.JID, chatID str
 		verb := "Approved"
 		if decision == tools.ApprovalDeny {
 			verb = "Denied"
+		} else if decision == tools.ApprovalAllowAlways {
+			verb = "Always approved"
 		}
 		c.sendText(chatJID, fmt.Sprintf("%s [%s]: %s", verb, code, cmd))
 
@@ -208,17 +218,24 @@ func (c *Channel) TryExecApprovalText(text string, chatJID types.JID, chatID str
 			for _, pa := range remaining {
 				b.WriteString(fmt.Sprintf("\n  [%s] %s", pa.ShortCode, truncateCmdLocal(pa.Command, 80)))
 			}
-			b.WriteString("\n\nReply \"approve CODE\" or \"deny CODE\" to target a specific one.")
+			b.WriteString("\n\nReply \"approve CODE\", \"deny CODE\", or \"always CODE\" to target a specific one.")
 			c.sendText(chatJID, b.String())
 		}
 		return true
 	}
 
-	// Priority 2: Natural language — "approve CODE" or "deny CODE".
+	// Priority 2: Natural language — "approve CODE", "deny CODE", or "always CODE".
 	var decision tools.ApprovalDecision
 	var code string
 
-	if idx := strings.Index(lower, "approve"); idx >= 0 {
+	if idx := strings.Index(lower, "always"); idx >= 0 {
+		rest := strings.TrimSpace(text[idx+len("always"):])
+		fields := strings.Fields(rest)
+		if len(fields) > 0 {
+			code = strings.ToUpper(fields[0])
+			decision = tools.ApprovalAllowAlways
+		}
+	} else if idx := strings.Index(lower, "approve"); idx >= 0 {
 		rest := strings.TrimSpace(text[idx+len("approve"):])
 		fields := strings.Fields(rest)
 		if len(fields) > 0 {
@@ -253,6 +270,8 @@ func (c *Channel) TryExecApprovalText(text string, chatJID types.JID, chatID str
 
 	if decision == tools.ApprovalDeny {
 		c.sendText(chatJID, "Command denied.")
+	} else if decision == tools.ApprovalAllowAlways {
+		c.sendText(chatJID, "Command approved and added to auto-approve list.")
 	} else {
 		c.sendText(chatJID, "Command approved.")
 	}

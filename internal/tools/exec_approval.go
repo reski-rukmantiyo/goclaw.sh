@@ -50,11 +50,12 @@ type ExecApprovalConfig struct {
 	Allowlist []string     `json:"allowlist"` // glob patterns for allowed commands
 }
 
-// DefaultExecApprovalConfig returns the default (permissive) config.
+// DefaultExecApprovalConfig returns the default config.
+// on-miss: basic commands (safeBins) auto-approve; destructive commands (rm, etc.) require approval.
 func DefaultExecApprovalConfig() ExecApprovalConfig {
 	return ExecApprovalConfig{
 		Security: ExecSecurityFull,
-		Ask:      ExecAskOff,
+		Ask:      ExecAskOnMiss,
 	}
 }
 
@@ -160,6 +161,7 @@ type ExecApprovalManager struct {
 	pending         map[string]*PendingApproval
 	shortCodeIndex  map[string]string // shortCode → approval ID
 	alwaysAllow     map[string]bool   // patterns added via "allow-always" decisions
+	onAlwaysAllow   func(bin string)  // callback to persist always-allow entries to config
 	mu              sync.Mutex
 	nextID          int
 	msgBus          *bus.MessageBus
@@ -180,7 +182,11 @@ func (m *ExecApprovalManager) SetMessageBus(b *bus.MessageBus) {
 	m.msgBus = b
 }
 
-// UpdateConfig replaces the approval config at runtime (preserves alwaysAllow map and pending approvals).
+// SetOnAlwaysAllow sets a callback invoked when a user picks "Always Approve".
+// The callback persists the binary to config so it survives restarts.
+func (m *ExecApprovalManager) SetOnAlwaysAllow(fn func(bin string)) {
+	m.onAlwaysAllow = fn
+}
 func (m *ExecApprovalManager) UpdateConfig(cfg ExecApprovalConfig) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -282,6 +288,9 @@ func (m *ExecApprovalManager) RequestApproval(command, agentID string, timeout t
 				m.alwaysAllow[bin] = true
 				m.mu.Unlock()
 				slog.Info("exec approval: added to always-allow", "bin", bin)
+				if m.onAlwaysAllow != nil {
+					m.onAlwaysAllow(bin)
+				}
 			}
 		}
 

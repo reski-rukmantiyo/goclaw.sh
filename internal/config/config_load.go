@@ -52,7 +52,7 @@ func Default() *Config {
 			},
 			ExecApproval: ExecApprovalCfg{
 				Security: "full",
-				Ask:      "off",
+				Ask:      "on-miss",
 			},
 			RateLimitPerHour: 150,
 		},
