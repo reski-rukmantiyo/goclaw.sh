@@ -37,8 +37,8 @@ func wireExecApprovalNotifySubscriber(msgBus *bus.MessageBus) {
 		msgBus.PublishOutbound(bus.OutboundMessage{
 			Channel: snapshot.Channel,
 			ChatID:  snapshot.ChatID,
-			Content: fmt.Sprintf("1. Approve\n2. Deny\n\nReply 1 or 2 (most recent)\nOr: approve %s / deny %s",
-				snapshot.ShortCode, snapshot.ShortCode),
+			Content: fmt.Sprintf("1. Approve\n2. Deny\n3. Always Approve\n\nReply 1, 2 or 3 (most recent)\nOr: approve %s / deny %s / always %s",
+				snapshot.ShortCode, snapshot.ShortCode, snapshot.ShortCode),
 			Metadata: map[string]string{
 				"exec_approval_id":   snapshot.ID,
 				"exec_approval_code": snapshot.ShortCode,

@@ -456,6 +456,18 @@ func (c *Config) ReplaceFrom(src *Config) {
 	c.Bindings = src.Bindings
 }
 
+// AddExecAlwaysAllow appends a binary to the exec approval allowlist (deduped).
+func (c *Config) AddExecAlwaysAllow(bin string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, existing := range c.Tools.ExecApproval.Allowlist {
+		if existing == bin {
+			return
+		}
+	}
+	c.Tools.ExecApproval.Allowlist = append(c.Tools.ExecApproval.Allowlist, bin)
+}
+
 // IdentityConfig defines agent persona / display identity.
 type IdentityConfig struct {
 	Name  string `json:"name,omitempty"`

@@ -141,6 +141,18 @@ func runGateway() {
 	}
 
 	toolsReg, execApprovalMgr, mcpMgr, sandboxMgr, browserMgr, webFetchTool, ttsTool, audioMgr, permPE, toolPE, dataDir, agentCfg := setupToolRegistry(cfg, workspace, providerRegistry, msgBus)
+
+
+		// Wire always-allow callback: when a user picks "Always Approve" from a channel,
+		// persist the binary to config so it survives restarts and shows in the UI.
+		if execApprovalMgr != nil {
+			execApprovalMgr.SetOnAlwaysAllow(func(bin string) {
+				cfg.AddExecAlwaysAllow(bin)
+				if err := config.Save(cfgPath, cfg); err != nil {
+					slog.Warn("failed to persist always-allow to config", "bin", bin, "error", err)
+				}
+			})
+		}
 	if browserMgr != nil {
 		defer browserMgr.Close()
 	}
@@ -613,6 +625,7 @@ func runGateway() {
 		postTurn:          postTurn,
 		subagentMgr:       subagentMgr,
 		consumerTeamStore: consumerTeamStore,
+		execApprovalMgr:   execApprovalMgr,
 		auditCh:           auditCh,
 		sigCh:             sigCh,
 	})
