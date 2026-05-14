@@ -14,6 +14,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
+	"github.com/google/uuid"
 	"github.com/nextlevelbuilder/goclaw/internal/audio"
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/channels"
@@ -214,12 +215,29 @@ func (c *Channel) Start(ctx context.Context) error {
 		}
 	}
 
+	if gh := c.GroupHistory(); gh != nil {
+		gh.StartFlusher()
+	}
 	c.SetRunning(true)
 	return nil
 }
 
 // BlockReplyEnabled returns the per-channel block_reply override (nil = inherit gateway default).
 func (c *Channel) BlockReplyEnabled() *bool { return c.config.BlockReply }
+
+// SetPendingCompaction configures LLM-based auto-compaction for pending messages.
+func (c *Channel) SetPendingCompaction(cfg *channels.CompactionConfig) {
+	if gh := c.GroupHistory(); gh != nil {
+		gh.SetCompactionConfig(cfg)
+	}
+}
+
+// SetPendingHistoryTenantID propagates tenant_id to the pending history for DB operations.
+func (c *Channel) SetPendingHistoryTenantID(id uuid.UUID) {
+	if gh := c.GroupHistory(); gh != nil {
+		gh.SetTenantID(id)
+	}
+}
 
 // publishBufferedMessage is the flush callback for the media caption buffer.
 func (c *Channel) publishBufferedMessage(msg bus.InboundMessage) {
@@ -257,6 +275,11 @@ func (c *Channel) Stop(_ context.Context) error {
 		c.typingCancel.Delete(key)
 		return true
 	})
+
+	// Flush pending message history to DB before shutdown.
+	if gh := c.GroupHistory(); gh != nil {
+		gh.StopFlusher()
+	}
 
 	c.SetRunning(false)
 	c.MarkStopped("Stopped")
