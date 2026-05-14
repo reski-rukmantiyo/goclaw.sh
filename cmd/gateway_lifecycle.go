@@ -34,6 +34,7 @@ type lifecycleDeps struct {
 	postTurn          tools.PostTurnProcessor
 	subagentMgr       *tools.SubagentManager
 	consumerTeamStore store.TeamStore
+	execApprovalMgr   *tools.ExecApprovalManager
 	auditCh           chan bus.AuditEventPayload
 	sigCh             chan os.Signal
 }
@@ -128,6 +129,29 @@ func (d *gatewayDeps) runLifecycle(
 		}
 		mcpbridge.SetExtraAllowedCommands(updatedCfg.Tools.AllowedCommands)
 		slog.Info("MCP extra commands reloaded", "commands", updatedCfg.Tools.AllowedCommands)
+	})
+
+	// Reload exec approval config on config changes via pub/sub.
+	d.msgBus.Subscribe("exec-approval-reload", func(evt bus.Event) {
+		if evt.Name != bus.TopicConfigChanged {
+			return
+		}
+		updatedCfg, ok := evt.Payload.(*config.Config)
+		if !ok {
+			return
+		}
+		approvalCfg := tools.DefaultExecApprovalConfig()
+		if eaCfg := updatedCfg.Tools.ExecApproval; eaCfg.Security != "" {
+			approvalCfg.Security = tools.ExecSecurity(eaCfg.Security)
+		}
+		if eaCfg := updatedCfg.Tools.ExecApproval; eaCfg.Ask != "" {
+			approvalCfg.Ask = tools.ExecAskMode(eaCfg.Ask)
+		}
+		if len(updatedCfg.Tools.ExecApproval.Allowlist) > 0 {
+			approvalCfg.Allowlist = updatedCfg.Tools.ExecApproval.Allowlist
+		}
+		deps.execApprovalMgr.UpdateConfig(approvalCfg)
+		slog.Info("exec approval reloaded", "security", string(approvalCfg.Security), "ask", string(approvalCfg.Ask))
 	})
 
 	// Note: vault enrichment provider is resolved per-tenant at runtime,

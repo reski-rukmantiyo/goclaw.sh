@@ -180,6 +180,13 @@ func (m *ExecApprovalManager) SetMessageBus(b *bus.MessageBus) {
 	m.msgBus = b
 }
 
+// UpdateConfig replaces the approval config at runtime (preserves alwaysAllow map and pending approvals).
+func (m *ExecApprovalManager) UpdateConfig(cfg ExecApprovalConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.config = cfg
+}
+
 // CheckCommand evaluates whether a command should be executed, blocked, or needs approval.
 // Returns: "allow", "deny", or "ask".
 func (m *ExecApprovalManager) CheckCommand(command string) string {

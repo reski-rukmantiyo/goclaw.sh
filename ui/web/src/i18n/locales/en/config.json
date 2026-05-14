@@ -213,6 +213,10 @@
   "tools.mcpCommandsLabel": "Extra Commands",
   "tools.mcpCommandsTip": "Custom binary names allowed as MCP server commands (stdio transport). Default runtimes (node, python, etc.) are always allowed.",
   "tools.mcpCommandsPlaceholder": "Type command name and press Enter",
+  "tools.autoApprovedCommands": "Auto-Approved Commands",
+  "tools.autoApprovedCommandsTip": "Commands that bypass exec approval. Add binary names or glob patterns (e.g. git, npm, mcp-*). Ask Mode must be 'On Miss' for patterns to take effect; 'Off' auto-approves all.",
+  "tools.autoApprovedCommandsLabel": "Approved Commands",
+  "tools.autoApprovedCommandsPlaceholder": "Type command name and press Enter",
 
   "tts.title": "Text-to-Speech",
   "tts.configured": "Configured",

@@ -213,6 +213,10 @@
   "tools.mcpCommandsLabel": "Lệnh bổ sung",
   "tools.mcpCommandsTip": "Tên binary tùy chỉnh được phép làm lệnh MCP server (stdio transport). Các runtime mặc định (node, python, v.v.) luôn được phép.",
   "tools.mcpCommandsPlaceholder": "Nhập tên lệnh và nhấn Enter",
+  "tools.autoApprovedCommands": "Lệnh tự động phê duyệt",
+  "tools.autoApprovedCommandsTip": "Lệnh bỏ qua phê duyệt thực thi. Thêm tên binary hoặc mẫu glob (vd: git, npm, mcp-*). Chế độ Hỏi phải là 'Khi thiếu' để mẫu có hiệu lực; 'Tắt' tự động phê duyệt tất cả.",
+  "tools.autoApprovedCommandsLabel": "Lệnh đã phê duyệt",
+  "tools.autoApprovedCommandsPlaceholder": "Nhập tên lệnh và nhấn Enter",
 
   "tts.title": "Chuyển văn bản thành giọng nói",
   "tts.configured": "Đã cấu hình",

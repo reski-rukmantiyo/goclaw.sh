@@ -613,6 +613,7 @@ func runGateway() {
 		postTurn:          postTurn,
 		subagentMgr:       subagentMgr,
 		consumerTeamStore: consumerTeamStore,
+		execApprovalMgr:   execApprovalMgr,
 		auditCh:           auditCh,
 		sigCh:             sigCh,
 	})
