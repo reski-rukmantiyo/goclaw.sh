@@ -368,7 +368,7 @@ System tool metadata storage. Built-in tools are seeded at startup with category
 
 ### PendingMessageStore
 
-Offline message queue for group chats. Buffers messages when the bot is not actively listening, auto-compacts into summaries to prevent unbounded growth.
+Offline message queue for group chats. Buffers messages when the bot is not actively listening, auto-compacts into summaries to prevent unbounded growth. Used by all channels with mention gating (Telegram, Discord, Slack, Feishu, WhatsApp, Zalo Personal). WhatsApp channel wires DB persistence, LLM compaction, and tenant-scoped flush via `SetPendingHistoryTenantID`/`SetPendingCompaction`/`StartFlusher`/`StopFlusher`.
 
 | Method | Purpose |
 |--------|---------|
@@ -543,6 +543,7 @@ flowchart TD
 | `llm_providers` | Provider configuration | `api_key` (AES-256-GCM encrypted) |
 | `traces` | LLM call traces | `agent_id`, `user_id`, `status`, `parent_trace_id`, aggregated token counts |
 | `spans` | Individual operations | `span_type` (llm_call, tool_call, agent, embedding), `parent_span_id` |
+| `channel_pending_messages` | Group chat buffer | `channel_name`, `history_key`, `sender`, `body`, `is_summary`, `tenant_id`, INDEX(channel_name, history_key, created_at) |
 | `skills` | Skill definitions | Content, metadata, grants |
 | `cron_jobs` | Scheduled tasks | `schedule_kind` (at/every/cron), `payload` (JSONB) |
 | `mcp_servers` | MCP server configs | `transport`, `api_key` (encrypted), `tool_prefix` |

@@ -158,7 +158,7 @@ flowchart TD
 |---------|----------|-------------|---------|-------|----------|---------|---------------|
 | Connection | Long polling | WS (default) / Webhook | Gateway events | Socket Mode | Direct protocol (in-process) | Long polling | Internal protocol |
 | DM support | Yes | Yes | Yes | Yes | Yes | Yes (DM only) | Yes |
-| Group support | Yes (mention gating) | Yes | Yes | Yes (mention gating + thread cache) | Yes (mention gating, per-group overrides) | No | Yes |
+| Group support | Yes (mention gating, pending buffer) | Yes | Yes | Yes (mention gating + thread cache) | Yes (mention gating, pending buffer, per-group overrides) | No | Yes |
 | Forum/Topics | Yes (per-topic config) | Yes (topic session mode) | -- | -- | -- | -- | -- |
 | Message limit | 4,096 chars | Configurable (default 4,000) | 2,000 chars | 4,000 chars | 4,096 chars | 2,000 chars | 2,000 chars |
 | Streaming | Typing indicator | Streaming message cards | Edit "Thinking..." | Edit "Thinking..." (throttled 1s) | Typing indicator | No | No |
@@ -551,6 +551,7 @@ The WhatsApp channel connects directly to the WhatsApp network via the multi-dev
 - **Database auth store**: Persists auth state, keys, and device info in the database (dual-backend: PostgreSQL + SQLite)
 - **QR code authentication**: Interactive QR code for initial pairing, served via WebSocket API with PNG encoding
 - **Reconnect watchdog**: Automatic reconnection with exponential backoff (5s steps, max 60s, 5 attempts)
+- **Group history buffering**: When `require_mention` is enabled, unmentioned group messages are buffered in RAM and persisted to `channel_pending_messages` table. When the bot is mentioned, buffered context is prepended to the current message. Buffer is cleared after bot replies. Background DB flush (every 3s / 20 messages) and LLM-based auto-compaction are wired via `StartFlusher`/`SetPendingCompaction`/`SetPendingHistoryTenantID` — same lifecycle as other channels
 - **DM and group support**: Full group messaging with mention detection via dual identity (LID + JID)
 - **Per-group configuration**: Agent routing overrides, listen-only toggles, graph scope sharing, mention requirements, enable/disable per group
 - **Listen-only mode**: Silently collects messages for Knowledge Graph extraction without responding
@@ -847,7 +848,7 @@ flowchart TD
 | `internal/channels/slack/format.go` | Markdown → Slack mrkdwn pipeline |
 | `internal/channels/slack/reactions.go` | Status emoji reactions on messages |
 | `internal/channels/slack/stream.go` | Streaming message updates via placeholder editing |
-| `internal/channels/whatsapp/whatsapp.go` | WhatsApp: direct protocol client, QR auth, reconnect watchdog, listen-only checks, group overrides |
+| `internal/channels/whatsapp/whatsapp.go` | WhatsApp: direct protocol client, QR auth, reconnect watchdog, listen-only checks, group overrides, pending history lifecycle (flusher, compaction, tenant ID) |
 | `internal/channels/whatsapp/factory.go` | Channel factory with audio.Manager and builtin-tool store wiring, instance config parsing, legacy bridge detection |
 | `internal/channels/whatsapp/stt.go` | Voice transcription with opt-in setting and E2E fallback |
 | `internal/channels/whatsapp/qr_methods.go` | QR code generation and WebSocket authentication flow |
