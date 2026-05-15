@@ -298,12 +298,14 @@ export function WhatsAppGroupOverrides({
                     </p>
                   </div>
                 )}
-                {/* Session Clear */}
-                <SessionClearSection
-                  value={group.session_clear}
-                  onChange={(v) => updateGroup(id, { ...group, session_clear: v })}
-                  hideScope
-                />
+                {/* Session Clear — not applicable for listen-only groups */}
+                {!group.listen_only && (
+                  <SessionClearSection
+                    value={group.session_clear}
+                    onChange={(v) => updateGroup(id, { ...group, session_clear: v })}
+                    hideScope
+                  />
+                )}
               </div>
             )}
           </div>

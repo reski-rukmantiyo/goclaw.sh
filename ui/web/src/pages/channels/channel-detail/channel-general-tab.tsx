@@ -152,10 +152,12 @@ export function ChannelGeneralTab({ instance, agents, onUpdate }: ChannelGeneral
         </section>
       )}
 
-      {/* Session Clear section */}
-      <section className="space-y-3 rounded-lg border p-3 sm:p-4 overflow-hidden">
-        <SessionClearSection value={sessionClear} onChange={setSessionClear} />
-      </section>
+      {/* Session Clear section — not applicable for listen-only channels */}
+      {!existingConfig.listen_only && (
+        <section className="space-y-3 rounded-lg border p-3 sm:p-4 overflow-hidden">
+          <SessionClearSection value={sessionClear} onChange={setSessionClear} />
+        </section>
+      )}
 
       <StickySaveBar
         onSave={handleSave}
