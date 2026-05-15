@@ -3,6 +3,7 @@ package methods
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 
 	"github.com/google/uuid"
@@ -10,6 +11,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/gateway"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
+	"github.com/nextlevelbuilder/goclaw/internal/sessionclear"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
@@ -149,6 +151,14 @@ func (m *ChannelInstancesMethods) handleCreate(ctx context.Context, client *gate
 		Enabled:     enabled,
 	}
 
+	// Validate session_clear config if present.
+	if len(params.Config) > 0 {
+		if err := validateSessionClearConfig(params.Config); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, err.Error()))
+			return
+		}
+	}
+
 	if err := m.store.Create(ctx, inst); err != nil {
 		slog.Error("channels.instances.create", "error", err)
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToCreate, "instance", err.Error())))
@@ -189,6 +199,22 @@ func (m *ChannelInstancesMethods) handleUpdate(ctx context.Context, client *gate
 			updates[k] = v
 		} else {
 			slog.Warn("security.filtered_unknown_field", "field", k, "handler", "channels.instances.update")
+		}
+	}
+
+	// Validate session_clear config if present in the update.
+	if configRaw, ok := updates["config"]; ok {
+		var configJSON json.RawMessage
+		switch v := configRaw.(type) {
+		case json.RawMessage:
+			configJSON = v
+		default:
+			b, _ := json.Marshal(v)
+			configJSON = b
+		}
+		if err := validateSessionClearConfig(configJSON); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, err.Error()))
+			return
 		}
 	}
 
@@ -283,4 +309,34 @@ func isValidChannelType(ct string) bool {
 		return true
 	}
 	return false
+}
+
+// validateSessionClearConfig validates session_clear fields in a channel instance config JSONB.
+func validateSessionClearConfig(configJSON json.RawMessage) error {
+	var check struct {
+		SessionClear *sessionclear.ClearSchedule `json:"session_clear"`
+		Groups       map[string]*struct {
+			SessionClear *sessionclear.ClearSchedule `json:"session_clear"`
+		} `json:"groups"`
+	}
+	if len(configJSON) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(configJSON, &check); err != nil {
+		return nil
+	}
+
+	if check.SessionClear != nil {
+		if err := sessionclear.ValidateClearSchedule(check.SessionClear, false); err != nil {
+			return fmt.Errorf("session_clear: %w", err)
+		}
+	}
+	for gid, gc := range check.Groups {
+		if gc != nil && gc.SessionClear != nil {
+			if err := sessionclear.ValidateClearSchedule(gc.SessionClear, true); err != nil {
+				return fmt.Errorf("groups.%s.session_clear: %w", gid, err)
+			}
+		}
+	}
+	return nil
 }

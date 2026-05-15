@@ -39,6 +39,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/media"
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
 	"github.com/nextlevelbuilder/goclaw/internal/scheduler"
+	"github.com/nextlevelbuilder/goclaw/internal/sessionclear"
 	"github.com/nextlevelbuilder/goclaw/internal/skills"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/internal/tools"
@@ -512,6 +513,18 @@ func runGateway() {
 		}
 	}
 
+	// Session clear scheduler — reads channel instance configs and clears sessions on schedule.
+	var clearScheduler *sessionclear.ClearScheduler
+	if pgStores.ChannelInstances != nil && pgStores.Sessions != nil {
+		clearScheduler = sessionclear.NewClearScheduler(
+			pgStores.Sessions,
+			pgStores.ChannelInstances,
+			cfg.Cron.DefaultTimezone,
+		)
+		clearScheduler.Reload(context.Background())
+		clearScheduler.Start()
+	}
+
 	// Register config-based channels as fallback when no DB instances loaded.
 	registerConfigChannels(cfg, channelMgr, msgBus, pgStores, instanceLoader, audioMgr)
 
@@ -519,7 +532,7 @@ func runGateway() {
 	wireChannelRPCMethods(server, pgStores, channelMgr, agentRouter, msgBus, workspace)
 
 	// Wire channel event subscribers (cache invalidation, pairing, cascade disable)
-	wireChannelEventSubscribers(msgBus, server, pgStores, channelMgr, instanceLoader, pairingMethods, cfg)
+	wireChannelEventSubscribers(msgBus, server, pgStores, channelMgr, instanceLoader, pairingMethods, cfg, clearScheduler)
 
 	// Audit log subscriber + team task event subscribers.
 	auditCh := deps.wireAuditSubscriber()
@@ -618,6 +631,7 @@ func runGateway() {
 	deps.runLifecycle(ctx, cancel, lifecycleDeps{
 		sched:             sched,
 		heartbeatTicker:   heartbeatTicker,
+		clearScheduler:    clearScheduler,
 		quotaChecker:      quotaChecker,
 		webFetchTool:      webFetchTool,
 		ttsTool:           ttsTool,
