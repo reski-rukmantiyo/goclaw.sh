@@ -10,6 +10,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ConfigGroupHeader } from "@/components/shared/config-group-header";
+import { Combobox } from "@/components/ui/combobox";
+import { getAllIanaTimezones } from "@/lib/constants";
 
 export interface SessionClearConfig {
   enabled?: boolean;
@@ -178,11 +180,11 @@ export function SessionClearSection({ value, onChange, hideScope }: Props) {
           {kind === "cron" && (
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">{t("sessionClear.timezoneLabel")}</Label>
-              <Input
-                value={tz}
-                onChange={(e) => updateSchedule({ tz: e.target.value || undefined })}
+              <Combobox
+                value={tz || "UTC"}
+                onChange={(v) => updateSchedule({ tz: v === "UTC" ? undefined : v })}
+                options={getAllIanaTimezones()}
                 placeholder="UTC"
-                className="h-9 text-sm"
               />
               <p className="text-xs text-muted-foreground">{t("sessionClear.timezoneHint")}</p>
             </div>
