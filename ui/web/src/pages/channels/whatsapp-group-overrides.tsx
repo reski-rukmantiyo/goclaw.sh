@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Plus, Trash2, ChevronDown, ChevronRight, RefreshCw, AlertTriangle } from "lucide-react";
 import { useWsCall } from "@/hooks/use-ws-call";
+import { SessionClearSection, type SessionClearConfig } from "@/components/shared/session-clear-section";
 import type { ChannelContact } from "@/types/contact";
 import type { AgentData } from "@/types/agent";
 
@@ -22,6 +23,7 @@ interface WhatsAppGroupConfigValues {
   listen_only?: boolean;
   listen_graph_id?: string;
   require_mention?: boolean;
+  session_clear?: SessionClearConfig;
 }
 
 interface Props {
@@ -296,6 +298,12 @@ export function WhatsAppGroupOverrides({
                     </p>
                   </div>
                 )}
+                {/* Session Clear */}
+                <SessionClearSection
+                  value={group.session_clear}
+                  onChange={(v) => updateGroup(id, { ...group, session_clear: v })}
+                  hideScope
+                />
               </div>
             )}
           </div>

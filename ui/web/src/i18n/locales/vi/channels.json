@@ -454,5 +454,28 @@
     "refreshGroups": "Làm mới nhóm",
     "refreshing": "Đang làm mới...",
     "notJoined": "Chưa tham gia"
+  },
+  "sessionClear": {
+    "title": "Lịch xóa phiên",
+    "enabledLabel": "Tự động xóa phiên",
+    "enabledHint": "Tự động đặt lại hoặc xóa phiên theo lịch trình.",
+    "actionLabel": "Hành động",
+    "actionReset": "Đặt lại (xóa lịch sử)",
+    "actionDelete": "Xóa (xóa hoàn toàn)",
+    "actionResetHint": "Xóa lịch sử trò chuyện nhưng giữ lại phiên.",
+    "actionDeleteHint": "Xóa vĩnh viễn phiên bao gồm tất cả dữ liệu đã lưu.",
+    "scopeLabel": "Phạm vi",
+    "scopeAll": "Tất cả (DM + Nhóm)",
+    "scopeDm": "Chỉ DM",
+    "scopeGroup": "Chỉ nhóm",
+    "scheduleKindLabel": "Loại lịch trình",
+    "kindEvery": "Mỗi N giờ",
+    "kindCron": "Biểu thức Cron",
+    "intervalLabel": "Khoảng thời gian",
+    "hours": "giờ",
+    "cronExprLabel": "Biểu thức Cron",
+    "cronExprHint": "Biểu thức cron 5 trường chuẩn (vd: 0 0,6,12,18 * * *).",
+    "timezoneLabel": "Múi giờ",
+    "timezoneHint": "Múi giờ IANA (vd: Asia/Ho_Chi_Minh). Mặc định UTC."
   }
 }
