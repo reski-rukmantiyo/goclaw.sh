@@ -272,7 +272,7 @@ export function WhatsAppGroupOverrides({
                   <Switch
                     checked={group.listen_only ?? false}
                     onCheckedChange={(val) =>
-                      updateGroup(id, { ...group, listen_only: val || undefined })
+                      updateGroup(id, { ...group, listen_only: val || undefined, session_clear: val ? undefined : group.session_clear })
                     }
                   />
                 </div>

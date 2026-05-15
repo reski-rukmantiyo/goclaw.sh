@@ -65,10 +65,10 @@ export function ChannelGeneralTab({ instance, agents, onUpdate }: ChannelGeneral
       const cleanPolicies = Object.fromEntries(
         Object.entries(policyValues).filter(([, v]) => v !== undefined && v !== "" && v !== null),
       );
-      const cleanSessionClear = sessionClear?.enabled ? { session_clear: sessionClear } : { session_clear: undefined };
+      const cleanSessionClear = sessionClear?.enabled ? { session_clear: sessionClear } : {};
       const mergedConfig = { ...existingConfig, ...cleanPolicies, ...cleanSessionClear };
-      // Remove session_clear if disabled
-      if (!sessionClear?.enabled) {
+      // Remove session_clear if disabled or channel is listen-only
+      if (!sessionClear?.enabled || existingConfig.listen_only) {
         delete (mergedConfig as Record<string, unknown>).session_clear;
       }
       await onUpdate({
