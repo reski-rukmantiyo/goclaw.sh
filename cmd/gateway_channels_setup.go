@@ -184,7 +184,7 @@ func wireChannelEventSubscribers(
 ) {
 	// Cache invalidation: reload channel instances on changes.
 	if instanceLoader != nil {
-		msgBus.Subscribe(bus.TopicCacheChannelInstances, func(event bus.Event) {
+		msgBus.Subscribe(bus.TopicCacheChannelInstances+":reload", func(event bus.Event) {
 			if event.Name != protocol.EventCacheInvalidate {
 				return
 			}
@@ -198,7 +198,7 @@ func wireChannelEventSubscribers(
 
 	// Reload session clear schedules when channel instances change.
 	if clearScheduler != nil {
-		msgBus.Subscribe(bus.TopicCacheChannelInstances, func(event bus.Event) {
+		msgBus.Subscribe(bus.TopicCacheChannelInstances+":session_clear", func(event bus.Event) {
 			if event.Name != protocol.EventCacheInvalidate {
 				return
 			}

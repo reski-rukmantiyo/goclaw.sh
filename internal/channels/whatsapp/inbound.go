@@ -216,7 +216,7 @@ func (c *Channel) handleIncomingMessage(evt *events.Message) {
 	// If require_mention is configured and bot IS mentioned, fall through to normal pipeline.
 	if peerKind == "group" {
 		_, hasGroup := c.config.Groups[chatID]
-		slog.Info("whatsapp listen-only gate",
+		slog.Debug("whatsapp listen-only gate",
 			"chat_id", chatID,
 			"is_listen_only", c.isListenOnly(chatID, peerKind),
 			"groups_count", len(c.config.Groups),

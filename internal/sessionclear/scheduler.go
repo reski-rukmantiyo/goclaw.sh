@@ -141,6 +141,15 @@ func (s *ClearScheduler) doReload(ctx context.Context) error {
 	s.mu.Unlock()
 
 	slog.Info("session_clear.reloaded", "schedules", len(tracked))
+	for i, t := range tracked {
+		slog.Debug("session_clear.schedule",
+			"idx", i,
+			"channel", t.channelName,
+			"group", t.groupID,
+			"action", string(t.action),
+			"next_run", t.nextRun,
+			"kind", t.schedule.Kind)
+	}
 	return nil
 }
 
@@ -154,6 +163,16 @@ func (s *ClearScheduler) checkAndRun(ctx context.Context, now time.Time) {
 		if t.nextRun == nil || t.nextRun.After(now) {
 			continue
 		}
+		slog.Info("session_clear.firing",
+			"channel", t.channelName,
+			"group", t.groupID,
+			"action", string(t.action),
+			"pattern", func() string {
+				if t.groupID != "" {
+					return "agent:%:" + t.channelName + ":group:" + t.groupID + "%"
+				}
+				return "(channel default)"
+			}())
 
 		// Build context with tenant ID.
 		ctx := store.WithTenantID(ctx, t.tenantID)
