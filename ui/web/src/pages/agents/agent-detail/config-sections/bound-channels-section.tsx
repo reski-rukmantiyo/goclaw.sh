@@ -49,7 +49,8 @@ export function BoundChannelsSection({ agentId, agentKey }: BoundChannelsSection
       if (inst.channel_type === "whatsapp" && config) {
         const waGroups = getWhatsAppGroups(config);
         for (const [jid, cfg] of Object.entries(waGroups)) {
-          groups.push({ jid, name: cfg.name, inherited: cfg.agent_id !== agentKey });
+          if (cfg.agent_id && cfg.agent_id !== agentKey) continue;
+          groups.push({ jid, name: cfg.name });
         }
       }
       bound.push({ instance: inst, groups });
