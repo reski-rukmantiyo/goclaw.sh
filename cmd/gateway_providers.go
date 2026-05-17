@@ -109,7 +109,7 @@ func registerProviders(registry *providers.Registry, cfg *config.Config, modelRe
 		if base == "" {
 			base = "https://api.z.ai/api/paas/v4"
 		}
-		registry.Register(providers.NewOpenAIProvider("zai", cfg.Providers.Zai.APIKey, base, "glm-5"))
+		registry.Register(providers.NewZaiProvider("zai", cfg.Providers.Zai.APIKey, base, "glm-5"))
 		slog.Info("registered provider", "name", "zai")
 	}
 
@@ -118,7 +118,7 @@ func registerProviders(registry *providers.Registry, cfg *config.Config, modelRe
 		if base == "" {
 			base = "https://api.z.ai/api/coding/paas/v4"
 		}
-		registry.Register(providers.NewOpenAIProvider("zai-coding", cfg.Providers.ZaiCoding.APIKey, base, "glm-5"))
+		registry.Register(providers.NewZaiProvider("zai-coding", cfg.Providers.ZaiCoding.APIKey, base, "glm-5"))
 		slog.Info("registered provider", "name", "zai-coding")
 	}
 
@@ -360,13 +360,13 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 			if base == "" {
 				base = "https://api.z.ai/api/paas/v4"
 			}
-			registry.RegisterForTenant(p.TenantID, providers.NewOpenAIProvider(p.Name, p.APIKey, base, "glm-5"))
+			registry.RegisterForTenant(p.TenantID, providers.NewZaiProvider(p.Name, p.APIKey, base, ""))
 		case store.ProviderZaiCoding:
 			base := p.APIBase
 			if base == "" {
 				base = "https://api.z.ai/api/coding/paas/v4"
 			}
-			registry.RegisterForTenant(p.TenantID, providers.NewOpenAIProvider(p.Name, p.APIKey, base, "glm-5"))
+			registry.RegisterForTenant(p.TenantID, providers.NewZaiProvider(p.Name, p.APIKey, base, ""))
 		case store.ProviderOllamaCloud:
 			base := p.APIBase
 			if base == "" {

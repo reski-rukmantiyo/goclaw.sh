@@ -39,6 +39,10 @@ var reasoningCapabilityEntries = []reasoningCapabilityEntry{
 	{id: "gpt-5-codex-mini", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "medium"}},
 	{id: "gpt-5-codex", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "medium"}},
 	{id: "gpt-5", capability: ReasoningCapability{Levels: []string{"minimal", "low", "medium", "high"}, DefaultEffort: "medium"}},
+	// Z.ai GLM models — "thinking" object (enabled/disabled).
+	{id: "glm-5.1", capability: ReasoningCapability{Levels: []string{"off", "low", "medium", "high"}, DefaultEffort: "medium"}},
+	{id: "glm-5", capability: ReasoningCapability{Levels: []string{"off", "low", "medium", "high"}, DefaultEffort: "medium"}},
+	{id: "glm-4.7", capability: ReasoningCapability{Levels: []string{"off", "low", "medium", "high"}, DefaultEffort: "medium"}},
 }
 
 func LookupReasoningCapability(model string) *ReasoningCapability {
