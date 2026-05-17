@@ -4,6 +4,42 @@ Significant changes, features, and fixes in reverse chronological order.
 
 ---
 
+## v3.11.3E-rclaw — 2026-05-17
+
+### Features
+
+- **Session Clear Scheduler** — Automated session clearing via `sessionclear.ClearScheduler`. Supports channel-level and per-group schedules stored in channel instance config JSONB. Actions: reset (clear history) / delete (remove session). Scopes: all/dm/group. Listen-only channels and groups excluded. 1-minute evaluation ticker. Subscribes to channel reload events.
+- **Raw Message Embedding Pipeline** — Full pipeline from WhatsApp listen-only message capture through KG extraction (batch 50, max 3 concurrent) to embedding worker (separate worker, configurable batch/concurrent/poll/chunk/overlap) to `raw_message_chunks` with hybrid FTS + vector + RRF search.
+- **Shared Knowledge Search** — New `shared_knowledge_search` tool enabling two-phase cross-scope search (initial query then entity drill-down). Hidden when no shared KG scopes configured. Date range extraction support.
+- **OpenRouter Provider Routing** — New `OpenRouterRoutingConfig` stored in provider settings JSONB. Fields: order, allow_fallbacks, require_parameters, data_collection, only, ignore, quantizations, sort, max_price. Injected at request time as `provider` object.
+- **OpenRouter Unified Reasoning** — Sends `{"reasoning": {"effort": "<level>"}}` object (not top-level string). Explicit `"none"` for disabled thinking.
+- **Tenant-scoped Provider Cache** — Provider create/update/delete emits tenant-scoped `cache:provider` invalidation events.
+- **Embedding HTTP Endpoints** — `GET /v1/embeddings`, `POST /v1/embeddings/delete`, `POST /v1/embeddings/delete-by-chat`, `POST /v1/embeddings/re-embed`.
+
+### Fixes
+
+- Session clear removed when channel is set to listen-only.
+- Listen-only channels excluded from session clear schedules.
+- `shared_knowledge_search` hidden when no shared KG scopes configured.
+- Inherited WhatsApp groups filtered from bound channels section.
+- Tenant context included in provider lookup; debounced input syncing for routing configuration.
+
+### Migrations
+
+- **PG:** `000064_raw_message_chunks` — `raw_message_chunks` table (HNSW on embedding, GIN on tsv), `embedded_at` column on `listen_raw_messages`.
+- **PG:** `000065_vector_dimensions_768` — Resize all vector columns from 1536 to 768 dimensions. Drops HNSW indexes, clears embedding cache, alters columns, recreates indexes.
+- **PG:** `000066_raw_msg_chunks_text_columns` — Additional text columns on `raw_message_chunks`.
+- **PG:** `000067_embedded_chunks` — `embedded_chunks` field on `usage_snapshots`.
+- **PG:** `000068_add_openrouter_routing` — `openrouter_routing` key support in provider settings JSONB.
+
+### Upgrade notes
+
+- All cached embeddings are cleared by migration 000065 and will regenerate on next embedding pass.
+- OpenRouter routing config moved from agent table to provider settings JSONB. Any agent-level routing config must be re-entered at the provider level.
+- Embedding dimension changed from 1536 to 768 to match embeddinggemma-300m model output.
+
+---
+
 ## v3.11.3 — 2026-04-26
 
 ### Fixes

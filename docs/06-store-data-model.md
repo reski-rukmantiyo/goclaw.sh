@@ -48,6 +48,7 @@ The `Stores` struct is the top-level container holding all PostgreSQL-backed sto
 | SecureCLIStore | `PGSecureCLIStore` | CLI binary configs with encrypted credential injection |
 | APIKeyStore | `PGAPIKeyStore` | Gateway API keys, scopes, expiration, revocation |
 | HookStore | `PGHookStore` | Lifecycle hook definitions (event, handler type, matcher, config), execution audit log |
+| RawMessageChunkStore | `PGRawMessageChunkStore` | Chunked embeddings from raw messages, hybrid FTS+vector+RRF search |
 
 ### SQLite Parity (Lite Edition)
 
@@ -114,6 +115,22 @@ This timestamp is written to `sessions.metadata` JSONB after successful message 
 Operators can read this via `GetSessionMetadata()` to understand when a session was last compacted. The web UI optionally displays this timestamp in a context-usage tooltip.
 
 Go constant export: `agent.SessionMetaKeyLastCompactionAt = "last_compaction_at"`
+
+### Session Bulk Operations
+
+Bulk session clearing used by the Session Clear Scheduler (`08-scheduling-cron.md`).
+
+| Method | Purpose |
+|--------|---------|
+| `ClearSessionsByPattern(ctx, pattern, action)` | Reset or delete sessions matching SQL LIKE pattern |
+| `QuerySessionKeys(ctx, pattern)` | Return session keys matching a SQL LIKE pattern |
+| `ClearSessionsByKeys(ctx, keys, action)` | Reset or delete sessions by explicit key list |
+
+**Action types:**
+- `"reset"` — clear message history, keep session row
+- `"delete"` — remove session row entirely
+
+Implementations: `internal/store/pg/sessions_bulk.go`, `internal/store/sqlitestore/sessions_bulk.go`
 
 ---
 
@@ -461,6 +478,37 @@ Gateway API key management. Keys are SHA-256 hashed at rest; validation compares
 | `Delete(id)` | Permanently remove key |
 | `TouchLastUsed(id)` | Update last_used_at timestamp |
 
+### RawMessageChunkStore
+
+Chunked embeddings from WhatsApp listen-only raw messages. Hybrid FTS + vector search with Reciprocal Rank Fusion (RRF).
+
+| Method | Purpose |
+|--------|---------|
+| `StoreChunks(ctx, chunks, embeddings)` | Batch insert chunks with embeddings |
+| `Search(ctx, query, agentID, opts)` | Hybrid FTS + vector + RRF search |
+| `List(ctx, opts)` | Paginated list with filters (agent, chat, graph, sender, date range, embedding status) |
+| `DeleteByIDs(ctx, ids)` | Delete specific chunks by ID |
+| `DeleteByChatID(ctx, agentID, chatID)` | Delete all chunks for a chat |
+| `DeleteByGraphID(ctx, agentID, graphID)` | Delete all chunks for a graph scope |
+| `ReEmbedChunks(ctx, opts)` | Re-generate embeddings for chunks that lack them |
+| `SetEmbeddingProvider(provider)` | Wire embedding provider at startup |
+
+### OpenRouter Routing Config
+
+`OpenRouterRoutingConfig` stored in `llm_providers.settings` JSONB under key `openrouter_routing`. Extracted via `ParseOpenRouterProviderSettings(settings)`. Injected at request time via `ChatRequest.Options[OptOpenRouterRouting]`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `order` | []string | Preferred provider order |
+| `allow_fallbacks` | *bool | Allow fallback providers |
+| `require_parameters` | *bool | Require parameter support |
+| `data_collection` | string | `"allow"` or `"deny"` |
+| `only` | []string | Whitelist providers |
+| `ignore` | []string | Blacklist providers |
+| `quantizations` | []string | Preferred quantizations |
+| `sort` | string | `"price"`, `"throughput"`, or `"latency"` |
+| `max_price` | object | `{"prompt": float, "completion": float}` per-token caps |
+
 ---
 
 ## 14. Database Schema
@@ -549,6 +597,8 @@ flowchart TD
 | `mcp_servers` | MCP server configs | `transport`, `api_key` (encrypted), `tool_prefix` |
 | `custom_tools` | Dynamic tool definitions | `command` (template), `agent_id` (NULL = global), `env` (encrypted) |
 | `usage_snapshots` | Hourly usage aggregations | `bucket_hour`, `agent_id`, `model`, `provider`, `tokens_in`, `tokens_out`, `cost`, `request_count`, `memory_docs`, `memory_chunks`, `embedded_chunks`, `kg_entities`, `kg_relations` |
+| `raw_message_chunks` | Chunked+embedded raw messages | `agent_id`, `graph_id`, `chat_id`, `chat_name`, `sender`, `sender_id`, `msg_time_from`, `msg_time_to`, `chunk_index`, `text`, `content_hash`, `embedding` (vector(768)), `tsv` (GIN), `source_msg_ids` (UUID[]), `tenant_id` |
+| `listen_raw_messages` | Raw message capture + extraction pipeline | `agent_id`, `group_jid`, `sender_jid`, `text`, `processed_at`, `embedded_at`, `extraction_status`, `extraction_error`, `extraction_attempts`, `last_attempted_at`, `tenant_id` |
 
 ### Migrations
 
@@ -559,6 +609,11 @@ flowchart TD
 | `000003_agent_teams` | `agent_teams`, `agent_team_members`, `team_tasks`, `team_messages` + `team_id` on agent_links |
 | `000004_teams_v2` | FTS on `team_tasks` (tsv column) + `delegation_history` table |
 | `000005_phase4` | Additional team and delegation features |
+| `000064_raw_message_chunks` | `raw_message_chunks` table (HNSW on embedding, GIN on tsv), `embedded_at` column on `listen_raw_messages` |
+| `000065_vector_dimensions_768` | Resize all vector columns from 1536 to 768 dimensions (drops HNSW indexes, clears embedding cache, alters columns, recreates indexes) |
+| `000066_raw_msg_chunks_text_columns` | Additional text columns on `raw_message_chunks` |
+| `000067_embedded_chunks` | `embedded_chunks` field on `usage_snapshots` |
+| `000068_add_openrouter_routing` | `openrouter_routing` key support in provider settings JSONB |
 
 ### Required PostgreSQL Extensions
 

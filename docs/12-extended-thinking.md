@@ -122,6 +122,10 @@ If the model is unknown:
 
 Reasoning content still streams in the provider-native format, and span metadata now records the source plus requested versus effective effort.
 
+**OpenRouter**: Sends a unified `reasoning` object instead of a top-level string: `{"reasoning": {"effort": "<level>"}}`. Explicit `"none"` is sent for disabled thinking (when effort is `"off"`). This differs from direct OpenAI which uses top-level `reasoning_effort` string. The OpenAI request builder checks `p.name == "openrouter"` to decide the format.
+
+**Gemini (via OpenAI-compat)**: Uses `mapGeminiReasoningEffort()` to map levels: `"off"` → `"low"` (Gemini minimum accepted), `"medium"` → `"high"` (Gemini rejects "medium" with HTTP 400), `"low"`/`"minimal"`/`"high"` pass through unchanged. Unknown values are not forwarded.
+
 ### DashScope (Alibaba Qwen)
 
 | Thinking Level | Budget Tokens |

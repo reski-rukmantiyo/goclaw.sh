@@ -615,7 +615,7 @@ flowchart LR
 | `summary` | TEXT | Full conversation summary (2-4 paragraphs) |
 | `l0_abstract` | TEXT | Short abstract (~50 tokens) for auto-inject |
 | `key_topics` | TEXT[] | Extracted entity names for filtering |
-| `embedding` | vector(1536) | Vector embedding of full summary |
+| `embedding` | vector(768) | Vector embedding of full summary |
 | `source_type` | TEXT | "session", "v2_daily", "manual" |
 | `source_id` | TEXT | Dedup key (unique per source) |
 | `turn_count` | INT | Message count in session |
@@ -655,6 +655,94 @@ WHERE agent_id = $1
 
 ---
 
+## 21. Embedding Extraction Pipeline
+
+Raw messages from WhatsApp listen-only mode are processed through a two-stage pipeline: KG extraction → embedding → chunk store.
+
+```mermaid
+flowchart TD
+    INGEST["WhatsApp listen-only<br/>captures messages"] --> RAW["listen_raw_messages<br/>table"]
+    RAW --> EXTRACT["KG Extraction Worker<br/>batch 50, max 3 concurrent"]
+    EXTRACT -->|"LLM extract<br/>entities/relations"| KG["kg_entities<br/>kg_relations"]
+    EXTRACT -->|"MarkProcessed"| RAW2["extraction_status = extracted"]
+    RAW --> EMBED["Embedding Worker<br/>separate process"]
+    EMBED -->|"Chunk text<br/>+ generate embeddings"| CHUNKS["raw_message_chunks<br/>hybrid FTS + vector(768)"]
+    EMBED -->|"MarkEmbedded"| RAW3["embedded_at = NOW()"]
+    CHUNKS --> SEARCH["Hybrid Search<br/>FTS + vector + RRF"]
+```
+
+### KG Extraction Worker
+
+- Polls for messages with `extraction_status IN ('pending', 'failed')`
+- Batch size: 50 messages, max 3 concurrent (semaphore-gated)
+- Calls LLM to extract entities and relations
+- On success: `MarkProcessed` sets `extraction_status = 'extracted'`
+- On failure: `MarkFailed` increments `extraction_attempts`, sets `extraction_error`
+- `knowledgegraph.Extractor` chunks long text (12K char limit), retries on truncated responses with progressive input halving
+
+### Embedding Worker
+
+- Separate worker process (distinct from extraction)
+- Polls for messages where `embedded_at IS NULL`
+- Configurable: batch size, concurrent, poll interval, chunk length, overlap
+- `memory.ChunkText()` splits text at paragraph boundaries with overlap
+- Embeds via `EmbeddingProvider` (OpenAI-compatible or Voyage AI)
+- Stores chunks with embeddings in `raw_message_chunks` table (pgvector 768-dim)
+- Sets `embedded_at` on source messages
+
+### Embedding Providers
+
+| Provider | Model | Native Dims | Stored As |
+|----------|-------|-------------|-----------|
+| OpenAI-compat | text-embedding-3-small | 1536 | vector(768) — truncated |
+| Voyage AI | — | 1024 | vector(768) — truncated |
+
+Migration 000065 resized all vector columns from 1536 to 768 dimensions to match embeddinggemma-300m output.
+
+### Chunk Store Search
+
+`RawMessageChunkStore.Search()` performs hybrid FTS + vector search with Reciprocal Rank Fusion (RRF):
+
+| Component | Method |
+|-----------|--------|
+| FTS | PostgreSQL tsvector (auto-generated from `text` column) |
+| Vector | pgvector cosine similarity on 768-dim embeddings |
+| Fusion | Reciprocal Rank Fusion (RRF), k=60 |
+
+Filters: agent_id, graph_id, chat_id, sender, date range (`from_time`, `to_time`).
+
+---
+
+## 22. Shared Knowledge Search
+
+The `shared_knowledge_search` tool enables cross-scope knowledge retrieval across graph scopes. Hidden when no shared KG scopes are configured.
+
+### Two-Phase Search
+
+**Phase 1 (initial query):** Searches raw message embeddings across all configured graph scopes via `store.SharedKGIDsFromCtx(ctx)`. Returns chunk results with sender, time range, chat name, and text. Supports date range extraction from natural language queries.
+
+**Phase 2 (drill-down via `entity_id`):** Traverses memory + knowledge graph for a specific entity. Uses `kgStore.Traverse()` for deep traversal (max depth 5, capped at 30 results), falls back to `kgStore.ListRelations()` for direct connections.
+
+### Parameters
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `query` | Yes | — | Natural language search query |
+| `scope` | No | all configured scopes | Override graph scope ID |
+| `entity_id` | No | — | Drill-down into specific entity (triggers Phase 2) |
+| `max_depth` | No | 2 | Traversal depth (max 5) |
+| `max_results` | No | 10 | Maximum results to return |
+
+### Visibility
+
+Tool is hidden when no shared KG scopes are configured. Checked in `loop_tool_filter.go` and `loop_history_toolnames.go` via `SharedKnowledgeSearchTool.IsWired()` — returns false if all stores are nil and no scopes.
+
+### Date Range Extraction
+
+`ExtractDateRange()` supports English and Indonesian month names, ordinal suffixes (1st, 2nd), ISO and slash date formats. Returns `DateRange{From, To}` for filtering. `StripDateTokens()` removes date tokens from the query so semantic search focuses on content.
+
+---
+
 ## File Reference
 
 | Module | Path | Purpose |
@@ -663,6 +751,8 @@ WHERE agent_id = $1
 | System prompt & agent resolver | `internal/agent/` | `BuildSystemPrompt`, section renderers, virtual file injection, context file merging, memory flush |
 | Skills | `internal/skills/` | 5-tier loader, BM25 search, fsnotify hot-reload; grant management in `internal/store/pg/skills*.go` |
 | Memory & consolidation | `internal/memory/`, `internal/consolidation/` | Auto-injector (L0), unified search (L1), consolidation workers (episodic, semantic, dedup, dreaming) |
+| Embedding extraction | `internal/channels/whatsapp/embedding_worker.go`, `internal/channels/whatsapp/extract_worker.go` | Raw message embedding pipeline (extraction + embedding workers) |
+| Shared knowledge search | `internal/tools/shared_knowledge_search.go` | Two-phase cross-scope search tool |
 
 Use `grep` or your editor's symbol search for specific files.
 
@@ -675,4 +765,6 @@ Use `grep` or your editor's symbol search for specific files.
 | [00-architecture-overview.md](./00-architecture-overview.md) | Startup sequence, event bus setup, consolidation worker registration |
 | [01-agent-loop.md](./01-agent-loop.md) | Agent loop calls BuildSystemPrompt, auto-injection point, compaction flow |
 | [03-tools-system.md](./03-tools-system.md) | ContextFileInterceptor routing, memory_search + memory_expand tools |
-| [06-store-data-model.md](./06-store-data-model.md) | episodic_summaries, evolution, vault, KG temporal tables; EpisodicStore, EvolutionStore, VaultStore interfaces |
+| [06-store-data-model.md](./06-store-data-model.md) | episodic_summaries, evolution, vault, KG temporal tables; RawMessageChunkStore, raw_message_chunks table; EpisodicStore, EvolutionStore, VaultStore interfaces |
+| [24-knowledge-vault.md](./24-knowledge-vault.md) | Knowledge Vault hybrid search, shared knowledge search integration |
+| [25-whatsapp-group-intelligence.md](./25-whatsapp-group-intelligence.md) | WhatsApp listen-only mode, raw message capture |

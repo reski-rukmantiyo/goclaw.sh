@@ -224,6 +224,27 @@ Query → ├─ VaultStore.Search()      [0.4 weight]
 
 Default max results per source: `maxResults * 2` (then deduplicate + cap to maxResults).
 
+### FTS Improvements (v3.11)
+
+KG FTS search uses a two-pass matching strategy:
+
+1. **AND pass**: All tokens must match (higher relevance). Results sorted by `score DESC, updated_at DESC` for deterministic pagination.
+2. **OR fallback**: Finds near-duplicates that the AND pass missed. Merged after AND results (lower relevance).
+
+**`dedupByName()`**: Normalizes entity names and removes near-duplicates. Keeps the most recently updated entity, merges properties from older duplicates.
+
+**Expanded tsvector**: FTS now includes `event_time` date tokens (`to_char(event_time, 'DD Month YYYY')`) and `properties` text for broader matching.
+
+### Shared Knowledge Search Integration
+
+The `shared_knowledge_search` tool enables cross-scope knowledge retrieval across graph scopes. Uses `store.SharedKGIDsFromCtx(ctx)` for scope resolution.
+
+**Two-phase search pattern:**
+- Phase 1: Searches raw message embeddings across configured graph scopes
+- Phase 2: Traverses memory + knowledge graph for entity drill-down
+
+See `07-bootstrap-skills-memory.md` (Section 22) for full tool documentation.
+
 ### Parameters
 
 | Param | Type | Default | Notes |

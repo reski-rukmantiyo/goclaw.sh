@@ -200,6 +200,58 @@ Two background cron jobs manage agent evolution (v3):
 
 Both jobs run with 5-minute timeout and tenant-scoped context. Failed analyses log at debug level and continue gracefully.
 
+### Session Clear Scheduler
+
+Automated session clearing based on schedules stored in channel instance config JSONB. Runs via `sessionclear.ClearScheduler` on a 1-minute ticker loop.
+
+**Location**: `internal/sessionclear/`
+
+**Config source**: Each channel instance's `config` JSONB field may contain:
+
+```json
+{
+  "session_clear": {
+    "enabled": true,
+    "schedule": {"every": "24h"},
+    "action": "reset",
+    "scope": "all"
+  },
+  "groups": {
+    "<groupID>": {
+      "session_clear": {"enabled": true, "schedule": {"at": "02:00"}, "action": "delete"},
+      "listen_only": false
+    }
+  }
+}
+```
+
+**ClearSchedule struct:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `Enabled` | *bool | Opt-in flag (default true if nil) |
+| `Schedule` | CronSchedule | `at`, `every`, or `cron` expression |
+| `Action` | string | `"reset"` (clear history, keep session) or `"delete"` (remove session entirely) |
+| `Scope` | string | `"all"` (DMs + groups), `"dm"` (DMs only), `"group"` (groups only); default `"all"` |
+
+**ExtractedSchedules**: Channel-level default schedule + per-group overrides map keyed by group ID.
+
+**Group overrides**: When a group has its own schedule, it is excluded from the channel default clear. Pattern: `agent:%:{channel}:group:{groupId}%`.
+
+**Listen-only exclusion**: Channels/groups with `listen_only: true` are excluded from session clear schedules. `session_clear` config is removed when a channel is set to listen-only.
+
+**Session key patterns used by the scheduler:**
+
+| Scope | Pattern |
+|-------|---------|
+| DM | `agent:%:{channel}:direct:%` |
+| Group (specific) | `agent:%:{channel}:group:{groupId}%` |
+| All (channel default) | `agent:%:{channel}%` |
+
+**Reload subscription**: Subscribes to channel reload events. When channels are updated, schedules are re-read from DB via `Reload(ctx)`.
+
+**Store methods**: `ClearSessionsByPattern`, `QuerySessionKeys`, `ClearSessionsByKeys` — see `06-store-data-model.md` (Session Bulk Operations).
+
 ---
 
 ## File Reference
@@ -209,6 +261,7 @@ Both jobs run with 5-minute timeout and tenant-scoped context. Failed analyses l
 | Scheduler | `internal/scheduler/` | Lane-based concurrency (lanes, queue, drop policies, debounce, cancel, draining) |
 | Cron service | `internal/cron/` | In-memory run loop (1s tick), job CRUD, retry with backoff, schedule parsing, types |
 | Cron store | `internal/store/pg/cron*.go`, `internal/store/cron_store.go` | CronStore interface + PostgreSQL persistence (create, list, update, delete, execution, scanning) |
+| Session clear | `internal/sessionclear/` | ClearScheduler, ClearSchedule, ExtractSchedules, validation |
 | Gateway wiring | `cmd/gateway_cron.go`, `internal/gateway/methods/cron.go` | Scheduler lane routing, RPC handlers (list, create, update, delete, toggle, run, runs) |
 
 Use `grep` or your editor's symbol search for specific files.
@@ -221,4 +274,5 @@ Use `grep` or your editor's symbol search for specific files.
 |----------|-----------------|
 | [00-architecture-overview.md](./00-architecture-overview.md) | Scheduler lanes in startup sequence |
 | [01-agent-loop.md](./01-agent-loop.md) | Agent loop triggered by scheduler |
-| [06-store-data-model.md](./06-store-data-model.md) | cron_jobs, cron_run_logs tables |
+| [06-store-data-model.md](./06-store-data-model.md) | cron_jobs, cron_run_logs tables, session bulk operations |
+| [05-channels-messaging.md](./05-channels-messaging.md) | Channel instance config JSONB, listen-only mode |

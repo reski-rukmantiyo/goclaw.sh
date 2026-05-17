@@ -390,6 +390,26 @@ Notes:
 - the web UI uses this endpoint as the source of truth for provider-first reasoning controls
 - when upstream model discovery fails, the endpoint returns an empty `models` array instead of a hard error
 
+### OpenRouter Routing
+
+Provider `settings` JSONB may contain `openrouter_routing` for OpenRouter-type providers:
+
+```json
+{
+  "settings": {
+    "openrouter_routing": {
+      "order": ["anthropic", "openai"],
+      "allow_fallbacks": true,
+      "data_collection": "deny",
+      "sort": "price",
+      "max_price": {"prompt": 0.01, "completion": 0.03}
+    }
+  }
+}
+```
+
+Fields: `order` (preferred providers), `allow_fallbacks`, `require_parameters`, `data_collection` (`"allow"`/`"deny"`), `only` (whitelist), `ignore` (blacklist), `quantizations`, `sort` (`"price"`/`"throughput"`/`"latency"`), `max_price` (per-token caps). See `06-store-data-model.md` for full field table.
+
 ---
 
 ## 7. MCP Servers
@@ -536,6 +556,39 @@ Per-agent vector memory using pgvector.
 | `POST` | `/v1/agents/{agentID}/memory/search` | Semantic search |
 
 Optional query parameter `?user_id=` for per-user scoping.
+
+### Embeddings
+
+Raw message chunk management for the embedding extraction pipeline.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/v1/embeddings` | List raw message chunks with filters |
+| `POST` | `/v1/embeddings/delete` | Delete chunks by IDs |
+| `POST` | `/v1/embeddings/delete-by-chat` | Delete all chunks for a chat |
+| `POST` | `/v1/embeddings/re-embed` | Re-generate embeddings for matching chunks |
+
+**GET /v1/embeddings** query parameters:
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `agent_id` | string | Filter by agent |
+| `chat_id` | string | Filter by chat |
+| `graph_id` | string | Filter by graph scope |
+| `sender` | string | Filter by sender |
+| `has_embedding` | bool | Filter by embedding status |
+| `from_time` | RFC3339 | Lower bound on msg_time_from |
+| `to_time` | RFC3339 | Upper bound on msg_time_to |
+| `limit` | int | Max results (default 50, max 200) |
+| `offset` | int | Pagination offset |
+
+Response: `{chunks: [...], total: int, limit: int, offset: int}`
+
+**POST /v1/embeddings/delete**: Body `{ids: string[]}`. Response `{deleted_count: int}`.
+
+**POST /v1/embeddings/delete-by-chat**: Body `{agent_id: string, chat_id: string}`. Response `{deleted_count: int}`.
+
+**POST /v1/embeddings/re-embed**: Body `{agent_id?, chat_id?, graph_id?}`. Response `{processed: int, failed: int}`.
 
 ---
 

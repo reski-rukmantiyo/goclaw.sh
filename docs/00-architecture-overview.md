@@ -332,6 +332,7 @@ flowchart TD
 | `cache:skills` | SkillStore | `BumpVersion()` |
 | `cache:cron` | CronStore | `InvalidateCache()` |
 | `cache:custom_tools` | DynamicToolLoader | `ReloadGlobal()` + `AgentRouter.InvalidateAll()` |
+| `cache:provider` | ProviderCache | Tenant-scoped invalidation; `uuid.Nil` = global (all tenants) |
 
 ---
 

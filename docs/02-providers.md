@@ -285,6 +285,7 @@ flowchart TD
 
     TYPE -->|Anthropic| ANTH["Budget tokens:<br/>low=4K, medium=10K, high=32K<br/>+ anthropic-beta header<br/>+ strip temperature"]
     TYPE -->|OpenAI-compat| OAI["capability-aware<br/>reasoning_effort"]
+    TYPE -->|OpenRouter| OR["reasoning object:<br/>{reasoning: {effort: level}}<br/>explicit \"none\" for disabled"]
     TYPE -->|DashScope| DASH["enable_thinking: true<br/>Budget: low=4K, medium=16K, high=32K<br/>⚠ No streaming with tools"]
 ```
 
@@ -714,7 +715,13 @@ GoClaw v3 Wave 2 adds composable request middleware, error classification, per-m
 
 **Model Registry** — Thread-safe forward-compat resolver. Seeds Claude, GPT, Qwen models. Each spec: context window, max tokens, reasoning/vision flags, per-1M cost. Unknown models → provider's `ForwardCompatResolver` (caches hit). Template cloning with patch overrides.
 
-**Embedding Providers** — OpenAI (text-embedding-3-small, 1536 dims, batch 2048) and Voyage AI (1024 dims, batch 1024) via `store.EmbeddingProvider`. Used by vault and episodic memory. All vectors normalized to 1536 for pgvector column.
+**Embedding Providers** — OpenAI (text-embedding-3-small, 1536 dims, batch 2048) and Voyage AI (1024 dims, batch 1024) via `store.EmbeddingProvider`. Used by vault, episodic memory, and raw message chunks. All vectors stored as vector(768) for pgvector columns (migration 000065 resized from 1536 to 768 to match embeddinggemma-300m output).
+
+**Tenant-Scoped Provider Cache** — Provider create/update/delete emits `cache:provider` events with tenant scope. `TenantID` on bus event determines scope: `uuid.Nil` means global invalidate (all tenants), specific UUID means tenant-scoped clear. Subscriber: `ProviderCache` in `internal/cache/`. See `00-architecture-overview.md`.
+
+**OpenRouter Provider Routing** — `OpenRouterRoutingConfig` stored in `llm_providers.settings` JSONB under key `openrouter_routing`. Extracted via `ParseOpenRouterProviderSettings(settings)`. At request time, injected via `ChatRequest.Options[OptOpenRouterRouting]` → OpenAI request builder injects a `provider` object into the request body. Fields: `order` (preferred providers), `allow_fallbacks`, `require_parameters`, `data_collection` (`"allow"`/`"deny"`), `only` (whitelist), `ignore` (blacklist), `quantizations`, `sort` (`"price"`/`"throughput"`/`"latency"`), `max_price` (per-token caps). See `06-store-data-model.md` for field table.
+
+**OpenRouter Unified Reasoning** — OpenRouter sends a unified `reasoning` object: `{"reasoning": {"effort": "<level>"}}`. Explicit `"none"` sent for disabled thinking (when effort is `"off"`). This differs from direct OpenAI which uses top-level `reasoning_effort` string. The OpenAI request builder checks `p.name == "openrouter"` to decide format. See `12-extended-thinking.md`.
 
 ---
 
