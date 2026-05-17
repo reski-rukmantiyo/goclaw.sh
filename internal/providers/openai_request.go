@@ -260,6 +260,7 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 			}
 			if len(provider) > 0 {
 				body["provider"] = provider
+				// slog.Info("openrouter.routing", "model", req.Model, "provider", provider)
 			}
 		}
 	}
