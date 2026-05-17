@@ -182,7 +182,8 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 		providerReasoningDefaults := (*store.ProviderReasoningConfig)(nil)
 		providerOpenRouterRouting := (*store.OpenRouterRoutingConfig)(nil)
 		if deps.ProviderStore != nil {
-			if providerData, err := deps.ProviderStore.GetProviderByName(ctx, provider.Name()); err == nil && providerData != nil {
+			provCtx := store.WithTenantID(ctx, ag.TenantID)
+			if providerData, err := deps.ProviderStore.GetProviderByName(provCtx, provider.Name()); err == nil && providerData != nil {
 				providerReasoningDefaults = store.ParseProviderReasoningConfig(providerData.Settings)
 				providerOpenRouterRouting = store.ParseOpenRouterProviderSettings(providerData.Settings)
 			}

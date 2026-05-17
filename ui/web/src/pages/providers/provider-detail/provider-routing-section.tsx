@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +25,22 @@ const strToArr = (val: string): string[] =>
     .map((s) => s.trim())
     .filter(Boolean);
 
+/** Hook to manage comma-separated text input synced with a string[] field. */
+function useCommaListField(arr: string[] | undefined, onCommit: (val: string[]) => void) {
+  const [text, setText] = useState(() => arrToStr(arr));
+
+  // Sync from parent when the underlying array changes externally (e.g. provider reload).
+  useEffect(() => {
+    setText(arrToStr(arr));
+  }, [arr]);
+
+  const commit = () => {
+    onCommit(strToArr(text));
+  };
+
+  return { text, setText, commit };
+}
+
 export function ProviderRoutingSection({
   routing,
   onChange,
@@ -33,6 +50,11 @@ export function ProviderRoutingSection({
   const update = (patch: Partial<OpenRouterRoutingConfig>) => {
     onChange({ ...routing, ...patch });
   };
+
+  const order = useCommaListField(routing.order, (v) => update({ order: v }));
+  const only = useCommaListField(routing.only, (v) => update({ only: v }));
+  const ignore = useCommaListField(routing.ignore, (v) => update({ ignore: v }));
+  const quantizations = useCommaListField(routing.quantizations, (v) => update({ quantizations: v }));
 
   return (
     <section className="space-y-3 rounded-lg border p-3 sm:p-4 overflow-hidden">
@@ -155,8 +177,9 @@ export function ProviderRoutingSection({
       <div className="space-y-2">
         <Label>{t("routing.order")}</Label>
         <Input
-          value={arrToStr(routing.order)}
-          onChange={(e) => update({ order: strToArr(e.target.value) })}
+          value={order.text}
+          onChange={(e) => order.setText(e.target.value)}
+          onBlur={order.commit}
           placeholder="anthropic, openai"
           className="text-base md:text-sm"
         />
@@ -169,8 +192,9 @@ export function ProviderRoutingSection({
       <div className="space-y-2">
         <Label>{t("routing.only")}</Label>
         <Input
-          value={arrToStr(routing.only)}
-          onChange={(e) => update({ only: strToArr(e.target.value) })}
+          value={only.text}
+          onChange={(e) => only.setText(e.target.value)}
+          onBlur={only.commit}
           placeholder="anthropic, openai"
           className="text-base md:text-sm"
         />
@@ -183,8 +207,9 @@ export function ProviderRoutingSection({
       <div className="space-y-2">
         <Label>{t("routing.ignore")}</Label>
         <Input
-          value={arrToStr(routing.ignore)}
-          onChange={(e) => update({ ignore: strToArr(e.target.value) })}
+          value={ignore.text}
+          onChange={(e) => ignore.setText(e.target.value)}
+          onBlur={ignore.commit}
           placeholder="together, deepinfra"
           className="text-base md:text-sm"
         />
@@ -197,10 +222,9 @@ export function ProviderRoutingSection({
       <div className="space-y-2">
         <Label>{t("routing.quantizations")}</Label>
         <Input
-          value={arrToStr(routing.quantizations)}
-          onChange={(e) =>
-            update({ quantizations: strToArr(e.target.value) })
-          }
+          value={quantizations.text}
+          onChange={(e) => quantizations.setText(e.target.value)}
+          onBlur={quantizations.commit}
           placeholder="fp16, int8"
           className="text-base md:text-sm"
         />
