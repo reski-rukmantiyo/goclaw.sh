@@ -192,9 +192,14 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 	// Direct OpenAI gets the top-level "reasoning_effort" string.
 	// Gemini (Google OpenAI-compat) gets a mapped "reasoning_effort" value.
 	if p.name == "openrouter" {
-		if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" && level != "off" {
-			body["reasoning"] = map[string]any{"effort": level}
-			slog.Debug("openrouter.reasoning", "model", model, "effort", level)
+		if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" {
+			if level == "off" {
+				body["reasoning"] = map[string]any{"effort": "none"}
+				slog.Debug("openrouter.reasoning", "model", model, "effort", "none")
+			} else {
+				body["reasoning"] = map[string]any{"effort": level}
+				slog.Debug("openrouter.reasoning", "model", model, "effort", level)
+			}
 		}
 	} else {
 		// reasoning_effort is OpenAI-specific; do not send to third-party OpenAI-compatible APIs.
@@ -272,7 +277,7 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 			}
 			if len(provider) > 0 {
 				body["provider"] = provider
-				// slog.Info("openrouter.routing", "model", req.Model, "provider", provider)
+				slog.Debug("openrouter.routing", "model", req.Model, "provider", provider)
 			}
 		}
 	}

@@ -130,7 +130,7 @@ func TestBuildRequestBody_OpenRouterReasoning(t *testing.T) {
 		}
 	})
 
-	t.Run("openrouter_effort_off_sends_nothing", func(t *testing.T) {
+	t.Run("openrouter_effort_off_sends_none", func(t *testing.T) {
 		p := NewOpenAIProvider("openrouter", "key",
 			"https://openrouter.ai/api/v1", "anthropic/claude-sonnet-4")
 		req := ChatRequest{
@@ -138,11 +138,15 @@ func TestBuildRequestBody_OpenRouterReasoning(t *testing.T) {
 			Options:  map[string]any{OptThinkingLevel: "off"},
 		}
 		body := p.buildRequestBody("anthropic/claude-sonnet-4", req, false)
-		if _, exists := body["reasoning"]; exists {
-			t.Fatalf("openrouter effort=off must NOT send reasoning; body=%v", body)
-		}
 		if _, exists := body[OptReasoningEffort]; exists {
 			t.Fatalf("openrouter effort=off must NOT send reasoning_effort; body=%v", body)
+		}
+		reasoning, ok := body["reasoning"].(map[string]any)
+		if !ok {
+			t.Fatalf("openrouter effort=off must send reasoning object with effort=none; body=%v", body)
+		}
+		if reasoning["effort"] != "none" {
+			t.Fatalf("openrouter effort=off reasoning.effort = %v, want none", reasoning["effort"])
 		}
 	})
 }

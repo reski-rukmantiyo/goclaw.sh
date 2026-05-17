@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -249,6 +250,10 @@ func (l *Loop) makeCallLLM(req *RunRequest, emitRun func(AgentEvent)) func(ctx c
 		)
 		if effort := reasoningDecision.RequestEffort(); effort != "" {
 			chatReq.Options[providers.OptThinkingLevel] = effort
+		} else if reasoningDecision.EffectiveEffort == "off" && reasoningDecision.Source != "" && reasoningDecision.Source != "unset" {
+			// Explicit "off" from agent/provider config — pass through for OpenRouter
+			// which maps "off" → reasoning.effort="none" to prevent default reasoning.
+			chatReq.Options[providers.OptThinkingLevel] = "off"
 		}
 		if reasoningDecision.StripThinking {
 			chatReq.Options[providers.OptStripThinking] = true
@@ -274,6 +279,7 @@ func (l *Loop) makeCallLLM(req *RunRequest, emitRun func(AgentEvent)) func(ctx c
 				}
 			}
 			chatReq.Options[providers.OptOpenRouterRouting] = orRouting
+			slog.Debug("openrouter.routing", "model", model, "order", cfg.Order, "only", cfg.Only, "ignore", cfg.Ignore)
 		}
 
 		// Emit LLM span start for tracing.
