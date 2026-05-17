@@ -17,6 +17,7 @@ import (
 	mcpbridge "github.com/nextlevelbuilder/goclaw/internal/mcp"
 	"github.com/nextlevelbuilder/goclaw/internal/sandbox"
 	"github.com/nextlevelbuilder/goclaw/internal/scheduler"
+	"github.com/nextlevelbuilder/goclaw/internal/sessionclear"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/internal/tasks"
 	"github.com/nextlevelbuilder/goclaw/internal/tools"
@@ -27,6 +28,7 @@ import (
 type lifecycleDeps struct {
 	sched             *scheduler.Scheduler
 	heartbeatTicker   *heartbeat.Ticker
+	clearScheduler    *sessionclear.ClearScheduler
 	quotaChecker      *channels.QuotaChecker
 	webFetchTool      *tools.WebFetchTool
 	ttsTool           *tools.TtsTool
@@ -194,8 +196,11 @@ func (d *gatewayDeps) runLifecycle(
 		// Broadcast shutdown event
 		d.server.BroadcastEvent(*protocol.NewEvent(protocol.EventShutdown, nil))
 
-		// Stop channels, cron, heartbeat, and task ticker
+		// Stop channels, session clear scheduler, cron, heartbeat, and task ticker
 		d.channelMgr.StopAll(context.Background())
+		if deps.clearScheduler != nil {
+			deps.clearScheduler.Stop()
+		}
 		d.pgStores.Cron.Stop()
 		deps.heartbeatTicker.Stop()
 		if taskTicker != nil {

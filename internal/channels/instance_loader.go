@@ -179,7 +179,11 @@ func (l *InstanceLoader) Reload(ctx context.Context) {
 		registered++
 	}
 
-	slog.Info("channel instances reloaded", "count", registered)
+	loaded := make([]string, 0, len(l.loaded))
+	for n := range l.loaded {
+		loaded = append(loaded, n)
+	}
+	slog.Info("channel instances reloaded", "count", registered, "names", loaded)
 }
 
 // Stop stops all managed channels.

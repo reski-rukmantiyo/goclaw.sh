@@ -214,10 +214,16 @@ func (c *Channel) handleIncomingMessage(evt *events.Message) {
 
 	// Listen-only mode: buffer message for raw storage instead of responding.
 	// If require_mention is configured and bot IS mentioned, fall through to normal pipeline.
-	slog.Debug("whatsapp listen-only check",
-		"chat_id", chatID, "peer_kind", peerKind,
-		"listen_only", c.isListenOnly(chatID, peerKind),
-		"listenBuf_nil", c.listenBuf == nil)
+	if peerKind == "group" {
+		_, hasGroup := c.config.Groups[chatID]
+		slog.Debug("whatsapp listen-only gate",
+			"chat_id", chatID,
+			"is_listen_only", c.isListenOnly(chatID, peerKind),
+			"groups_count", len(c.config.Groups),
+			"has_group_entry", hasGroup,
+			"resolved_agent", targetAgentID,
+			"channel_default", c.AgentID())
+	}
 	if c.isListenOnly(chatID, peerKind) {
 		rm := c.effectiveRequireMention(chatID, peerKind)
 		mentioned := peerKind == "group" && rm != nil && *rm && c.isMentioned(evt)

@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Plus, Trash2, ChevronDown, ChevronRight, RefreshCw, AlertTriangle } from "lucide-react";
 import { useWsCall } from "@/hooks/use-ws-call";
+import { SessionClearSection, type SessionClearConfig } from "@/components/shared/session-clear-section";
 import type { ChannelContact } from "@/types/contact";
 import type { AgentData } from "@/types/agent";
 
@@ -22,6 +23,7 @@ interface WhatsAppGroupConfigValues {
   listen_only?: boolean;
   listen_graph_id?: string;
   require_mention?: boolean;
+  session_clear?: SessionClearConfig;
 }
 
 interface Props {
@@ -270,7 +272,7 @@ export function WhatsAppGroupOverrides({
                   <Switch
                     checked={group.listen_only ?? false}
                     onCheckedChange={(val) =>
-                      updateGroup(id, { ...group, listen_only: val || undefined })
+                      updateGroup(id, { ...group, listen_only: val || undefined, session_clear: val ? undefined : group.session_clear })
                     }
                   />
                 </div>
@@ -295,6 +297,14 @@ export function WhatsAppGroupOverrides({
                       {t("whatsappGroupOverrides.graphIdHint")}
                     </p>
                   </div>
+                )}
+                {/* Session Clear — not applicable for listen-only groups */}
+                {!group.listen_only && (
+                  <SessionClearSection
+                    value={group.session_clear}
+                    onChange={(v) => updateGroup(id, { ...group, session_clear: v })}
+                    hideScope
+                  />
                 )}
               </div>
             )}

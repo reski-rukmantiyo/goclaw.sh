@@ -130,10 +130,27 @@ type SessionListingStore interface {
 	LastUsedChannel(ctx context.Context, agentID string) (channel, chatID string)
 }
 
+// SessionBulkStore manages bulk session operations (clear/delete by pattern or keys).
+type SessionBulkStore interface {
+	// ClearSessionsByPattern resets or deletes all sessions matching a SQL LIKE pattern.
+	// pattern: e.g. "agent:%:whatsapp:group:123456@g.us%"
+	// action: "reset" or "delete"
+	ClearSessionsByPattern(ctx context.Context, pattern string, action string) (int, error)
+
+	// ClearSessionsByKeys resets or deletes sessions by explicit key list.
+	// Used when channel-default clear needs to exclude groups with overrides.
+	ClearSessionsByKeys(ctx context.Context, keys []string, action string) (int, error)
+
+	// QuerySessionKeys returns session keys matching a SQL LIKE pattern.
+	// Used by the session clear scheduler to enumerate keys before filtering.
+	QuerySessionKeys(ctx context.Context, pattern string) ([]string, error)
+}
+
 // SessionStore composes all session sub-interfaces for backward compatibility.
 // New code should depend on the specific sub-interface it needs.
 type SessionStore interface {
 	SessionCoreStore
 	SessionMetadataStore
 	SessionListingStore
+	SessionBulkStore
 }

@@ -539,5 +539,28 @@
     "refreshGroups": "Refresh Groups",
     "refreshing": "Refreshing...",
     "notJoined": "Not joined"
+  },
+  "sessionClear": {
+    "title": "Session Clear Schedule",
+    "enabledLabel": "Auto-clear sessions",
+    "enabledHint": "Automatically reset or delete sessions on a schedule.",
+    "actionLabel": "Action",
+    "actionReset": "Reset (clear history)",
+    "actionDelete": "Delete (remove entirely)",
+    "actionResetHint": "Clear conversation history but keep the session alive.",
+    "actionDeleteHint": "Permanently remove sessions including all stored data.",
+    "scopeLabel": "Scope",
+    "scopeAll": "All (DMs + Groups)",
+    "scopeDm": "DMs only",
+    "scopeGroup": "Groups only",
+    "scheduleKindLabel": "Schedule type",
+    "kindEvery": "Every N hours",
+    "kindCron": "Cron expression",
+    "intervalLabel": "Interval",
+    "hours": "hours",
+    "cronExprLabel": "Cron expression",
+    "cronExprHint": "Standard 5-field cron expression (e.g. 0 0,6,12,18 * * *).",
+    "timezoneLabel": "Timezone",
+    "timezoneHint": "IANA timezone (e.g. Asia/Ho_Chi_Minh). Defaults to UTC."
   }
 }

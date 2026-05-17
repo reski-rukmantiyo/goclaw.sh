@@ -17,6 +17,7 @@ import (
 	slackchannel "github.com/nextlevelbuilder/goclaw/internal/channels/slack"
 	"github.com/nextlevelbuilder/goclaw/internal/channels/telegram"
 	"github.com/nextlevelbuilder/goclaw/internal/channels/whatsapp"
+	"github.com/nextlevelbuilder/goclaw/internal/sessionclear"
 	"github.com/nextlevelbuilder/goclaw/internal/channels/zalo"
 	zalopersonal "github.com/nextlevelbuilder/goclaw/internal/channels/zalo/personal"
 	"github.com/nextlevelbuilder/goclaw/internal/channels/zalo/personal/zalomethods"
@@ -179,10 +180,11 @@ func wireChannelEventSubscribers(
 	instanceLoader *channels.InstanceLoader,
 	pairingMethods *methods.PairingMethods,
 	cfg *config.Config,
+	clearScheduler *sessionclear.ClearScheduler,
 ) {
 	// Cache invalidation: reload channel instances on changes.
 	if instanceLoader != nil {
-		msgBus.Subscribe(bus.TopicCacheChannelInstances, func(event bus.Event) {
+		msgBus.Subscribe(bus.TopicCacheChannelInstances+":reload", func(event bus.Event) {
 			if event.Name != protocol.EventCacheInvalidate {
 				return
 			}
@@ -191,6 +193,20 @@ func wireChannelEventSubscribers(
 				return
 			}
 			go instanceLoader.Reload(context.Background())
+		})
+	}
+
+	// Reload session clear schedules when channel instances change.
+	if clearScheduler != nil {
+		msgBus.Subscribe(bus.TopicCacheChannelInstances+":session_clear", func(event bus.Event) {
+			if event.Name != protocol.EventCacheInvalidate {
+				return
+			}
+			payload, ok := event.Payload.(bus.CacheInvalidatePayload)
+			if !ok || payload.Kind != bus.CacheKindChannelInstances {
+				return
+			}
+			go clearScheduler.Reload(context.Background())
 		})
 	}
 

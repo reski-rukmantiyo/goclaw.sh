@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { StickySaveBar } from "@/components/shared/sticky-save-bar";
+import { SessionClearSection, type SessionClearConfig } from "@/components/shared/session-clear-section";
 import { ChannelFields } from "../channel-fields";
 import { configSchema } from "../channel-schemas";
 import type { ChannelInstanceData } from "@/types/channel";
@@ -47,6 +48,10 @@ export function ChannelGeneralTab({ instance, agents, onUpdate }: ChannelGeneral
   );
   const [policyValues, setPolicyValues] = useState<Record<string, unknown>>(initialPolicyValues);
 
+  // Session clear config
+  const initialSessionClear = (existingConfig.session_clear ?? undefined) as SessionClearConfig | undefined;
+  const [sessionClear, setSessionClear] = useState<SessionClearConfig | undefined>(initialSessionClear);
+
   const [saving, setSaving] = useState(false);
 
   const handlePolicyChange = useCallback((key: string, value: unknown) => {
@@ -60,7 +65,12 @@ export function ChannelGeneralTab({ instance, agents, onUpdate }: ChannelGeneral
       const cleanPolicies = Object.fromEntries(
         Object.entries(policyValues).filter(([, v]) => v !== undefined && v !== "" && v !== null),
       );
-      const mergedConfig = { ...existingConfig, ...cleanPolicies };
+      const cleanSessionClear = sessionClear?.enabled ? { session_clear: sessionClear } : {};
+      const mergedConfig = { ...existingConfig, ...cleanPolicies, ...cleanSessionClear };
+      // Remove session_clear if disabled or channel is listen-only
+      if (!sessionClear?.enabled || existingConfig.listen_only) {
+        delete (mergedConfig as Record<string, unknown>).session_clear;
+      }
       await onUpdate({
         display_name: displayName || null,
         agent_id: agentId,
@@ -139,6 +149,13 @@ export function ChannelGeneralTab({ instance, agents, onUpdate }: ChannelGeneral
             idPrefix="cd-pol"
             contextValues={policyValues}
           />
+        </section>
+      )}
+
+      {/* Session Clear section — not applicable for listen-only channels */}
+      {!existingConfig.listen_only && (
+        <section className="space-y-3 rounded-lg border p-3 sm:p-4 overflow-hidden">
+          <SessionClearSection value={sessionClear} onChange={setSessionClear} />
         </section>
       )}
 

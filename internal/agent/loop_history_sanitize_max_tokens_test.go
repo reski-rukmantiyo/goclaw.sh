@@ -59,6 +59,17 @@ func (n *nopSessionStore) GetLastPromptTokens(_ context.Context, _ string) (int,
 	return n.lastPromptTokens, n.lastMsgCount
 }
 
+// SessionBulkStore methods
+func (n *nopSessionStore) ClearSessionsByPattern(_ context.Context, _ string, _ string) (int, error) {
+	return 0, nil
+}
+func (n *nopSessionStore) ClearSessionsByKeys(_ context.Context, _ []string, _ string) (int, error) {
+	return 0, nil
+}
+func (n *nopSessionStore) QuerySessionKeys(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}
+
 // SessionListingStore methods
 func (n *nopSessionStore) List(_ context.Context, _ string) []store.SessionInfo { return nil }
 func (n *nopSessionStore) ListPaged(_ context.Context, _ store.SessionListOpts) store.SessionListResult {

@@ -454,5 +454,28 @@
     "refreshGroups": "刷新群组",
     "refreshing": "刷新中...",
     "notJoined": "未加入"
+  },
+  "sessionClear": {
+    "title": "会话清理计划",
+    "enabledLabel": "自动清理会话",
+    "enabledHint": "按计划自动重置或删除会话。",
+    "actionLabel": "操作",
+    "actionReset": "重置（清除历史）",
+    "actionDelete": "删除（完全移除）",
+    "actionResetHint": "清除对话历史但保留会话。",
+    "actionDeleteHint": "永久删除会话及所有存储数据。",
+    "scopeLabel": "范围",
+    "scopeAll": "全部（私聊 + 群组）",
+    "scopeDm": "仅私聊",
+    "scopeGroup": "仅群组",
+    "scheduleKindLabel": "计划类型",
+    "kindEvery": "每隔 N 小时",
+    "kindCron": "Cron 表达式",
+    "intervalLabel": "间隔",
+    "hours": "小时",
+    "cronExprLabel": "Cron 表达式",
+    "cronExprHint": "标准5字段 cron 表达式（如 0 0,6,12,18 * * *）。",
+    "timezoneLabel": "时区",
+    "timezoneHint": "IANA 时区（如 Asia/Ho_Chi_Minh）。默认 UTC。"
   }
 }

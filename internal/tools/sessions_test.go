@@ -160,6 +160,16 @@ func (m *mockSessionStore) LastUsedChannel(context.Context, string) (string, str
 	return "", ""
 }
 
+func (m *mockSessionStore) ClearSessionsByPattern(context.Context, string, string) (int, error) {
+	return 0, nil
+}
+func (m *mockSessionStore) ClearSessionsByKeys(context.Context, []string, string) (int, error) {
+	return 0, nil
+}
+func (m *mockSessionStore) QuerySessionKeys(context.Context, string) ([]string, error) {
+	return nil, nil
+}
+
 // ============================================================
 // test helpers
 // ============================================================
