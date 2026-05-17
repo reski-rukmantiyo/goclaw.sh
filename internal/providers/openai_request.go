@@ -187,22 +187,34 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 		}
 	}
 
-	// reasoning_effort is OpenAI-specific; do not send to third-party OpenAI-compatible APIs.
-	if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" && level != "off" {
-		if openAIModelSupportsReasoningEffort(model) {
-			body[OptReasoningEffort] = level
+	// Reasoning effort: OpenRouter uses a unified "reasoning" object that auto-converts
+	// for all model families (OpenAI, Anthropic, Gemini, DeepSeek, Grok, Qwen, etc.).
+	// Direct OpenAI gets the top-level "reasoning_effort" string.
+	// Gemini (Google OpenAI-compat) gets a mapped "reasoning_effort" value.
+	if p.name == "openrouter" {
+		if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" && level != "off" {
+			body["reasoning"] = map[string]any{"effort": level}
+			slog.Debug("openrouter.reasoning", "model", model, "effort", level)
 		}
-	}
-
-	// Gemini (Google OpenAI-compat) accepts reasoning_effort mapped to thinking_config.
-	// Without forwarding, Gemini 3 defaults to "high" thinking and consumes the entire
-	// max_tokens budget, leaving no room for tool call arguments on small models.
-	// Gate narrowly: apiBase contains "generativelanguage" OR model substring "gemini"
-	// (covers OpenRouter / LiteLLM / Vertex proxies).
-	if _, already := body[OptReasoningEffort]; !already && p.isGeminiRoute(model) {
-		if level, ok := req.Options[OptThinkingLevel].(string); ok {
-			if mapped, forward := mapGeminiReasoningEffort(level); forward {
-				body[OptReasoningEffort] = mapped
+	} else {
+		// reasoning_effort is OpenAI-specific; do not send to third-party OpenAI-compatible APIs.
+		if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" && level != "off" {
+			if openAIModelSupportsReasoningEffort(model) {
+				body[OptReasoningEffort] = level
+				slog.Debug("openai.reasoning_effort", "model", model, "effort", level)
+			}
+		}
+		// Gemini (Google OpenAI-compat) accepts reasoning_effort mapped to thinking_config.
+		// Without forwarding, Gemini 3 defaults to "high" thinking and consumes the entire
+		// max_tokens budget, leaving no room for tool call arguments on small models.
+		// Gate narrowly: apiBase contains "generativelanguage" OR model substring "gemini"
+		// (covers LiteLLM / Vertex proxies).
+		if _, already := body[OptReasoningEffort]; !already && p.isGeminiRoute(model) {
+			if level, ok := req.Options[OptThinkingLevel].(string); ok {
+				if mapped, forward := mapGeminiReasoningEffort(level); forward {
+					body[OptReasoningEffort] = mapped
+					slog.Debug("gemini.reasoning_effort", "model", model, "effort", mapped)
+				}
 			}
 		}
 	}
