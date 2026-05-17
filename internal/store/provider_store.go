@@ -174,6 +174,61 @@ func normalizeProviderReasoningConfig(raw *ProviderReasoningConfig) *ProviderRea
 	return cfg
 }
 
+// OpenRouterRoutingConfig holds OpenRouter-specific provider routing preferences.
+// Stored in the openrouter_routing key of provider settings JSONB.
+// See: https://openrouter.ai/docs/guides/routing/provider-selection
+type OpenRouterRoutingConfig struct {
+	Order             []string            `json:"order,omitempty"`
+	AllowFallbacks    *bool               `json:"allow_fallbacks,omitempty"`
+	RequireParameters *bool               `json:"require_parameters,omitempty"`
+	DataCollection    string              `json:"data_collection,omitempty"` // "allow" | "deny"
+	Only              []string            `json:"only,omitempty"`
+	Ignore            []string            `json:"ignore,omitempty"`
+	Quantizations     []string            `json:"quantizations,omitempty"`
+	Sort              string              `json:"sort,omitempty"` // "price" | "throughput" | "latency"
+	MaxPrice          *OpenRouterMaxPrice `json:"max_price,omitempty"`
+}
+
+// OpenRouterMaxPrice holds per-token price caps for OpenRouter routing.
+type OpenRouterMaxPrice struct {
+	Prompt     float64 `json:"prompt,omitempty"`
+	Completion float64 `json:"completion,omitempty"`
+}
+
+// OpenRouterProviderSettings holds provider-level OpenRouter routing config.
+type OpenRouterProviderSettings struct {
+	OpenRouterRouting *OpenRouterRoutingConfig `json:"openrouter_routing,omitempty"`
+}
+
+// ParseOpenRouterProviderSettings extracts OpenRouter routing from provider settings JSONB.
+// Returns nil if not configured or all fields are empty/invalid.
+func ParseOpenRouterProviderSettings(settings json.RawMessage) *OpenRouterRoutingConfig {
+	if len(settings) == 0 {
+		return nil
+	}
+	var s OpenRouterProviderSettings
+	if json.Unmarshal(settings, &s) != nil || s.OpenRouterRouting == nil {
+		return nil
+	}
+	cfg := s.OpenRouterRouting
+	cfg.Order = normalizeProviderNames(cfg.Order)
+	cfg.Only = normalizeProviderNames(cfg.Only)
+	cfg.Ignore = normalizeProviderNames(cfg.Ignore)
+	cfg.Quantizations = normalizeProviderNames(cfg.Quantizations)
+	if cfg.DataCollection != "" && cfg.DataCollection != "allow" && cfg.DataCollection != "deny" {
+		cfg.DataCollection = ""
+	}
+	if cfg.Sort != "" && cfg.Sort != "price" && cfg.Sort != "throughput" && cfg.Sort != "latency" {
+		cfg.Sort = ""
+	}
+	if cfg.Order == nil && cfg.AllowFallbacks == nil && cfg.RequireParameters == nil &&
+		cfg.DataCollection == "" && cfg.Only == nil && cfg.Ignore == nil &&
+		cfg.Quantizations == nil && cfg.Sort == "" && cfg.MaxPrice == nil {
+		return nil
+	}
+	return cfg
+}
+
 // NoEmbeddingTypes lists provider types that cannot serve embeddings.
 var NoEmbeddingTypes = map[string]bool{
 	ProviderAnthropicNative: true, // uses x-api-key auth, not Bearer; no embedding models

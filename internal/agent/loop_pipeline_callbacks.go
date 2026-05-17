@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -249,9 +250,36 @@ func (l *Loop) makeCallLLM(req *RunRequest, emitRun func(AgentEvent)) func(ctx c
 		)
 		if effort := reasoningDecision.RequestEffort(); effort != "" {
 			chatReq.Options[providers.OptThinkingLevel] = effort
+		} else if reasoningDecision.EffectiveEffort == "off" && reasoningDecision.Source != "" && reasoningDecision.Source != "unset" {
+			// Explicit "off" from agent/provider config — pass through for OpenRouter
+			// which maps "off" → reasoning.effort="none" to prevent default reasoning.
+			chatReq.Options[providers.OptThinkingLevel] = "off"
 		}
 		if reasoningDecision.StripThinking {
 			chatReq.Options[providers.OptStripThinking] = true
+		}
+
+		// OpenRouter routing: inject per-agent provider routing preferences.
+		if l.openrouterRouting != nil {
+			cfg := l.openrouterRouting
+			orRouting := &providers.OpenRouterRouting{
+				Order:             cfg.Order,
+				AllowFallbacks:    cfg.AllowFallbacks,
+				RequireParameters: cfg.RequireParameters,
+				DataCollection:    cfg.DataCollection,
+				Only:              cfg.Only,
+				Ignore:            cfg.Ignore,
+				Quantizations:     cfg.Quantizations,
+				Sort:              cfg.Sort,
+			}
+			if cfg.MaxPrice != nil {
+				orRouting.MaxPrice = &providers.OpenRouterMaxPrice{
+					Prompt:     cfg.MaxPrice.Prompt,
+					Completion: cfg.MaxPrice.Completion,
+				}
+			}
+			chatReq.Options[providers.OptOpenRouterRouting] = orRouting
+			slog.Debug("openrouter.routing", "model", model, "order", cfg.Order, "only", cfg.Only, "ignore", cfg.Ignore)
 		}
 
 		// Emit LLM span start for tracing.

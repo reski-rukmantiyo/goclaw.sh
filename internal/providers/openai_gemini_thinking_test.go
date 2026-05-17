@@ -47,12 +47,11 @@ func TestBuildRequestBody_GeminiForwardsReasoningEffort(t *testing.T) {
 	}
 }
 
-// TestBuildRequestBody_GeminiDetectionByModelName verifies that gemini routing
-// detection works via model substring even when the apiBase is a proxy
-// (OpenRouter, LiteLLM), and that non-gemini models on the same proxy don't
-// receive `reasoning_effort`.
-func TestBuildRequestBody_GeminiDetectionByModelName(t *testing.T) {
-	t.Run("openrouter_gemini_forwards", func(t *testing.T) {
+// TestBuildRequestBody_OpenRouterReasoning verifies that OpenRouter uses the
+// unified "reasoning" object (not the deprecated "reasoning_effort" string)
+// for all model families, and that effort="off" sends nothing.
+func TestBuildRequestBody_OpenRouterReasoning(t *testing.T) {
+	t.Run("openrouter_gemini_sends_reasoning_object", func(t *testing.T) {
 		p := NewOpenAIProvider("openrouter", "key",
 			"https://openrouter.ai/api/v1", "google/gemini-2.5-pro")
 		req := ChatRequest{
@@ -60,12 +59,20 @@ func TestBuildRequestBody_GeminiDetectionByModelName(t *testing.T) {
 			Options:  map[string]any{OptThinkingLevel: "low"},
 		}
 		body := p.buildRequestBody("google/gemini-2.5-pro", req, false)
-		if got, ok := body[OptReasoningEffort].(string); !ok || got != "low" {
-			t.Fatalf("openrouter gemini must forward reasoning_effort=low; got %v (exists=%v)", got, ok)
+		// Must use unified "reasoning" object, not deprecated "reasoning_effort"
+		if _, exists := body[OptReasoningEffort]; exists {
+			t.Fatalf("openrouter must NOT send deprecated reasoning_effort; body=%v", body)
+		}
+		reasoning, ok := body["reasoning"].(map[string]any)
+		if !ok {
+			t.Fatalf("openrouter must send reasoning object; body=%v", body)
+		}
+		if reasoning["effort"] != "low" {
+			t.Fatalf("openrouter reasoning.effort = %v, want low", reasoning["effort"])
 		}
 	})
 
-	t.Run("openrouter_claude_omits", func(t *testing.T) {
+	t.Run("openrouter_claude_sends_reasoning_object", func(t *testing.T) {
 		p := NewOpenAIProvider("openrouter", "key",
 			"https://openrouter.ai/api/v1", "anthropic/claude-sonnet-4")
 		req := ChatRequest{
@@ -73,14 +80,79 @@ func TestBuildRequestBody_GeminiDetectionByModelName(t *testing.T) {
 			Options:  map[string]any{OptThinkingLevel: "low"},
 		}
 		body := p.buildRequestBody("anthropic/claude-sonnet-4", req, false)
+		reasoning, ok := body["reasoning"].(map[string]any)
+		if !ok {
+			t.Fatalf("openrouter claude must send reasoning object; body=%v", body)
+		}
+		if reasoning["effort"] != "low" {
+			t.Fatalf("openrouter claude reasoning.effort = %v, want low", reasoning["effort"])
+		}
 		if _, exists := body[OptReasoningEffort]; exists {
-			t.Fatalf("non-gemini route must NOT receive reasoning_effort (body=%v)", body)
+			t.Fatalf("openrouter claude must NOT send deprecated reasoning_effort; body=%v", body)
+		}
+	})
+
+	t.Run("openrouter_deepseek_sends_reasoning_object", func(t *testing.T) {
+		p := NewOpenAIProvider("openrouter", "key",
+			"https://openrouter.ai/api/v1", "deepseek/deepseek-r1")
+		req := ChatRequest{
+			Messages: []Message{{Role: "user", Content: "hi"}},
+			Options:  map[string]any{OptThinkingLevel: "high"},
+		}
+		body := p.buildRequestBody("deepseek/deepseek-r1", req, false)
+		reasoning, ok := body["reasoning"].(map[string]any)
+		if !ok {
+			t.Fatalf("openrouter deepseek must send reasoning object; body=%v", body)
+		}
+		if reasoning["effort"] != "high" {
+			t.Fatalf("openrouter deepseek reasoning.effort = %v, want high", reasoning["effort"])
+		}
+	})
+
+	t.Run("openrouter_o3_sends_reasoning_object", func(t *testing.T) {
+		p := NewOpenAIProvider("openrouter", "key",
+			"https://openrouter.ai/api/v1", "openai/o3")
+		req := ChatRequest{
+			Messages: []Message{{Role: "user", Content: "hi"}},
+			Options:  map[string]any{OptThinkingLevel: "medium"},
+		}
+		body := p.buildRequestBody("openai/o3", req, false)
+		// Must use unified "reasoning" object, not deprecated "reasoning_effort"
+		if _, exists := body[OptReasoningEffort]; exists {
+			t.Fatalf("openrouter o3 must NOT send deprecated reasoning_effort; body=%v", body)
+		}
+		reasoning, ok := body["reasoning"].(map[string]any)
+		if !ok {
+			t.Fatalf("openrouter o3 must send reasoning object; body=%v", body)
+		}
+		if reasoning["effort"] != "medium" {
+			t.Fatalf("openrouter o3 reasoning.effort = %v, want medium", reasoning["effort"])
+		}
+	})
+
+	t.Run("openrouter_effort_off_sends_none", func(t *testing.T) {
+		p := NewOpenAIProvider("openrouter", "key",
+			"https://openrouter.ai/api/v1", "anthropic/claude-sonnet-4")
+		req := ChatRequest{
+			Messages: []Message{{Role: "user", Content: "hi"}},
+			Options:  map[string]any{OptThinkingLevel: "off"},
+		}
+		body := p.buildRequestBody("anthropic/claude-sonnet-4", req, false)
+		if _, exists := body[OptReasoningEffort]; exists {
+			t.Fatalf("openrouter effort=off must NOT send reasoning_effort; body=%v", body)
+		}
+		reasoning, ok := body["reasoning"].(map[string]any)
+		if !ok {
+			t.Fatalf("openrouter effort=off must send reasoning object with effort=none; body=%v", body)
+		}
+		if reasoning["effort"] != "none" {
+			t.Fatalf("openrouter effort=off reasoning.effort = %v, want none", reasoning["effort"])
 		}
 	})
 }
 
 // TestBuildRequestBody_NonGeminiUnaffected verifies that vanilla OpenAI-compat
-// hosts (Together, Groq, vLLM, etc.) are not affected by the gemini branch —
+// hosts (Together, Groq, vLLM, etc.) are not affected by the reasoning branch —
 // they should continue to reject `reasoning_effort` via the existing gate.
 func TestBuildRequestBody_NonGeminiUnaffected(t *testing.T) {
 	p := NewOpenAIProvider("together", "key",
@@ -92,5 +164,8 @@ func TestBuildRequestBody_NonGeminiUnaffected(t *testing.T) {
 	body := p.buildRequestBody("Qwen/Qwen2.5-72B-Instruct-Turbo", req, false)
 	if _, exists := body[OptReasoningEffort]; exists {
 		t.Fatalf("together/qwen must NOT receive reasoning_effort; body=%v", body)
+	}
+	if _, exists := body["reasoning"]; exists {
+		t.Fatalf("together/qwen must NOT receive reasoning object; body=%v", body)
 	}
 }

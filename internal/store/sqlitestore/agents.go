@@ -29,14 +29,14 @@ func (s *SQLiteAgentStore) SetEmbeddingProvider(_ store.EmbeddingProvider) {}
 
 // agentSelectCols is the column list for all agent SELECT queries.
 const agentSelectCols = `id, agent_key, display_name, frontmatter, owner_id, provider, model,
-	 context_window, max_tool_iterations, workspace, restrict_to_workspace,
-	 tools_config, sandbox_config, subagents_config, memory_config,
-	 compaction_config, context_pruning, other_config,
-	 emoji, agent_description, thinking_level, max_tokens,
-	 self_evolve, skill_evolve, skill_nudge_interval,
-	 reasoning_config, workspace_sharing, chatgpt_oauth_routing,
-	 shell_deny_groups, kg_dedup_config,
-	 agent_type, is_default, status, budget_monthly_cents, created_at, updated_at, tenant_id`
+			 context_window, max_tool_iterations, workspace, restrict_to_workspace,
+			 tools_config, sandbox_config, subagents_config, memory_config,
+			 compaction_config, context_pruning, other_config,
+			 emoji, agent_description, thinking_level, max_tokens,
+			 self_evolve, skill_evolve, skill_nudge_interval,
+			 reasoning_config, workspace_sharing, chatgpt_oauth_routing,
+			 shell_deny_groups, kg_dedup_config,
+			 agent_type, is_default, status, budget_monthly_cents, created_at, updated_at, tenant_id`
 
 func (s *SQLiteAgentStore) Create(ctx context.Context, agent *store.AgentData) error {
 	if agent.ID == uuid.Nil {
@@ -51,15 +51,15 @@ func (s *SQLiteAgentStore) Create(ctx context.Context, agent *store.AgentData) e
 	}
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO agents (id, agent_key, display_name, frontmatter, owner_id, provider, model,
-		 context_window, max_tool_iterations, workspace, restrict_to_workspace,
-		 tools_config, sandbox_config, subagents_config, memory_config,
-		 compaction_config, context_pruning, other_config,
-		 emoji, agent_description, thinking_level, max_tokens,
-		 self_evolve, skill_evolve, skill_nudge_interval,
-		 reasoning_config, workspace_sharing, chatgpt_oauth_routing,
-		 shell_deny_groups, kg_dedup_config,
-		 agent_type, is_default, status, budget_monthly_cents, created_at, updated_at, tenant_id)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				 context_window, max_tool_iterations, workspace, restrict_to_workspace,
+				 tools_config, sandbox_config, subagents_config, memory_config,
+				 compaction_config, context_pruning, other_config,
+				 emoji, agent_description, thinking_level, max_tokens,
+				 self_evolve, skill_evolve, skill_nudge_interval,
+				 reasoning_config, workspace_sharing, chatgpt_oauth_routing,
+				 shell_deny_groups, kg_dedup_config,
+				 agent_type, is_default, status, budget_monthly_cents, created_at, updated_at, tenant_id)
+				 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		agent.ID, agent.AgentKey,
 		agent.DisplayName,
 		sql.NullString{String: agent.Frontmatter, Valid: agent.Frontmatter != ""},
@@ -133,14 +133,14 @@ func (s *SQLiteAgentStore) Update(ctx context.Context, id uuid.UUID, updates map
 		return nil
 	}
 
-	// Coerce NOT NULL columns: null → default to prevent constraint violations.
-	// Promoted TEXT columns: null → empty string.
+	// Coerce NOT NULL columns: null -> default to prevent constraint violations.
+	// Promoted TEXT columns: null -> empty string.
 	for _, col := range []string{"emoji", "agent_description", "thinking_level"} {
 		if v, ok := updates[col]; ok && v == nil {
 			updates[col] = ""
 		}
 	}
-	// Promoted INT/BOOL columns: null → 0/false.
+	// Promoted INT/BOOL columns: null -> 0/false.
 	for _, col := range []string{"skill_nudge_interval", "max_tokens", "self_evolve", "skill_evolve", "is_default"} {
 		if v, ok := updates[col]; ok && v == nil {
 			if col == "self_evolve" || col == "skill_evolve" || col == "is_default" {
@@ -150,7 +150,7 @@ func (s *SQLiteAgentStore) Update(ctx context.Context, id uuid.UUID, updates map
 			}
 		}
 	}
-	// NOT NULL JSON columns: null → empty object.
+	// NOT NULL JSON columns: null -> empty object.
 	for _, col := range []string{"other_config", "tools_config", "reasoning_config", "workspace_sharing", "chatgpt_oauth_routing", "shell_deny_groups", "kg_dedup_config"} {
 		if v, ok := updates[col]; ok && v == nil {
 			updates[col] = []byte("{}")

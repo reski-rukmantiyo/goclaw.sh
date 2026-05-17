@@ -701,14 +701,16 @@ func wireExtras(
 			// Provider was deleted or not found — already unregistered by handler
 			return
 		}
-		if p.ProviderType != store.ProviderACP {
-			return
+		if p.ProviderType == store.ProviderACP {
+			// Unregister old instance (closes ProcessPool) then re-register
+			providerReg.Unregister(p.Name)
+			if p.Enabled {
+				registerACPFromDB(providerReg, *p)
+			}
 		}
-		// Unregister old instance (closes ProcessPool) then re-register
-		providerReg.Unregister(p.Name)
-		if p.Enabled {
-			registerACPFromDB(providerReg, *p)
-		}
+		// Invalidate cached agents using this provider so they re-resolve
+		// with updated settings (e.g. OpenRouter routing config).
+		agentRouter.InvalidateTenant(event.TenantID)
 	})
 
 	slog.Info("resolver + interceptors + cache subscribers wired")

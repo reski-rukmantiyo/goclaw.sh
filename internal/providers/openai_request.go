@@ -187,22 +187,39 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 		}
 	}
 
-	// reasoning_effort is OpenAI-specific; do not send to third-party OpenAI-compatible APIs.
-	if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" && level != "off" {
-		if openAIModelSupportsReasoningEffort(model) {
-			body[OptReasoningEffort] = level
+	// Reasoning effort: OpenRouter uses a unified "reasoning" object that auto-converts
+	// for all model families (OpenAI, Anthropic, Gemini, DeepSeek, Grok, Qwen, etc.).
+	// Direct OpenAI gets the top-level "reasoning_effort" string.
+	// Gemini (Google OpenAI-compat) gets a mapped "reasoning_effort" value.
+	if p.name == "openrouter" {
+		if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" {
+			if level == "off" {
+				body["reasoning"] = map[string]any{"effort": "none"}
+				slog.Debug("openrouter.reasoning", "model", model, "effort", "none")
+			} else {
+				body["reasoning"] = map[string]any{"effort": level}
+				slog.Debug("openrouter.reasoning", "model", model, "effort", level)
+			}
 		}
-	}
-
-	// Gemini (Google OpenAI-compat) accepts reasoning_effort mapped to thinking_config.
-	// Without forwarding, Gemini 3 defaults to "high" thinking and consumes the entire
-	// max_tokens budget, leaving no room for tool call arguments on small models.
-	// Gate narrowly: apiBase contains "generativelanguage" OR model substring "gemini"
-	// (covers OpenRouter / LiteLLM / Vertex proxies).
-	if _, already := body[OptReasoningEffort]; !already && p.isGeminiRoute(model) {
-		if level, ok := req.Options[OptThinkingLevel].(string); ok {
-			if mapped, forward := mapGeminiReasoningEffort(level); forward {
-				body[OptReasoningEffort] = mapped
+	} else {
+		// reasoning_effort is OpenAI-specific; do not send to third-party OpenAI-compatible APIs.
+		if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" && level != "off" {
+			if openAIModelSupportsReasoningEffort(model) {
+				body[OptReasoningEffort] = level
+				slog.Debug("openai.reasoning_effort", "model", model, "effort", level)
+			}
+		}
+		// Gemini (Google OpenAI-compat) accepts reasoning_effort mapped to thinking_config.
+		// Without forwarding, Gemini 3 defaults to "high" thinking and consumes the entire
+		// max_tokens budget, leaving no room for tool call arguments on small models.
+		// Gate narrowly: apiBase contains "generativelanguage" OR model substring "gemini"
+		// (covers LiteLLM / Vertex proxies).
+		if _, already := body[OptReasoningEffort]; !already && p.isGeminiRoute(model) {
+			if level, ok := req.Options[OptThinkingLevel].(string); ok {
+				if mapped, forward := mapGeminiReasoningEffort(level); forward {
+					body[OptReasoningEffort] = mapped
+					slog.Debug("gemini.reasoning_effort", "model", model, "effort", mapped)
+				}
 			}
 		}
 	}
@@ -214,6 +231,54 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 		}
 		if v, ok := req.Options[OptThinkingBudget]; ok {
 			body[OptThinkingBudget] = v
+		}
+	}
+
+	// OpenRouter provider routing: inject "provider" object when routing config is present.
+	// The config travels via ChatRequest.Options from the agent loop.
+	if raw, ok := req.Options[OptOpenRouterRouting]; ok {
+		if cfg, ok := raw.(*OpenRouterRouting); ok && cfg != nil {
+			provider := map[string]any{}
+			if len(cfg.Order) > 0 {
+				provider["order"] = cfg.Order
+			}
+			if cfg.AllowFallbacks != nil {
+				provider["allow_fallbacks"] = *cfg.AllowFallbacks
+			}
+			if cfg.RequireParameters != nil {
+				provider["require_parameters"] = *cfg.RequireParameters
+			}
+			if cfg.DataCollection != "" {
+				provider["data_collection"] = cfg.DataCollection
+			}
+			if len(cfg.Only) > 0 {
+				provider["only"] = cfg.Only
+			}
+			if len(cfg.Ignore) > 0 {
+				provider["ignore"] = cfg.Ignore
+			}
+			if len(cfg.Quantizations) > 0 {
+				provider["quantizations"] = cfg.Quantizations
+			}
+			if cfg.Sort != "" {
+				provider["sort"] = cfg.Sort
+			}
+			if cfg.MaxPrice != nil {
+				maxPrice := map[string]any{}
+				if cfg.MaxPrice.Prompt > 0 {
+					maxPrice["prompt"] = cfg.MaxPrice.Prompt
+				}
+				if cfg.MaxPrice.Completion > 0 {
+					maxPrice["completion"] = cfg.MaxPrice.Completion
+				}
+				if len(maxPrice) > 0 {
+					provider["max_price"] = maxPrice
+				}
+			}
+			if len(provider) > 0 {
+				body["provider"] = provider
+				slog.Debug("openrouter.routing", "model", req.Model, "provider", provider)
+			}
 		}
 	}
 

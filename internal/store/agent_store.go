@@ -615,6 +615,7 @@ func (a *AgentData) ParseShellDenyGroups() map[string]bool {
 	return groups
 }
 
+
 // AgentShareData represents an agent share grant.
 type AgentShareData struct {
 	BaseModel

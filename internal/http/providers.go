@@ -107,13 +107,14 @@ func (h *ProvidersHandler) resolveAPIBase(p *store.LLMProviderData) string {
 
 // emitProviderCacheInvalidate broadcasts a provider cache invalidation event.
 // Subscribers (e.g. ACP re-registration in gateway_managed.go) react to reload from DB.
-func (h *ProvidersHandler) emitProviderCacheInvalidate(name string) {
+func (h *ProvidersHandler) emitProviderCacheInvalidate(name string, tenantID uuid.UUID) {
 	if h.msgBus == nil {
 		return
 	}
 	h.msgBus.Broadcast(bus.Event{
-		Name:    protocol.EventCacheInvalidate,
-		Payload: bus.CacheInvalidatePayload{Kind: bus.CacheKindProvider, Key: name},
+		Name:     protocol.EventCacheInvalidate,
+		TenantID: tenantID,
+		Payload:  bus.CacheInvalidatePayload{Kind: bus.CacheKindProvider, Key: name},
 	})
 }
 
@@ -399,7 +400,7 @@ func (h *ProvidersHandler) handleCreateProvider(w http.ResponseWriter, r *http.R
 
 	// Register in-memory so verify/chat work without restart
 	h.registerInMemory(&p)
-	h.emitProviderCacheInvalidate(p.Name)
+	h.emitProviderCacheInvalidate(p.Name, p.TenantID)
 
 	emitAudit(h.msgBus, r, "provider.created", "provider", p.ID.String())
 	maskAPIKey(&p)
@@ -563,9 +564,9 @@ func (h *ProvidersHandler) handleUpdateProvider(w http.ResponseWriter, r *http.R
 
 	// Notify subscribers (e.g. ACP re-registration) about the change
 	if updated, err := h.store.GetProvider(r.Context(), id); err == nil {
-		h.emitProviderCacheInvalidate(updated.Name)
+		h.emitProviderCacheInvalidate(updated.Name, updated.TenantID)
 		if oldName != "" && oldName != updated.Name {
-			h.emitProviderCacheInvalidate(oldName)
+			h.emitProviderCacheInvalidate(oldName, updated.TenantID)
 		}
 	}
 
@@ -599,7 +600,7 @@ func (h *ProvidersHandler) handleDeleteProvider(w http.ResponseWriter, r *http.R
 		h.providerReg.UnregisterForTenant(providerTenantID, providerName)
 	}
 	if providerName != "" {
-		h.emitProviderCacheInvalidate(providerName)
+		h.emitProviderCacheInvalidate(providerName, providerTenantID)
 	}
 
 	emitAudit(h.msgBus, r, "provider.deleted", "provider", id.String())

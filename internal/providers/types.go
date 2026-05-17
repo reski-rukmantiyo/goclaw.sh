@@ -24,7 +24,30 @@ const (
 	OptFastMode             = "fast_mode"
 	OptPromptCacheKey       = "prompt_cache_key"
 	OptPromptCacheRetention = "prompt_cache_retention"
+
+	// OptOpenRouterRouting carries *OpenRouterRouting for injection
+	// into the "provider" field of OpenRouter chat completion requests.
+	OptOpenRouterRouting = "openrouter_routing"
 )
+
+// OpenRouterRouting holds OpenRouter-specific provider routing preferences.
+// Passed via ChatRequest.Options[OptOpenRouterRouting] from the agent loop.
+type OpenRouterRouting struct {
+	Order             []string            `json:"order,omitempty"`
+	AllowFallbacks    *bool               `json:"allow_fallbacks,omitempty"`
+	RequireParameters *bool               `json:"require_parameters,omitempty"`
+	DataCollection    string              `json:"data_collection,omitempty"`
+	Only              []string            `json:"only,omitempty"`
+	Ignore            []string            `json:"ignore,omitempty"`
+	Quantizations     []string            `json:"quantizations,omitempty"`
+	Sort              string              `json:"sort,omitempty"`
+	MaxPrice          *OpenRouterMaxPrice `json:"max_price,omitempty"`
+}
+
+type OpenRouterMaxPrice struct {
+	Prompt     float64 `json:"prompt,omitempty"`
+	Completion float64 `json:"completion,omitempty"`
+}
 
 // TokenSource provides an OAuth access token (with auto-refresh).
 type TokenSource interface {
