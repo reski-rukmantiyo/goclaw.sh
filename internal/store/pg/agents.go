@@ -87,14 +87,14 @@ func (s *PGAgentStore) BackfillAgentEmbeddings(ctx context.Context) (int, error)
 
 // agentSelectCols is the column list for all agent SELECT queries.
 const agentSelectCols = `id, agent_key, display_name, frontmatter, owner_id, provider, model,
-		 context_window, max_tool_iterations, workspace, restrict_to_workspace,
-		 tools_config, sandbox_config, subagents_config, memory_config,
-		 compaction_config, context_pruning, other_config,
-		 emoji, agent_description, thinking_level, max_tokens,
-		 self_evolve, skill_evolve, skill_nudge_interval,
-		 reasoning_config, workspace_sharing, chatgpt_oauth_routing,
-		 shell_deny_groups, kg_dedup_config,
-		 agent_type, is_default, status, budget_monthly_cents, created_at, updated_at, tenant_id`
+			 context_window, max_tool_iterations, workspace, restrict_to_workspace,
+			 tools_config, sandbox_config, subagents_config, memory_config,
+			 compaction_config, context_pruning, other_config,
+			 emoji, agent_description, thinking_level, max_tokens,
+			 self_evolve, skill_evolve, skill_nudge_interval,
+			 reasoning_config, workspace_sharing, chatgpt_oauth_routing,
+			 shell_deny_groups, kg_dedup_config, openrouter_routing,
+			 agent_type, is_default, status, budget_monthly_cents, created_at, updated_at, tenant_id`
 
 func (s *PGAgentStore) Create(ctx context.Context, agent *store.AgentData) error {
 	if agent.ID == uuid.Nil {
@@ -109,16 +109,16 @@ func (s *PGAgentStore) Create(ctx context.Context, agent *store.AgentData) error
 	}
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO agents (id, agent_key, display_name, frontmatter, owner_id, provider, model,
-		 context_window, max_tool_iterations, workspace, restrict_to_workspace,
-		 tools_config, sandbox_config, subagents_config, memory_config,
-		 compaction_config, context_pruning, other_config,
-		 emoji, agent_description, thinking_level, max_tokens,
-		 self_evolve, skill_evolve, skill_nudge_interval,
-		 reasoning_config, workspace_sharing, chatgpt_oauth_routing,
-		 shell_deny_groups, kg_dedup_config,
-		 agent_type, is_default, status, budget_monthly_cents, created_at, updated_at, tenant_id)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-		         $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)`,
+			 context_window, max_tool_iterations, workspace, restrict_to_workspace,
+			 tools_config, sandbox_config, subagents_config, memory_config,
+			 compaction_config, context_pruning, other_config,
+			 emoji, agent_description, thinking_level, max_tokens,
+			 self_evolve, skill_evolve, skill_nudge_interval,
+			 reasoning_config, workspace_sharing, chatgpt_oauth_routing,
+			 shell_deny_groups, kg_dedup_config, openrouter_routing,
+			 agent_type, is_default, status, budget_monthly_cents, created_at, updated_at, tenant_id)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+			         $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38)`,
 		agent.ID, agent.AgentKey, agent.DisplayName, sql.NullString{String: agent.Frontmatter, Valid: agent.Frontmatter != ""}, agent.OwnerID, agent.Provider, agent.Model,
 		agent.ContextWindow, agent.MaxToolIterations, agent.Workspace, agent.RestrictToWorkspace,
 		jsonOrEmpty(agent.ToolsConfig), jsonOrNull(agent.SandboxConfig), jsonOrNull(agent.SubagentsConfig), jsonOrNull(agent.MemoryConfig),
@@ -126,7 +126,7 @@ func (s *PGAgentStore) Create(ctx context.Context, agent *store.AgentData) error
 		agent.Emoji, agent.AgentDescription, agent.ThinkingLevel, agent.MaxTokens,
 		agent.SelfEvolve, agent.SkillEvolve, agent.SkillNudgeInterval,
 		jsonOrEmpty(agent.ReasoningConfig), jsonOrEmpty(agent.WorkspaceSharing), jsonOrEmpty(agent.ChatGPTOAuthRouting),
-		jsonOrEmpty(agent.ShellDenyGroups), jsonOrEmpty(agent.KGDedupConfig),
+		jsonOrEmpty(agent.ShellDenyGroups), jsonOrEmpty(agent.KGDedupConfig), jsonOrEmpty(agent.OpenRouterRouting),
 		agent.AgentType, agent.IsDefault, agent.Status, agent.BudgetMonthlyCents, now, now, tenantID,
 	)
 	if err != nil {
@@ -189,14 +189,14 @@ func (s *PGAgentStore) Update(ctx context.Context, id uuid.UUID, updates map[str
 		return nil
 	}
 
-	// Coerce NOT NULL columns: null → default to prevent constraint violations.
-	// Promoted TEXT columns (migration 000037): null → empty string.
+	// Coerce NOT NULL columns: null -> default to prevent constraint violations.
+	// Promoted TEXT columns (migration 000037): null -> empty string.
 	for _, col := range []string{"emoji", "agent_description", "thinking_level"} {
 		if v, ok := updates[col]; ok && v == nil {
 			updates[col] = ""
 		}
 	}
-	// Promoted INT/BOOL columns: null → 0/false.
+	// Promoted INT/BOOL columns: null -> 0/false.
 	for _, col := range []string{"skill_nudge_interval", "max_tokens", "self_evolve", "skill_evolve", "is_default"} {
 		if v, ok := updates[col]; ok && v == nil {
 			if col == "self_evolve" || col == "skill_evolve" || col == "is_default" {
@@ -206,8 +206,8 @@ func (s *PGAgentStore) Update(ctx context.Context, id uuid.UUID, updates map[str
 			}
 		}
 	}
-	// NOT NULL JSONB columns: null → empty object.
-	for _, col := range []string{"other_config", "tools_config", "chatgpt_oauth_routing", "reasoning_config", "workspace_sharing", "shell_deny_groups", "kg_dedup_config"} {
+	// NOT NULL JSONB columns: null -> empty object.
+	for _, col := range []string{"other_config", "tools_config", "chatgpt_oauth_routing", "reasoning_config", "workspace_sharing", "shell_deny_groups", "kg_dedup_config", "openrouter_routing"} {
 		if v, ok := updates[col]; ok && v == nil {
 			updates[col] = []byte("{}")
 		}
@@ -496,13 +496,13 @@ func scanAgentRow(row agentRowScanner) (*store.AgentData, error) {
 	var frontmatter sql.NullString
 	// pgx: scan nullable JSONB into *[]byte (NOT *json.RawMessage — pgx can't scan NULL into defined types)
 	var toolsCfg, sandboxCfg, subagentsCfg, memoryCfg, compactionCfg, pruningCfg, otherCfg *[]byte
-	var reasoningCfg, wsCfg, oauthCfg, shellCfg, kgCfg *[]byte
+	var reasoningCfg, wsCfg, oauthCfg, shellCfg, kgCfg, openrouterCfg *[]byte
 	err := row.Scan(&d.ID, &d.AgentKey, &d.DisplayName, &frontmatter, &d.OwnerID, &d.Provider, &d.Model,
 		&d.ContextWindow, &d.MaxToolIterations, &d.Workspace, &d.RestrictToWorkspace,
 		&toolsCfg, &sandboxCfg, &subagentsCfg, &memoryCfg, &compactionCfg, &pruningCfg, &otherCfg,
 		&d.Emoji, &d.AgentDescription, &d.ThinkingLevel, &d.MaxTokens,
 		&d.SelfEvolve, &d.SkillEvolve, &d.SkillNudgeInterval,
-		&reasoningCfg, &wsCfg, &oauthCfg, &shellCfg, &kgCfg,
+		&reasoningCfg, &wsCfg, &oauthCfg, &shellCfg, &kgCfg, &openrouterCfg,
 		&d.AgentType, &d.IsDefault, &d.Status, &d.BudgetMonthlyCents, &d.CreatedAt, &d.UpdatedAt, &d.TenantID)
 	if err != nil {
 		return nil, err
@@ -510,7 +510,7 @@ func scanAgentRow(row agentRowScanner) (*store.AgentData, error) {
 	if frontmatter.Valid {
 		d.Frontmatter = frontmatter.String
 	}
-	// Convert *[]byte → json.RawMessage (nil-safe)
+	// Convert *[]byte -> json.RawMessage (nil-safe)
 	if toolsCfg != nil {
 		d.ToolsConfig = *toolsCfg
 	}
@@ -546,6 +546,9 @@ func scanAgentRow(row agentRowScanner) (*store.AgentData, error) {
 	}
 	if kgCfg != nil {
 		d.KGDedupConfig = *kgCfg
+	}
+	if openrouterCfg != nil {
+		d.OpenRouterRouting = *openrouterCfg
 	}
 	return &d, nil
 }
@@ -588,7 +591,7 @@ func execMapUpdateWhere(ctx context.Context, db *sql.DB, table string, updates m
 	for _, ch := range where {
 		finalWhere += string(ch)
 	}
-	// Simple replace: $IDX → $N
+	// Simple replace: $IDX -> $N
 	idxStr := fmt.Sprintf("$%d", i)
 	q := fmt.Sprintf("UPDATE %s SET %s WHERE %s",
 		table,
@@ -633,4 +636,3 @@ func replaceIDX(s, replacement string) string {
 	}
 	return result.String()
 }
-

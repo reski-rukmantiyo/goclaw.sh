@@ -172,7 +172,8 @@
       "instances": "用户实例",
       "permissions": "权限",
       "evolution": "进化",
-      "hooks": "钩子"
+      "hooks": "钩子",
+      "routing": "Provider 路由"
     },
     "summonFailed": "召唤失败",
     "evolving": "进化中",
@@ -1097,5 +1098,37 @@
     "skillGrantFailed": "授权技能失败",
     "skillRevoked": "技能已撤销",
     "skillRevokeFailed": "撤销技能失败"
+  },
+  "routing": {
+    "sectionTitle": "Provider 路由",
+    "sectionDescription": "配置 OpenRouter 如何为您的请求选择提供商。",
+    "docsLink": "OpenRouter 文档",
+    "sort": "排序方式",
+    "sortDefault": "默认（无偏好）",
+    "sortPrice": "价格",
+    "sortThroughput": "吞吐量",
+    "sortLatency": "延迟",
+    "sortHint": "提供商选择的排序偏好",
+    "allowFallbacks": "允许回退",
+    "allowFallbacksHint": "当主要提供商不可用时允许备用提供商（默认：启用）",
+    "requireParameters": "要求参数",
+    "requireParametersHint": "仅使用支持所有请求参数的提供商（默认：禁用）",
+    "dataCollection": "数据收集",
+    "dataCollectionDefault": "默认（由提供商决定）",
+    "dataCollectionAllow": "允许",
+    "dataCollectionDeny": "拒绝",
+    "dataCollectionHint": "控制提供商是否可以存储请求数据用于训练",
+    "order": "提供商顺序",
+    "orderHint": "逗号分隔的提供商 slug，按顺序尝试（例如 anthropic, openai）",
+    "only": "允许列表",
+    "onlyHint": "仅使用这些提供商（逗号分隔的 slug，例如 anthropic, openai）",
+    "ignore": "跳过列表",
+    "ignoreHint": "永不使用这些提供商（逗号分隔的 slug，例如 together, deepinfra）",
+    "quantizations": "量化",
+    "quantizationsHint": "按量化级别过滤（例如 fp16, int8）",
+    "maxPrice": "最高价格",
+    "maxPricePrompt": "Prompt（每百万 token）",
+    "maxPriceCompletion": "Completion（每百万 token）",
+    "maxPriceHint": "每百万 token 的最高价格。留空表示无限制。"
   }
 }

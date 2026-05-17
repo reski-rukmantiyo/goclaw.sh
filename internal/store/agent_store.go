@@ -83,6 +83,7 @@ type AgentData struct {
 	ChatGPTOAuthRouting json.RawMessage `json:"chatgpt_oauth_routing,omitempty" db:"chatgpt_oauth_routing"`
 	ShellDenyGroups     json.RawMessage `json:"shell_deny_groups,omitempty" db:"shell_deny_groups"`
 	KGDedupConfig       json.RawMessage `json:"kg_dedup_config,omitempty" db:"kg_dedup_config"`
+	OpenRouterRouting   json.RawMessage `json:"openrouter_routing,omitempty" db:"openrouter_routing"`
 }
 
 // ParseToolsConfig returns per-agent tool policy, or nil if not configured.
@@ -613,6 +614,55 @@ func (a *AgentData) ParseShellDenyGroups() map[string]bool {
 		return nil
 	}
 	return groups
+}
+
+// OpenRouterRoutingConfig holds OpenRouter-specific provider routing preferences.
+// Stored in the openrouter_routing JSONB column on agents.
+// See: https://openrouter.ai/docs/guides/routing/provider-selection
+type OpenRouterRoutingConfig struct {
+	Order             []string            `json:"order,omitempty"`
+	AllowFallbacks    *bool               `json:"allow_fallbacks,omitempty"`
+	RequireParameters *bool               `json:"require_parameters,omitempty"`
+	DataCollection    string              `json:"data_collection,omitempty"` // "allow" | "deny"
+	Only              []string            `json:"only,omitempty"`
+	Ignore            []string            `json:"ignore,omitempty"`
+	Quantizations     []string            `json:"quantizations,omitempty"`
+	Sort              string              `json:"sort,omitempty"` // "price" | "throughput" | "latency"
+	MaxPrice          *OpenRouterMaxPrice `json:"max_price,omitempty"`
+}
+
+// OpenRouterMaxPrice holds per-token price caps for OpenRouter routing.
+type OpenRouterMaxPrice struct {
+	Prompt     float64 `json:"prompt,omitempty"`
+	Completion float64 `json:"completion,omitempty"`
+}
+
+// ParseOpenRouterRouting reads OpenRouter routing config from the dedicated column.
+// Returns nil if not configured or all fields are empty/invalid.
+func (a *AgentData) ParseOpenRouterRouting() *OpenRouterRoutingConfig {
+	if len(a.OpenRouterRouting) <= 2 {
+		return nil
+	}
+	var cfg OpenRouterRoutingConfig
+	if json.Unmarshal(a.OpenRouterRouting, &cfg) != nil {
+		return nil
+	}
+	cfg.Order = normalizeProviderNames(cfg.Order)
+	cfg.Only = normalizeProviderNames(cfg.Only)
+	cfg.Ignore = normalizeProviderNames(cfg.Ignore)
+	cfg.Quantizations = normalizeProviderNames(cfg.Quantizations)
+	if cfg.DataCollection != "" && cfg.DataCollection != "allow" && cfg.DataCollection != "deny" {
+		cfg.DataCollection = ""
+	}
+	if cfg.Sort != "" && cfg.Sort != "price" && cfg.Sort != "throughput" && cfg.Sort != "latency" {
+		cfg.Sort = ""
+	}
+	if cfg.Order == nil && cfg.AllowFallbacks == nil && cfg.RequireParameters == nil &&
+		cfg.DataCollection == "" && cfg.Only == nil && cfg.Ignore == nil &&
+		cfg.Quantizations == nil && cfg.Sort == "" && cfg.MaxPrice == nil {
+		return nil
+	}
+	return &cfg
 }
 
 // AgentShareData represents an agent share grant.

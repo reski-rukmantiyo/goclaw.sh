@@ -27,9 +27,11 @@ export function AgentCard({ agent, onClick, onResummon, onDelete }: AgentCardPro
   const showSubtitle = agent.display_name && !UUID_RE.test(agent.agent_key);
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
       className="flex cursor-pointer flex-col gap-3 rounded-lg border bg-card p-4 text-left transition-all hover:border-primary/30 hover:shadow-md"
     >
       {/* Top row: icon + name + status */}
@@ -149,6 +151,6 @@ export function AgentCard({ agent, onClick, onResummon, onDelete }: AgentCardPro
           </Button>
         )}
       </div>
-    </button>
+    </div>
   );
 }

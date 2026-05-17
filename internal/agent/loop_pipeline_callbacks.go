@@ -254,6 +254,28 @@ func (l *Loop) makeCallLLM(req *RunRequest, emitRun func(AgentEvent)) func(ctx c
 			chatReq.Options[providers.OptStripThinking] = true
 		}
 
+		// OpenRouter routing: inject per-agent provider routing preferences.
+		if l.openrouterRouting != nil {
+			cfg := l.openrouterRouting
+			orRouting := &providers.OpenRouterRouting{
+				Order:             cfg.Order,
+				AllowFallbacks:    cfg.AllowFallbacks,
+				RequireParameters: cfg.RequireParameters,
+				DataCollection:    cfg.DataCollection,
+				Only:              cfg.Only,
+				Ignore:            cfg.Ignore,
+				Quantizations:     cfg.Quantizations,
+				Sort:              cfg.Sort,
+			}
+			if cfg.MaxPrice != nil {
+				orRouting.MaxPrice = &providers.OpenRouterMaxPrice{
+					Prompt:     cfg.MaxPrice.Prompt,
+					Completion: cfg.MaxPrice.Completion,
+				}
+			}
+			chatReq.Options[providers.OptOpenRouterRouting] = orRouting
+		}
+
 		// Emit LLM span start for tracing.
 		start := time.Now().UTC()
 		var opts []spanOption

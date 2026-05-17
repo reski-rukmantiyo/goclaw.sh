@@ -217,6 +217,53 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 		}
 	}
 
+	// OpenRouter provider routing: inject "provider" object when routing config is present.
+	// The config travels via ChatRequest.Options from the agent loop.
+	if raw, ok := req.Options[OptOpenRouterRouting]; ok {
+		if cfg, ok := raw.(*OpenRouterRouting); ok && cfg != nil {
+			provider := map[string]any{}
+			if len(cfg.Order) > 0 {
+				provider["order"] = cfg.Order
+			}
+			if cfg.AllowFallbacks != nil {
+				provider["allow_fallbacks"] = *cfg.AllowFallbacks
+			}
+			if cfg.RequireParameters != nil {
+				provider["require_parameters"] = *cfg.RequireParameters
+			}
+			if cfg.DataCollection != "" {
+				provider["data_collection"] = cfg.DataCollection
+			}
+			if len(cfg.Only) > 0 {
+				provider["only"] = cfg.Only
+			}
+			if len(cfg.Ignore) > 0 {
+				provider["ignore"] = cfg.Ignore
+			}
+			if len(cfg.Quantizations) > 0 {
+				provider["quantizations"] = cfg.Quantizations
+			}
+			if cfg.Sort != "" {
+				provider["sort"] = cfg.Sort
+			}
+			if cfg.MaxPrice != nil {
+				maxPrice := map[string]any{}
+				if cfg.MaxPrice.Prompt > 0 {
+					maxPrice["prompt"] = cfg.MaxPrice.Prompt
+				}
+				if cfg.MaxPrice.Completion > 0 {
+					maxPrice["completion"] = cfg.MaxPrice.Completion
+				}
+				if len(maxPrice) > 0 {
+					provider["max_price"] = maxPrice
+				}
+			}
+			if len(provider) > 0 {
+				body["provider"] = provider
+			}
+		}
+	}
+
 	return body
 }
 

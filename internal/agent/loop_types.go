@@ -192,6 +192,9 @@ type Loop struct {
 	// Requested reasoning config parsed from agent other_config.
 	reasoningConfig store.AgentReasoningConfig
 
+	// OpenRouter routing config for provider-level model routing preferences.
+	openrouterRouting *store.OpenRouterRoutingConfig
+
 	// Prompt mode from agent other_config (empty = full).
 	promptMode PromptMode
 
@@ -389,6 +392,9 @@ type LoopConfig struct {
 	// Requested reasoning config parsed from agent other_config.
 	ReasoningConfig store.AgentReasoningConfig
 
+	// OpenRouter routing config for provider-level model routing preferences.
+	OpenRouterRouting *store.OpenRouterRoutingConfig
+
 	// Prompt mode from agent other_config ("full", "task", "minimal", "none")
 	PromptMode PromptMode
 
@@ -554,6 +560,7 @@ func NewLoop(cfg LoopConfig) *Loop {
 		tenantAllowedPaths:     cfg.TenantAllowedPaths,
 		disabledTools:          cfg.DisabledTools,
 		reasoningConfig:        cfg.ReasoningConfig,
+		openrouterRouting:      cfg.OpenRouterRouting,
 		promptMode:             cfg.PromptMode,
 		pinnedSkills:           cfg.PinnedSkills,
 		selfEvolve:             cfg.SelfEvolve,
