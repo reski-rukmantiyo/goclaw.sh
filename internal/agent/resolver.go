@@ -180,9 +180,11 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 			return nil, fmt.Errorf("no provider available for agent %s", agentKey)
 		}
 		providerReasoningDefaults := (*store.ProviderReasoningConfig)(nil)
+		providerOpenRouterRouting := (*store.OpenRouterRoutingConfig)(nil)
 		if deps.ProviderStore != nil {
 			if providerData, err := deps.ProviderStore.GetProviderByName(ctx, provider.Name()); err == nil && providerData != nil {
 				providerReasoningDefaults = store.ParseProviderReasoningConfig(providerData.Settings)
+				providerOpenRouterRouting = store.ParseOpenRouterProviderSettings(providerData.Settings)
 			}
 		}
 
@@ -538,7 +540,7 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 			DelegateTargets:        delegateTargets,
 			EvolutionMetricsStore:  evoMetricsStore,
 			UserResolver:           newContactResolver(deps.ContactStore),
-			OpenRouterRouting:      ag.ParseOpenRouterRouting(),
+			OpenRouterRouting:      providerOpenRouterRouting,
 		})
 
 		slog.Info("resolved agent from DB", "agent", agentKey, "model", ag.Model, "provider", ag.Provider)

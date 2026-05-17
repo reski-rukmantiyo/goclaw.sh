@@ -118,100 +118,6 @@ export interface ChatGPTOAuthRoutingConfig {
   extra_provider_names?: string[];
 }
 
-export interface OpenRouterMaxPrice {
-  prompt?: number;
-  completion?: number;
-}
-
-export interface OpenRouterRoutingConfig {
-  order?: string[];
-  allow_fallbacks?: boolean | null;
-  require_parameters?: boolean | null;
-  data_collection?: "allow" | "deny" | "";
-  only?: string[];
-  ignore?: string[];
-  quantizations?: string[];
-  sort?: "price" | "throughput" | "latency" | "";
-  max_price?: OpenRouterMaxPrice | null;
-}
-
-export function normalizeOpenRouterRouting(
-  raw: OpenRouterRoutingConfig,
-): OpenRouterRoutingConfig {
-  const result: OpenRouterRoutingConfig = {};
-  if (Array.isArray(raw.order)) {
-    const cleaned = raw.order
-      .filter((s): s is string => typeof s === "string")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (cleaned.length > 0) result.order = cleaned;
-  }
-  if (raw.allow_fallbacks !== undefined && raw.allow_fallbacks !== null) {
-    result.allow_fallbacks = Boolean(raw.allow_fallbacks);
-  }
-  if (raw.require_parameters !== undefined && raw.require_parameters !== null) {
-    result.require_parameters = Boolean(raw.require_parameters);
-  }
-  if (raw.data_collection === "allow" || raw.data_collection === "deny") {
-    result.data_collection = raw.data_collection;
-  }
-  for (const [key, rawArr] of [
-    ["only", raw.only],
-    ["ignore", raw.ignore],
-    ["quantizations", raw.quantizations],
-  ] as const) {
-    if (Array.isArray(rawArr)) {
-      const cleaned = rawArr
-        .filter((s): s is string => typeof s === "string")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (cleaned.length > 0) (result as Record<string, string[]>)[key] = cleaned;
-    }
-  }
-  if (
-    raw.sort === "price" ||
-    raw.sort === "throughput" ||
-    raw.sort === "latency"
-  ) {
-    result.sort = raw.sort;
-  }
-  if (raw.max_price && typeof raw.max_price === "object") {
-    const mp: OpenRouterMaxPrice = {};
-    if (typeof raw.max_price.prompt === "number" && raw.max_price.prompt > 0) {
-      mp.prompt = raw.max_price.prompt;
-    }
-    if (
-      typeof raw.max_price.completion === "number" &&
-      raw.max_price.completion > 0
-    ) {
-      mp.completion = raw.max_price.completion;
-    }
-    if (mp.prompt !== undefined || mp.completion !== undefined) {
-      result.max_price = mp;
-    }
-  }
-  return result;
-}
-
-export function isOpenRouterRoutingEmpty(
-  cfg: OpenRouterRoutingConfig,
-): boolean {
-  return (
-    (cfg.order?.length ?? 0) === 0 &&
-    cfg.allow_fallbacks == null &&
-    cfg.require_parameters == null &&
-    cfg.data_collection !== "allow" &&
-    cfg.data_collection !== "deny" &&
-    (cfg.only?.length ?? 0) === 0 &&
-    (cfg.ignore?.length ?? 0) === 0 &&
-    (cfg.quantizations?.length ?? 0) === 0 &&
-    cfg.sort !== "price" &&
-    cfg.sort !== "throughput" &&
-    cfg.sort !== "latency" &&
-    cfg.max_price == null
-  );
-}
-
 export interface KgDedupConfig {
   enabled?: boolean;
   similarity_threshold?: number;
@@ -253,7 +159,6 @@ export interface AgentData {
   chatgpt_oauth_routing?: ChatGPTOAuthRoutingConfig | null;
   shell_deny_groups?: ShellDenyGroups | null;
   kg_dedup_config?: KgDedupConfig | null;
-  openrouter_routing?: OpenRouterRoutingConfig | null;
 
   // Per-agent JSONB configs (null/undefined = use global defaults)
   tools_config?: ToolPolicyConfig | null;

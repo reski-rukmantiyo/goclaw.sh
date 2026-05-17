@@ -128,7 +128,6 @@ CREATE TABLE IF NOT EXISTS agents (
     chatgpt_oauth_routing TEXT NOT NULL DEFAULT '{}',
     shell_deny_groups     TEXT NOT NULL DEFAULT '{}',
     kg_dedup_config       TEXT NOT NULL DEFAULT '{}',
-    openrouter_routing    TEXT DEFAULT NULL,
     is_default            BOOLEAN NOT NULL DEFAULT 0,
     agent_type            VARCHAR(20) NOT NULL DEFAULT 'open',
     status                VARCHAR(20) DEFAULT 'active',

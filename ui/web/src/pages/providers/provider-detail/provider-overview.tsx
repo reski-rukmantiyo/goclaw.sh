@@ -20,16 +20,20 @@ import { useProviderVerify } from "../hooks/use-provider-verify";
 import { ProviderOAuthAccountSection } from "./provider-oauth-account-section";
 import { ProviderReasoningSection } from "./provider-reasoning-section";
 import { ProviderEmbeddingSection } from "./provider-embedding-section";
+import { ProviderRoutingSection } from "./provider-routing-section";
 import { ProviderPoolActivitySection } from "./provider-pool-activity-section";
 import {
   buildProviderSettingsWithChatGPTOAuthRouting,
   buildProviderSettingsWithReasoningDefaults,
+  buildProviderSettingsWithOpenRouterRouting,
   getChatGPTOAuthProviderRouting,
   getEmbeddingSettings,
   getProviderReasoningDefaults,
+  getOpenRouterRouting,
+  normalizeOpenRouterRouting,
   deriveLegacyThinkingLevel,
 } from "@/types/provider";
-import type { ProviderData, ProviderInput } from "@/types/provider";
+import type { ProviderData, ProviderInput, OpenRouterRoutingConfig } from "@/types/provider";
 import type { ChatGPTOAuthRoutingConfig } from "@/types/agent";
 import { useChatGPTOAuthProviderStatuses } from "../hooks/use-chatgpt-oauth-provider-statuses";
 import { useChatGPTOAuthProviderQuotas } from "../hooks/use-chatgpt-oauth-provider-quotas";
@@ -105,6 +109,9 @@ export function ProviderOverview({ provider, onUpdate }: ProviderOverviewProps) 
   const [embEnabled, setEmbEnabled] = useState(initEmb?.enabled ?? false);
   const [embModel, setEmbModel] = useState(initEmb?.model ?? "");
   const [embApiBase, setEmbApiBase] = useState(initEmb?.api_base ?? "");
+  const isOpenRouter = provider.provider_type === "openrouter";
+  const initORRouting = getOpenRouterRouting(provider.settings);
+  const [orRouting, setORRouting] = useState<OpenRouterRoutingConfig>(initORRouting ?? {});
   const [reasoningThinkingLevel, setReasoningThinkingLevel] = useState(deriveLegacyThinkingLevel(initialReasoningEffort));
   const [reasoningEffort, setReasoningEffort] = useState(initialReasoningEffort);
   const [reasoningFallback, setReasoningFallback] = useState(initialReasoningFallback);
@@ -140,10 +147,12 @@ export function ProviderOverview({ provider, onUpdate }: ProviderOverviewProps) 
   useEffect(() => {
     const nextID = provider.id;
     const es = getEmbeddingSettings(provider.settings);
+    const orSync = getOpenRouterRouting(provider.settings);
     const routing = getChatGPTOAuthProviderRouting(provider.settings);
     const reasoning = getProviderReasoningDefaults(provider.settings) ?? providerReasoningDefaults;
     const syncFromProvider = () => {
       setEmbEnabled(es?.enabled ?? false); setEmbModel(es?.model ?? ""); setEmbApiBase(es?.api_base ?? "");
+      setORRouting(orSync ?? {});
       setPoolRouting({ strategy: routing?.strategy ?? "priority_order", extra_provider_names: routing?.extraProviderNames ?? [] });
       const nextEffort = reasoning?.effort ?? "off"; const nextFallback = reasoning?.fallback ?? "downgrade";
       setReasoningEffort(nextEffort); setReasoningFallback(nextFallback);
@@ -200,6 +209,7 @@ export function ProviderOverview({ provider, onUpdate }: ProviderOverviewProps) 
       }
       if (isOAuth) nextSettings = buildProviderSettingsWithChatGPTOAuthRouting(nextSettings, poolRouting);
       nextSettings = buildProviderSettingsWithReasoningDefaults(nextSettings, showReasoningDefaults ? { effort: reasoningExpert ? reasoningEffort : reasoningThinkingLevel, fallback: reasoningExpert ? reasoningFallback : "downgrade" } : null);
+      if (isOpenRouter) nextSettings = buildProviderSettingsWithOpenRouterRouting(nextSettings, orRouting);
       data.settings = nextSettings;
       await onUpdate(provider.id, data);
       setDisplayName(nextDisplayName); setEmbModel(embModel.trim()); setEmbApiBase(embApiBase.trim());
@@ -212,6 +222,7 @@ export function ProviderOverview({ provider, onUpdate }: ProviderOverviewProps) 
     || (showApiKey && comparableAPIKeyValue(apiKey, provider.api_key || "", showApiKey) !== "")
     || embEnabled !== (initEmb?.enabled ?? false) || embModel !== (initEmb?.model ?? "") || embApiBase !== (initEmb?.api_base ?? "")
     || (isOAuth && routingSignature(poolRouting) !== routingSignature({ strategy: initialRouting?.strategy ?? "priority_order", extra_provider_names: initialRouting?.extraProviderNames ?? [] }))
+    || (isOpenRouter && JSON.stringify(normalizeOpenRouterRouting(orRouting)) !== JSON.stringify(normalizeOpenRouterRouting(initORRouting ?? {})))
     || draftReasoningSig !== savedReasoningSig;
 
   return (
@@ -238,6 +249,10 @@ export function ProviderOverview({ provider, onUpdate }: ProviderOverviewProps) 
           </div>
         </div>
       </section>
+
+      {isOpenRouter ? (
+        <ProviderRoutingSection routing={orRouting} onChange={setORRouting} />
+      ) : null}
 
       {isOAuth ? <ProviderOAuthAccountSection provider={provider} managedByProvider={managedByProvider} managedMemberCount={managedMemberCount} availability={currentOAuthAvailability} quota={quotaByName.get(provider.name)} quotaLoading={quotasLoading || quotasFetching} /> : null}
 

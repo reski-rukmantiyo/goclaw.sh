@@ -53,7 +53,7 @@ var agentAllowedFields = map[string]bool{
 	"emoji": true, "agent_description": true, "thinking_level": true, "max_tokens": true,
 	"self_evolve": true, "skill_evolve": true, "skill_nudge_interval": true,
 	"reasoning_config": true, "workspace_sharing": true, "chatgpt_oauth_routing": true,
-	"shell_deny_groups": true, "kg_dedup_config": true, "openrouter_routing": true,
+	"shell_deny_groups": true, "kg_dedup_config": true,
 }
 
 var providerAllowedFields = map[string]bool{

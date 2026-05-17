@@ -1,20 +1,17 @@
-import { useState, lazy, Suspense, useMemo } from "react";
+import { useState, lazy, Suspense } from "react";
 import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAgentDetail } from "../hooks/use-agent-detail";
 import { useAgents } from "../hooks/use-agents";
 import { useAgentHeartbeat } from "../hooks/use-agent-heartbeat";
-import { useProviders } from "../../providers/hooks/use-providers";
 import { AgentHeader } from "./agent-header";
 import { AgentOverviewTab } from "./agent-overview-tab";
 import { AgentFilesTab } from "./agent-files-tab";
 import { AgentInstancesTab } from "./agent-instances-tab";
 import { AgentPermissionsTab } from "./agent-permissions-tab";
 import { AgentEvolutionTab } from "./evolution-tab/agent-evolution-tab";
-import { AgentHooksTab } from "./agent-hooks-tab";
-import { AgentRoutingTab } from "./agent-routing-tab";
-import { SummoningModal } from "../summoning-modal";
+import { AgentHooksTab } from "./agent-hooks-tab";import { SummoningModal } from "../summoning-modal";
 import { ConfirmDeleteDialog } from "@/components/shared/confirm-delete-dialog";
 import { DetailPageSkeleton } from "@/components/shared/loading-skeleton";
 import { agentDisplayName } from "./agent-display-utils";
@@ -38,7 +35,6 @@ export function AgentDetailPage({ agentId, onBack }: AgentDetailPageProps) {
   const { agent, files, loading, updateAgent, getFile, setFile, regenerateAgent, resummonAgent, refresh } =
     useAgentDetail(agentId);
   const { deleteAgent: deleteAgentById, cancelSummonAgent } = useAgents();
-  const { providers } = useProviders();
   const hb = useAgentHeartbeat(agentId);
   const [summoningOpen, setSummoningOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("agent");
@@ -57,9 +53,6 @@ export function AgentDetailPage({ agentId, onBack }: AgentDetailPageProps) {
     setSummoningOpen(open);
     if (!open) refresh();
   };
-
-  const providerByName = useMemo(() => new Map(providers.map((p) => [p.name, p])), [providers]);
-  const isOpenRouter = agent ? providerByName.get(agent.provider)?.provider_type === "openrouter" : false;
 
   if (loading || !agent) {
     return <DetailPageSkeleton tabs={3} />;
@@ -90,9 +83,6 @@ export function AgentDetailPage({ agentId, onBack }: AgentDetailPageProps) {
               <TabsTrigger value="hooks">{t("detail.tabs.hooks")}</TabsTrigger>
               {agent.agent_type === "predefined" && (
                 <TabsTrigger value="instances">{t("detail.tabs.instances")}</TabsTrigger>
-              )}
-              {isOpenRouter && (
-                <TabsTrigger value="routing">{t("detail.tabs.routing")}</TabsTrigger>
               )}
             </TabsList>
 
@@ -141,16 +131,6 @@ export function AgentDetailPage({ agentId, onBack }: AgentDetailPageProps) {
                 onCreateOpenChange={setHooksCreateOpen}
               />
             </TabsContent>
-
-            {isOpenRouter && (
-              <TabsContent value="routing" className="mt-4">
-                <AgentRoutingTab
-                  key={agent.id + "-routing"}
-                  agent={agent}
-                  onUpdate={updateAgent}
-                />
-              </TabsContent>
-            )}
 
             {agent.agent_type === "predefined" && (
               <TabsContent value="instances" className="mt-4">
