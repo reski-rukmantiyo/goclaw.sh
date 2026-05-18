@@ -224,6 +224,10 @@ func init() {
 		MsgHookPerTurnCapReached:       "đã đạt giới hạn số lần gọi hook trong một lượt",
 		MsgHookBuiltinReadOnly:         "hook dựng sẵn chỉ cho phép bật/tắt, không thể chỉnh sửa",
 
+		// Topic guard
+		MsgTopicGuardBlocked: "Câu hỏi này nằm ngoài phạm vi của agent. %s",
+		MsgTopicGuardError:   "lỗi phân loại chủ đề: %s",
+
 		// Message tool cross-target forward notice
 		MessageCrossTargetForwarded: "📤 Đã forward sang %s theo yêu cầu: %q",
 	})

@@ -224,6 +224,10 @@ func init() {
 		MsgHookPerTurnCapReached:       "单轮钩子调用次数已达上限",
 		MsgHookBuiltinReadOnly:         "内置钩子只读,仅允许切换启用状态",
 
+		// Topic guard
+		MsgTopicGuardBlocked: "此问题不在该代理的范围内。%s",
+		MsgTopicGuardError:   "主题分类错误：%s",
+
 		// Message tool cross-target forward notice
 		MessageCrossTargetForwarded: "📤 已按请求转发至 %s:%q",
 	})

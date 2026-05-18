@@ -450,6 +450,30 @@
       "description": "Cấu hình JSON bổ sung cho các cài đặt nâng cao không được đề cập trong các mục khác",
       "formatJson": "Định dạng JSON",
       "invalidJson": "Cú pháp JSON không hợp lệ"
+    },
+    "topicGuard": {
+      "title": "Bảo vệ chủ đề",
+      "description": "Giới hạn cuộc trò chuyện trong các chủ đề đã định. Câu hỏi ngoài phạm vi sẽ bị chặn.",
+      "mode": "Chế độ phát hiện",
+      "modeKeyword": "Chỉ từ khóa",
+      "modeLLM": "Từ khóa + LLM Fallback",
+      "allowKeywords": "Từ khóa cho phép",
+      "blockKeywords": "Từ khóa bị chặn",
+      "keywordsPlaceholder": "vd: python, api, database",
+      "defaultAction": "Hành động mặc định",
+      "defaultAllow": "Cho phép",
+      "defaultBlock": "Chặn",
+      "rejectionMessage": "Tin nhắn từ chối",
+      "rejectionPlaceholder": "Câu hỏi này nằm ngoài phạm vi của agent.",
+      "llmModel": "Mô hình LLM",
+      "llmTimeout": "Thời gian chờ (ms)",
+      "llmWarning": "Mô hình phân loại phải nhỏ (<7B tham số) để giảm độ trễ và chi phí.",
+      "llmProvider": "Provider LLM",
+      "llmProviderTip": "Provider dùng để phân loại. Trống = dùng provider của agent.",
+      "llmProviderPlaceholder": "vd: ollama, groq",
+      "llmModelPlaceholder": "vd: llama3.2:1b, gemma2:2b",
+      "llmMaxTokens": "Max Tokens",
+      "llmMaxTokensTip": "Số token tối đa trong phản hồi phân loại. Mặc định 10."
     }
   },
   "heartbeat": {

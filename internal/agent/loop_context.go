@@ -12,6 +12,7 @@ import (
 
 	"github.com/nextlevelbuilder/goclaw/internal/bootstrap"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
+	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/internal/tools"
 	"github.com/nextlevelbuilder/goclaw/internal/workspace"
@@ -315,6 +316,26 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 				)
 			}
 		}
+	}
+
+	// Topic guardrail: check if message is within agent's defined scope.
+	if l.topicGuard != nil {
+		result := l.topicGuard.Check(ctx, req.Message)
+		if !result.Allowed {
+			slog.Warn("topic_guard.blocked",
+				"agent", l.id, "user", req.UserID,
+				"reason", result.Reason, "message_len", len(req.Message),
+			)
+			msg := result.RejectionMsg
+			if msg == "" {
+				msg = i18n.T(store.LocaleFromContext(ctx), i18n.MsgTopicGuardBlocked, "")
+			}
+			return contextSetupResult{}, fmt.Errorf("topic guard: %s", msg)
+		}
+		slog.Debug("topic_guard.allowed",
+			"agent", l.id, "user", req.UserID,
+			"reason", result.Reason,
+		)
 	}
 
 	// Inject agent key into context for tool-level resolution (multiple agents share tool registry)

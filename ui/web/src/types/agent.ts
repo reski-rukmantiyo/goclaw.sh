@@ -128,6 +128,19 @@ export interface ShellDenyGroups {
   groups?: string[];
 }
 
+export interface TopicGuardConfig {
+  enabled?: boolean;
+  mode?: "keyword" | "keyword_and_llm";
+  allow_keywords?: string[];
+  block_keywords?: string[];
+  default_action?: "allow" | "block";
+  rejection_message?: string;
+  llm_provider?: string;
+  llm_model?: string;
+  llm_max_tokens?: number;
+  llm_timeout_ms?: number;
+}
+
 export interface AgentData {
   id: string;
   agent_key: string;

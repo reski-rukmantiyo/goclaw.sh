@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PersonalitySection } from './PersonalitySection'
 import { ModelBudgetSection } from './ModelBudgetSection'
@@ -11,6 +11,7 @@ import { CompactionSection } from './compaction-section'
 import { SubagentsSection } from './subagents-section'
 import { ToolPolicySection } from './tool-policy-section'
 import { SandboxSection } from './sandbox-section'
+import { TopicGuardSection } from './topic-guard-section'
 import { PinnedSkillsSection } from './pinned-skills-section'
 import { EvolutionTab } from './evolution-tab'
 import { AgentSkillsSection } from './AgentSkillsSection'
@@ -24,7 +25,7 @@ import { ConfirmDialog } from '../common/ConfirmDialog'
 import { useAgentDetailState } from '../../hooks/use-agent-detail-state'
 import { useDesktopTtsConfig } from '../../hooks/use-tts-config'
 import { useTtsCapabilities } from '../../hooks/use-tts-capabilities'
-import type { AgentData } from '../../types/agent'
+import type { AgentData, TopicGuardConfig } from '../../types/agent'
 import type { TtsProviderId } from '@/data/tts-providers'
 
 type DetailTab = 'overview' | 'evolution' | 'files'
@@ -53,6 +54,27 @@ export function AgentDetailPanel({ agent, onSave, onResummon, onClose }: AgentDe
   const ttsParamsRef = useRef(ttsParams)
   ttsParamsRef.current = ttsParams
 
+  // Topic guard (stored as GUARDRAIL.json context file)
+  const [topicGuard, setTopicGuard] = useState<TopicGuardConfig>({})
+  const [topicGuardEnabled, setTopicGuardEnabled] = useState(false)
+  useEffect(() => {
+    import('../../services/agent-service').then(({ agentService }) => {
+      agentService.getFile(agent.agent_key, 'GUARDRAIL.json').then((res) => {
+        if (res?.file?.content) {
+          try {
+            const cfg = JSON.parse(res.file.content) as TopicGuardConfig
+            setTopicGuard(cfg)
+            setTopicGuardEnabled(!!cfg.enabled)
+          } catch { /* ignore */ }
+        }
+      })
+    })
+  }, [agent.agent_key])
+
+  const handleTopicGuardSave = useCallback((cfg: TopicGuardConfig) => {
+    setTopicGuard({ ...cfg, enabled: topicGuardEnabled })
+  }, [topicGuardEnabled])
+
   // Wrap onSave to merge tts_voice_id + tts_params into other_config at save time.
   const onSaveWithVoice = useCallback(async (id: string, updates: Partial<AgentData>) => {
     const merged = { ...updates }
@@ -76,7 +98,12 @@ export function AgentDetailPanel({ agent, onSave, onResummon, onClose }: AgentDe
     }
     merged.other_config = Object.keys(cfg).length > 0 ? cfg : null
     await onSave(id, merged)
-  }, [onSave])
+    // Save topic guard config alongside agent updates.
+    if (topicGuardEnabled || Object.keys(topicGuard).length > 0) {
+      const { agentService } = await import('../../services/agent-service')
+      await agentService.setFile(agent.agent_key, 'GUARDRAIL.json', JSON.stringify({ ...topicGuard, enabled: topicGuardEnabled }, null, 2))
+    }
+  }, [onSave, agent.agent_key, topicGuard, topicGuardEnabled])
 
   const s = useAgentDetailState(agent, onSaveWithVoice, onClose)
   const isPredefined = agent.agent_type === 'predefined'
@@ -202,6 +229,13 @@ export function AgentDetailPanel({ agent, onSave, onResummon, onClose }: AgentDe
             <ToolPolicySection enabled={s.toolsEnabled} value={s.toolsConfig} onToggle={s.setToolsEnabled} onChange={s.setToolsConfig} />
             <hr className="border-border" />
             <SandboxSection enabled={s.sandboxEnabled} value={s.sandboxConfig} onToggle={s.setSandboxEnabled} onChange={s.setSandboxConfig} />
+            <hr className="border-border" />
+            <TopicGuardSection
+              enabled={topicGuardEnabled}
+              value={topicGuard}
+              onToggle={(v) => { setTopicGuardEnabled(v); setTopicGuard({ ...topicGuard, enabled: v }) }}
+              onChange={(cfg) => setTopicGuard({ ...cfg, enabled: topicGuardEnabled })}
+            />
             <hr className="border-border" />
             <PinnedSkillsSection agentId={agent.id} pinned={s.pinnedSkills} onPinnedChange={s.setPinnedSkills} />
             <hr className="border-border" />

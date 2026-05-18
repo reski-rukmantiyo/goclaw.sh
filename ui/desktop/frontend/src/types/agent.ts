@@ -68,6 +68,19 @@ export interface AgentReasoningConfig {
   fallback?: 'downgrade' | 'provider_default' | 'off'
 }
 
+export interface TopicGuardConfig {
+  enabled?: boolean
+  mode?: 'keyword' | 'keyword_and_llm'
+  allow_keywords?: string[]
+  block_keywords?: string[]
+  default_action?: 'allow' | 'block'
+  rejection_message?: string
+  llm_provider?: string
+  llm_model?: string
+  llm_max_tokens?: number
+  llm_timeout_ms?: number
+}
+
 // --- Main agent data ---
 
 export interface AgentData {

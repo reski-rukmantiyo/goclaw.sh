@@ -450,6 +450,30 @@
       "description": "Additional JSON config for advanced settings not covered by other sections",
       "formatJson": "Format JSON",
       "invalidJson": "Invalid JSON syntax"
+    },
+    "topicGuard": {
+      "title": "Topic Guard",
+      "description": "Restrict conversations to defined topics. Questions outside scope are blocked.",
+      "mode": "Detection Mode",
+      "modeKeyword": "Keyword Only",
+      "modeLLM": "Keyword + LLM Fallback",
+      "allowKeywords": "Allowed Keywords",
+      "blockKeywords": "Blocked Keywords",
+      "keywordsPlaceholder": "e.g. python, api, database",
+      "defaultAction": "Default Action",
+      "defaultAllow": "Allow",
+      "defaultBlock": "Block",
+      "rejectionMessage": "Rejection Message",
+      "rejectionPlaceholder": "This question is outside the scope of this agent.",
+      "llmModel": "LLM Model",
+      "llmTimeout": "Timeout (ms)",
+      "llmWarning": "Classification model must be small (<7B params) to minimize latency and cost.",
+      "llmProvider": "LLM Provider",
+      "llmProviderTip": "Provider for classification. Empty = use agent's provider.",
+      "llmProviderPlaceholder": "e.g. ollama, groq",
+      "llmModelPlaceholder": "e.g. llama3.2:1b, gemma2:2b",
+      "llmMaxTokens": "Max Tokens",
+      "llmMaxTokensTip": "Max tokens in classification response. Default 10."
     }
   },
   "heartbeat": {
