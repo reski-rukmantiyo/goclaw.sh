@@ -44,7 +44,7 @@ func registerProviders(registry *providers.Registry, cfg *config.Config, modelRe
 
 	if cfg.Providers.OpenRouter.APIKey != "" {
 		orProv := providers.NewOpenAIProvider("openrouter", cfg.Providers.OpenRouter.APIKey, "https://openrouter.ai/api/v1", "anthropic/claude-sonnet-4-5-20250929")
-		orProv.WithSiteInfo("https://github.com/reski-rukmantiyo/rclaw.sh", "rClaw")
+		orProv.WithSiteInfo(providers.OpenRouterSiteURL, providers.OpenRouterSiteTitle)
 		registry.Register(orProv)
 		slog.Info("registered provider", "name", "openrouter")
 	}
@@ -402,7 +402,7 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 				prov.WithChatPath("/text/chatcompletion_v2")
 			}
 			if p.ProviderType == store.ProviderOpenRouter {
-				prov.WithSiteInfo("https://github.com/reski-rukmantiyo/rclaw.sh", "rClaw")
+				prov.WithSiteInfo(providers.OpenRouterSiteURL, providers.OpenRouterSiteTitle)
 			}
 			registry.RegisterForTenant(p.TenantID, prov)
 		}

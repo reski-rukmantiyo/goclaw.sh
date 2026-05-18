@@ -5,6 +5,13 @@ import (
 	"strings"
 )
 
+// OpenRouter site identification constants.
+// Used for HTTP-Referer and X-Title headers sent with OpenRouter API requests.
+const (
+	OpenRouterSiteURL   = "https://github.com/reski-rukmantiyo/rclaw.sh"
+	OpenRouterSiteTitle = "rClaw"
+)
+
 // OpenAIProvider implements Provider for OpenAI-compatible APIs
 // (OpenAI, Groq, OpenRouter, DeepSeek, VLLM, etc.)
 type OpenAIProvider struct {
