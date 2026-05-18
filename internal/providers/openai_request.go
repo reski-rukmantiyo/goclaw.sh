@@ -242,7 +242,7 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 			} else {
 				body["thinking"] = map[string]any{"type": "enabled"}
 			}
-			slog.Debug("zai.thinking", "model", model, "level", level)
+			slog.Debug("zai.thinking", "model", model, "level", level, "payload", body["thinking"])
 		}
 	}
 	// OpenRouter provider routing: inject "provider" object when routing config is present.
