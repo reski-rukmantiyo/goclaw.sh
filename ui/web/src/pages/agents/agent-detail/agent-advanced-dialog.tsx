@@ -173,6 +173,7 @@ export function AgentAdvancedDialog({ open, onOpenChange, agent, onUpdate }: Age
             providerDefault={providerReasoningDefaults}
             providerLabel={currentProvider?.display_name || agent.provider}
             capabilityLoading={providersLoading || providerModelsLoading}
+            simpleMode={currentProvider?.provider_type === "zai_coding"}
             onReasoningModeChange={(mode) => {
               setReasoningMode(mode);
               if (mode === "inherit") {

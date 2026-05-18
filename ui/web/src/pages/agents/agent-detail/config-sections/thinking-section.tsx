@@ -30,6 +30,7 @@ interface ThinkingSectionProps {
   } | null;
   providerLabel?: string;
   capabilityLoading?: boolean;
+  simpleMode?: boolean;
   onReasoningModeChange: (v: ReasoningOverrideMode) => void;
   onThinkingLevelChange: (v: string) => void;
   onReasoningEffortChange: (v: string) => void;
@@ -48,6 +49,7 @@ export function ThinkingSection({
   providerDefault,
   providerLabel,
   capabilityLoading = false,
+  simpleMode = false,
   onReasoningModeChange,
   onThinkingLevelChange,
   onReasoningEffortChange,
@@ -67,6 +69,37 @@ export function ThinkingSection({
   const inheritedEffort = normalizeInheritedEffort(providerDefault?.effort);
   const inheritedFallback = providerDefault?.fallback ?? "downgrade";
   const showCustomControls = reasoningMode === "custom";
+
+  if (simpleMode) {
+    return (
+      <section className="space-y-3">
+        <div>
+          <h3 className="text-sm font-medium">{t(`${s}.title`)}</h3>
+          <p className="text-xs text-muted-foreground">
+            {t(`${s}.simpleDescription`)}
+          </p>
+        </div>
+        <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">{t(`${s}.simpleToggle`)}</p>
+            <p className="text-xs text-muted-foreground">
+              {thinkingLevel !== "off"
+                ? t(`${s}.simpleEnabled`)
+                : t(`${s}.simpleOff`)}
+            </p>
+          </div>
+          <Switch
+            checked={thinkingLevel !== "off"}
+            onCheckedChange={(enabled) => {
+              const level = enabled ? "medium" : "off";
+              onThinkingLevelChange(level);
+              onReasoningEffortChange(level);
+            }}
+          />
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-3">
