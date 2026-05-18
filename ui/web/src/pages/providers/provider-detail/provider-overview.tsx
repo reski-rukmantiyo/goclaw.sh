@@ -110,6 +110,7 @@ export function ProviderOverview({ provider, onUpdate }: ProviderOverviewProps) 
   const [embModel, setEmbModel] = useState(initEmb?.model ?? "");
   const [embApiBase, setEmbApiBase] = useState(initEmb?.api_base ?? "");
   const isOpenRouter = provider.provider_type === "openrouter";
+  const isZaiCoding = provider.provider_type === "zai_coding";
   const initORRouting = getOpenRouterRouting(provider.settings);
   const [orRouting, setORRouting] = useState<OpenRouterRoutingConfig>(initORRouting ?? {});
   const [reasoningThinkingLevel, setReasoningThinkingLevel] = useState(deriveLegacyThinkingLevel(initialReasoningEffort));
@@ -256,7 +257,34 @@ export function ProviderOverview({ provider, onUpdate }: ProviderOverviewProps) 
 
       {isOAuth ? <ProviderOAuthAccountSection provider={provider} managedByProvider={managedByProvider} managedMemberCount={managedMemberCount} availability={currentOAuthAvailability} quota={quotaByName.get(provider.name)} quotaLoading={quotasLoading || quotasFetching} /> : null}
 
-      {showReasoningDefaults ? (
+      {showReasoningDefaults && isZaiCoding ? (
+        <section className="space-y-4 rounded-lg border p-3 sm:p-4 overflow-hidden">
+          <div className="space-y-1">
+            <h3 className="text-sm font-medium">{t("detail.reasoningDefaultsTitle")}</h3>
+            <p className="text-xs text-muted-foreground">
+              {t("detail.zaiThinkingDescription")}
+            </p>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-0.5">
+              <Label>{t("detail.zaiThinkingLabel")}</Label>
+              <p className="text-xs text-muted-foreground">
+                {reasoningEffort !== "off"
+                  ? t("detail.zaiThinkingEnabled")
+                  : t("detail.zaiThinkingOff")}
+              </p>
+            </div>
+            <Switch
+              checked={reasoningEffort !== "off"}
+              onCheckedChange={(enabled) => {
+                const level = enabled ? "medium" : "off";
+                setReasoningThinkingLevel(level);
+                setReasoningEffort(level);
+              }}
+            />
+          </div>
+        </section>
+      ) : showReasoningDefaults ? (
         <ProviderReasoningSection
           reasoningThinkingLevel={reasoningThinkingLevel} setReasoningThinkingLevel={setReasoningThinkingLevel}
           reasoningEffort={reasoningEffort} setReasoningEffort={setReasoningEffort}

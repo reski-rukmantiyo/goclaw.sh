@@ -204,7 +204,7 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 	} else {
 		// reasoning_effort is OpenAI-specific; do not send to third-party OpenAI-compatible APIs.
 		if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" && level != "off" {
-			if openAIModelSupportsReasoningEffort(model) {
+			if openAIModelSupportsReasoningEffort(model) && !p.zaiPassthrough() {
 				body[OptReasoningEffort] = level
 				slog.Debug("openai.reasoning_effort", "model", model, "effort", level)
 			}
@@ -234,6 +234,17 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 		}
 	}
 
+	// Z.ai thinking injection.
+	if p.zaiPassthrough() {
+		if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" {
+			if level == "off" {
+				body["thinking"] = map[string]any{"type": "disabled"}
+			} else {
+				body["thinking"] = map[string]any{"type": "enabled"}
+			}
+			slog.Debug("zai.thinking", "model", model, "level", level, "payload", body["thinking"])
+		}
+	}
 	// OpenRouter provider routing: inject "provider" object when routing config is present.
 	// The config travels via ChatRequest.Options from the agent loop.
 	if raw, ok := req.Options[OptOpenRouterRouting]; ok {

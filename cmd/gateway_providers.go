@@ -44,7 +44,7 @@ func registerProviders(registry *providers.Registry, cfg *config.Config, modelRe
 
 	if cfg.Providers.OpenRouter.APIKey != "" {
 		orProv := providers.NewOpenAIProvider("openrouter", cfg.Providers.OpenRouter.APIKey, "https://openrouter.ai/api/v1", "anthropic/claude-sonnet-4-5-20250929")
-		orProv.WithSiteInfo("https://github.com/reski-rukmantiyo/rclaw.sh", "rClaw")
+		orProv.WithSiteInfo(providers.OpenRouterSiteURL, providers.OpenRouterSiteTitle)
 		registry.Register(orProv)
 		slog.Info("registered provider", "name", "openrouter")
 	}
@@ -109,7 +109,7 @@ func registerProviders(registry *providers.Registry, cfg *config.Config, modelRe
 		if base == "" {
 			base = "https://api.z.ai/api/paas/v4"
 		}
-		registry.Register(providers.NewOpenAIProvider("zai", cfg.Providers.Zai.APIKey, base, "glm-5"))
+		registry.Register(providers.NewZaiProvider("zai", cfg.Providers.Zai.APIKey, base, "glm-5"))
 		slog.Info("registered provider", "name", "zai")
 	}
 
@@ -118,7 +118,7 @@ func registerProviders(registry *providers.Registry, cfg *config.Config, modelRe
 		if base == "" {
 			base = "https://api.z.ai/api/coding/paas/v4"
 		}
-		registry.Register(providers.NewOpenAIProvider("zai-coding", cfg.Providers.ZaiCoding.APIKey, base, "glm-5"))
+		registry.Register(providers.NewZaiProvider("zai-coding", cfg.Providers.ZaiCoding.APIKey, base, "glm-5"))
 		slog.Info("registered provider", "name", "zai-coding")
 	}
 
@@ -360,13 +360,13 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 			if base == "" {
 				base = "https://api.z.ai/api/paas/v4"
 			}
-			registry.RegisterForTenant(p.TenantID, providers.NewOpenAIProvider(p.Name, p.APIKey, base, "glm-5"))
+			registry.RegisterForTenant(p.TenantID, providers.NewZaiProvider(p.Name, p.APIKey, base, ""))
 		case store.ProviderZaiCoding:
 			base := p.APIBase
 			if base == "" {
 				base = "https://api.z.ai/api/coding/paas/v4"
 			}
-			registry.RegisterForTenant(p.TenantID, providers.NewOpenAIProvider(p.Name, p.APIKey, base, "glm-5"))
+			registry.RegisterForTenant(p.TenantID, providers.NewZaiProvider(p.Name, p.APIKey, base, ""))
 		case store.ProviderOllamaCloud:
 			base := p.APIBase
 			if base == "" {
@@ -402,7 +402,7 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 				prov.WithChatPath("/text/chatcompletion_v2")
 			}
 			if p.ProviderType == store.ProviderOpenRouter {
-				prov.WithSiteInfo("https://github.com/reski-rukmantiyo/rclaw.sh", "rClaw")
+				prov.WithSiteInfo(providers.OpenRouterSiteURL, providers.OpenRouterSiteTitle)
 			}
 			registry.RegisterForTenant(p.TenantID, prov)
 		}

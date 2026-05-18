@@ -54,3 +54,17 @@ func (p *OpenAIProvider) dashScopePassthroughKeys() bool {
 	}
 	return false
 }
+
+// zaiPassthrough is true for Z.ai endpoints that accept the "thinking" JSON object.
+func (p *OpenAIProvider) zaiPassthrough() bool {
+	if strings.Contains(strings.ToLower(p.apiBase), "api.z.ai") {
+		return true
+	}
+	if strings.Contains(strings.ToLower(strings.TrimSpace(p.providerType)), "zai") {
+		return true
+	}
+	if p.name == "zai" || p.name == "zai-coding" || strings.HasPrefix(p.name, "zai") {
+		return true
+	}
+	return false
+}

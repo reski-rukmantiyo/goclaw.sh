@@ -242,8 +242,12 @@ func (h *ProvidersHandler) registerInMemory(p *store.LLMProviderData) {
 		h.providerReg.RegisterForTenant(p.TenantID, providers.NewOpenAIProvider(p.Name, p.APIKey, base, store.NovitaDefaultModel))
 	default:
 		prov := providers.NewOpenAIProvider(p.Name, p.APIKey, apiBase, "")
+		prov.WithProviderType(p.ProviderType)
 		if p.ProviderType == store.ProviderMiniMax {
 			prov.WithChatPath("/text/chatcompletion_v2")
+		}
+		if p.ProviderType == store.ProviderOpenRouter {
+			prov.WithSiteInfo(providers.OpenRouterSiteURL, providers.OpenRouterSiteTitle)
 		}
 		h.providerReg.RegisterForTenant(p.TenantID, prov)
 	}
