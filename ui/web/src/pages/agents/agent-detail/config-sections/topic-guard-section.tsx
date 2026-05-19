@@ -1,7 +1,5 @@
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -10,6 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ProviderModelSelect } from "@/components/shared/provider-model-select";
 import type { TopicGuardConfig } from "@/types/agent";
 import { ConfigSection, InfoLabel, tagsToArray, arrayToTags, numOrUndef } from "./config-section";
 
@@ -123,30 +122,20 @@ export function TopicGuardSection({ enabled, value, onToggle, onChange }: TopicG
           <p className="text-xs text-amber-600 dark:text-amber-400">
             {t(`${s}.llmWarning`, "Classification model must be small (<7B params) to minimize latency and cost.")}
           </p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <InfoLabel tip={t(`${s}.llmProviderTip`, "Provider for classification. Empty = use agent's provider.")}>
-                {t(`${s}.llmProvider`, "LLM Provider")}
-              </InfoLabel>
-              <Input
-                type="text"
-                placeholder={t(`${s}.llmProviderPlaceholder`, "e.g. ollama, groq")}
-                value={value.llm_provider ?? ""}
-                onChange={(e) => onChange({ ...value, llm_provider: e.target.value || undefined })}
-              />
-            </div>
-            <div className="space-y-2">
-              <InfoLabel tip={t(`${s}.llmModelTip`, "Model for classification. Must be <7B params. Empty = smallest available.")}>
-                {t(`${s}.llmModel`, "LLM Model")}
-              </InfoLabel>
-              <Input
-                type="text"
-                placeholder={t(`${s}.llmModelPlaceholder`, "e.g. llama3.2:1b, gemma2:2b")}
-                value={value.llm_model ?? ""}
-                onChange={(e) => onChange({ ...value, llm_model: e.target.value || undefined })}
-              />
-            </div>
-          </div>
+          <ProviderModelSelect
+            provider={value.llm_provider ?? ""}
+            onProviderChange={(v) => onChange({ ...value, llm_provider: v || undefined, llm_model: undefined })}
+            model={value.llm_model ?? ""}
+            onModelChange={(v) => onChange({ ...value, llm_model: v || undefined })}
+            allowEmpty
+            providerLabel={t(`${s}.llmProvider`, "LLM Provider")}
+            modelLabel={t(`${s}.llmModel`, "LLM Model")}
+            providerTip={t(`${s}.llmProviderTip`, "Provider for classification. Empty = use agent's provider.")}
+            modelTip={t(`${s}.llmModelTip`, "Model for classification. Must be <7B params.")}
+            providerPlaceholder={t(`${s}.llmProviderPlaceholder`, "(use agent provider)")}
+            modelPlaceholder={t(`${s}.llmModelPlaceholder`, "e.g. llama3.2:1b, gemma2:2b")}
+            showVerify={false}
+          />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <InfoLabel tip={t(`${s}.llmTimeoutTip`, "Timeout in milliseconds for classification call.")}>
