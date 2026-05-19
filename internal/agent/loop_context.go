@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -324,7 +325,9 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 		if scope == "" {
 			scope = l.displayName
 		}
+		cgStart := time.Now().UTC()
 		result, err := l.contextGuard.Evaluate(ctx, req.Message, history, scope)
+		emitContextGuardSpan(ctx, cgStart, result, err)
 		if err != nil {
 			slog.Warn("security.context_guard_error",
 				"agent", l.id, "user", req.UserID,
@@ -352,7 +355,7 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 					},
 				})
 			}
-			return contextSetupResult{}, fmt.Errorf("message blocked: %s", result.Reason)
+			return contextSetupResult{}, GuardBlockedError(result.Reason, scope)
 		}
 		if result.Warning {
 			slog.Warn("security.context_guard_warned",

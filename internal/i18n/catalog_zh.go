@@ -31,6 +31,7 @@ func init() {
 		MsgUserIDRequired:    "user_id 是必填项",
 		MsgMsgRequired:         "消息是必填项",
 		MsgContextGuardBlocked: "消息被拦截：%s",
+		MsgContextGuardRefusal: "我被设计为帮助 %s。我无法协助超出该范围的请求。",
 
 		// Abort
 		MsgAbortStopped:         "已停止运行",

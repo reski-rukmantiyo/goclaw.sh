@@ -31,6 +31,7 @@ func init() {
 		MsgUserIDRequired:    "user_id là bắt buộc",
 		MsgMsgRequired:         "tin nhắn là bắt buộc",
 		MsgContextGuardBlocked: "tin nhắn bị chặn: %s",
+		MsgContextGuardRefusal: "Tôi được thiết kế để hỗ trợ %s. Tôi không thể giúp với các yêu cầu ngoài phạm vi đó.",
 
 		// Abort
 		MsgAbortStopped:         "đã dừng tác vụ",

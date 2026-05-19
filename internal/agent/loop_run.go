@@ -2,11 +2,13 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/internal/tools"
 	"github.com/nextlevelbuilder/goclaw/internal/tracing"
@@ -168,6 +170,24 @@ func (l *Loop) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
 		result, err := l.runViaPipeline(ctx, req)
 		// Tracing + events handled below via the same finalize path
 		if err != nil {
+			// Polite refusal on context guard block — not a system error.
+			var guardErr *ErrContextGuardBlocked
+			if errors.As(err, &guardErr) {
+				refusal := l.buildGuardRefusal(ctx, guardErr)
+				if agentSpanID != uuid.Nil {
+					l.emitAgentSpanEnd(ctx, agentSpanID, runStart, &RunResult{Content: refusal}, nil)
+				}
+				if isChildTrace && l.traceCollector != nil && traceID != uuid.Nil {
+					l.traceCollector.SetTraceStatus(ctx, traceID, store.TraceStatusCompleted)
+				}
+				emitRun(AgentEvent{Type: protocol.AgentEventRunCompleted, AgentID: l.id, RunID: req.RunID, Payload: map[string]any{"content": refusal}})
+				if !isChildTrace && l.traceCollector != nil && traceID != uuid.Nil {
+					traceFinalized = true
+					l.traceCollector.FinishTrace(ctx, traceID, store.TraceStatusCompleted, "", refusal)
+				}
+				return &RunResult{Content: refusal}, nil
+			}
+
 			if agentSpanID != uuid.Nil {
 				l.emitAgentSpanEnd(ctx, agentSpanID, runStart, nil, err)
 			}
@@ -243,4 +263,19 @@ func (l *Loop) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
 		}
 		return result, nil
 	}
+}
+
+// buildGuardRefusal returns a localized polite refusal message when the context
+// guard blocks a user query. It mentions the agent's scope so the user knows
+// what topics are allowed.
+func (l *Loop) buildGuardRefusal(ctx context.Context, err *ErrContextGuardBlocked) string {
+	locale := store.LocaleFromContext(ctx)
+	scope := err.Scope
+	if scope == "" {
+		scope = l.displayName
+	}
+	if scope == "" {
+		scope = l.id
+	}
+	return i18n.T(locale, i18n.MsgContextGuardRefusal, scope)
 }
