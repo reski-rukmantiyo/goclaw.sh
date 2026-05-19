@@ -955,7 +955,12 @@
       "llmProviderPlaceholder": "e.g. ollama, groq",
       "llmModelPlaceholder": "e.g. llama3.2:1b, gemma2:2b",
       "llmMaxTokens": "Max Tokens",
-      "llmMaxTokensTip": "Max tokens in classification response. Default 10."
+      "llmMaxTokensTip": "Max tokens in classification response. Default 10.",
+      "intercept": "Intercept Timing",
+      "interceptTip": "Before = check question before LLM (save tokens). After = check response. Both = maximum protection.",
+      "interceptBefore": "Before (save tokens)",
+      "interceptAfter": "After (check response)",
+      "interceptBoth": "Both (maximum protection)"
     }
   },
   "heartbeat": {

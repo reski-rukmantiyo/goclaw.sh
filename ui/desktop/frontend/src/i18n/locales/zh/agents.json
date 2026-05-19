@@ -473,7 +473,12 @@
       "llmProviderPlaceholder": "例如：ollama, groq",
       "llmModelPlaceholder": "例如：llama3.2:1b, gemma2:2b",
       "llmMaxTokens": "最大 Token 数",
-      "llmMaxTokensTip": "分类响应中的最大 token 数。默认 10。"
+      "llmMaxTokensTip": "分类响应中的最大 token 数。默认 10。",
+      "intercept": "拦截时机",
+      "interceptTip": "之前 = 在 LLM 调用前检查问题（节省 token）。之后 = 检查响应。两者 = 最大保护。",
+      "interceptBefore": "之前（节省 token）",
+      "interceptAfter": "之后（检查响应）",
+      "interceptBoth": "两者（最大保护）"
     }
   },
   "heartbeat": {

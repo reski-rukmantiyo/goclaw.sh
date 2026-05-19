@@ -940,7 +940,12 @@
       "llmProviderPlaceholder": "vd: ollama, groq",
       "llmModelPlaceholder": "vd: llama3.2:1b, gemma2:2b",
       "llmMaxTokens": "Max Tokens",
-      "llmMaxTokensTip": "Số token tối đa trong phản hồi phân loại. Mặc định 10."
+      "llmMaxTokensTip": "Số token tối đa trong phản hồi phân loại. Mặc định 10.",
+      "intercept": "Thời điểm kiểm tra",
+      "interceptTip": "Trước = kiểm tra câu hỏi trước LLM (tiết kiệm token). Sau = kiểm tra phản hồi. Cả hai = bảo vệ tối đa.",
+      "interceptBefore": "Trước (tiết kiệm token)",
+      "interceptAfter": "Sau (kiểm tra phản hồi)",
+      "interceptBoth": "Cả hai (bảo vệ tối đa)"
     }
   },
   "heartbeat": {
