@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -22,17 +23,19 @@ type TopicGuardResult struct {
 // TopicGuard checks user messages against keyword allow/block lists
 // with optional LLM classification fallback for unmatched messages.
 type TopicGuard struct {
-	allowKeywords []string // pre-lowercased
-	blockKeywords []string // pre-lowercased
-	mode          string   // "keyword" or "keyword_and_llm"
-	defaultAction string   // "allow" or "block"
-	intercept     string   // "before", "after", or "both"
-	rejectionMsg  string
-	llmProvider   string
-	llmModel      string
-	llmMaxTokens  int
-	llmTimeoutMs  int
-	provider      providers.Provider
+	allowKeywords      []string         // pre-lowercased
+	blockKeywords      []string         // pre-lowercased
+	allowRegexps       []*regexp.Regexp // pre-compiled word-boundary patterns
+	blockRegexps       []*regexp.Regexp // pre-compiled word-boundary patterns
+	mode               string           // "keyword" or "keyword_and_llm"
+	defaultAction      string           // "allow" or "block"
+	intercept          string           // "before", "after", or "both"
+	rejectionMsg       string
+	llmProvider        string
+	llmModel           string
+	llmMaxTokens       int
+	llmTimeoutMs       int
+	provider           providers.Provider
 }
 
 // ShouldCheckBefore returns true if the guard should check the user message before the LLM call.
@@ -66,9 +69,13 @@ func NewTopicGuard(cfg *config.TopicGuardConfig, provider providers.Provider) *T
 	if llmTimeoutMs <= 0 {
 		llmTimeoutMs = 5000
 	}
+	allowKws := lowercaseAll(cfg.AllowKeywords)
+	blockKws := lowercaseAll(cfg.BlockKeywords)
 	g := &TopicGuard{
-		allowKeywords: lowercaseAll(cfg.AllowKeywords),
-		blockKeywords: lowercaseAll(cfg.BlockKeywords),
+		allowKeywords: allowKws,
+		blockKeywords: blockKws,
+		allowRegexps:  compileKeywordRegexps(allowKws),
+		blockRegexps:  compileKeywordRegexps(blockKws),
 		mode:          mode,
 		defaultAction: defaultAction,
 		intercept:     normalizeIntercept(cfg.Intercept),
@@ -120,8 +127,9 @@ func (g *TopicGuard) Check(ctx context.Context, message string) *TopicGuardResul
 	msgLower := strings.ToLower(message)
 
 	// Block takes priority over allow.
-	for _, kw := range g.blockKeywords {
-		if strings.Contains(msgLower, kw) {
+	for i, re := range g.blockRegexps {
+		if re.MatchString(msgLower) {
+			slog.Debug("topic_guard.block_keyword", "keyword", g.blockKeywords[i], "message", message)
 			return &TopicGuardResult{
 				Allowed:      false,
 				Reason:       "block_keyword",
@@ -130,8 +138,9 @@ func (g *TopicGuard) Check(ctx context.Context, message string) *TopicGuardResul
 		}
 	}
 
-	for _, kw := range g.allowKeywords {
-		if strings.Contains(msgLower, kw) {
+	for i, re := range g.allowRegexps {
+		if re.MatchString(msgLower) {
+			slog.Debug("topic_guard.allow_keyword", "keyword", g.allowKeywords[i], "message", message)
 			return &TopicGuardResult{Allowed: true, Reason: "allow_keyword"}
 		}
 	}
@@ -204,8 +213,9 @@ func (g *TopicGuard) CheckResponse(ctx context.Context, response string) *TopicG
 	respLower := strings.ToLower(response)
 
 	// Check blocklist keywords in response.
-	for _, kw := range g.blockKeywords {
-		if strings.Contains(respLower, kw) {
+	for i, re := range g.blockRegexps {
+		if re.MatchString(respLower) {
+			slog.Debug("topic_guard.block_keyword_response", "keyword", g.blockKeywords[i])
 			return &TopicGuardResult{
 				Allowed:      false,
 				Reason:       "block_keyword_response",
@@ -289,6 +299,16 @@ func lowercaseAll(keywords []string) []string {
 	out := make([]string, len(keywords))
 	for i, kw := range keywords {
 		out[i] = strings.ToLower(kw)
+	}
+	return out
+}
+
+// compileKeywordRegexps pre-compiles word-boundary regexps for each keyword.
+func compileKeywordRegexps(keywords []string) []*regexp.Regexp {
+	out := make([]*regexp.Regexp, len(keywords))
+	for i, kw := range keywords {
+		pattern := `\b` + regexp.QuoteMeta(kw) + `\b`
+		out[i] = regexp.MustCompile(pattern)
 	}
 	return out
 }

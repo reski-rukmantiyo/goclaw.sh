@@ -113,6 +113,40 @@ func TestTopicGuard_CaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestTopicGuard_WordBoundary_NoSubstringMatch(t *testing.T) {
+	g := NewTopicGuard(&config.TopicGuardConfig{
+		Enabled:       boolPtr(true),
+		AllowKeywords: []string{"hi"},
+		BlockKeywords: []string{"hack"},
+	}, nil)
+
+	// "hi" should NOT match inside "this", "which", "history"
+	for _, msg := range []string{"this is a test", "which one?", "tell me about history"} {
+		result := g.Check(context.Background(), msg)
+		if result.Reason == "allow_keyword" {
+			t.Fatalf("keyword 'hi' should not match inside '%s' (substring false positive)", msg)
+		}
+	}
+
+	// "hack" should NOT match inside "shack", "hackernews"
+	for _, msg := range []string{"the shack is nice", "reading hackernews"} {
+		result := g.Check(context.Background(), msg)
+		if result.Reason == "block_keyword" {
+			t.Fatalf("keyword 'hack' should not match inside '%s' (substring false positive)", msg)
+		}
+	}
+
+	// But standalone "hi" and "hack" should still match
+	result := g.Check(context.Background(), "Hi there!")
+	if !result.Allowed || result.Reason != "allow_keyword" {
+		t.Fatal("standalone 'Hi' should match allow keyword")
+	}
+	result = g.Check(context.Background(), "how to hack")
+	if result.Allowed {
+		t.Fatal("standalone 'hack' should match block keyword")
+	}
+}
+
 func TestTopicGuard_CustomRejectionMessage(t *testing.T) {
 	g := NewTopicGuard(&config.TopicGuardConfig{
 		Enabled:         boolPtr(true),
