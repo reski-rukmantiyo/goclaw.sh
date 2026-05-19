@@ -286,6 +286,7 @@ flowchart TD
     TYPE -->|Anthropic| ANTH["Budget tokens:<br/>low=4K, medium=10K, high=32K<br/>+ anthropic-beta header<br/>+ strip temperature"]
     TYPE -->|OpenAI-compat| OAI["capability-aware<br/>reasoning_effort"]
     TYPE -->|OpenRouter| OR["reasoning object:<br/>{reasoning: {effort: level}}<br/>explicit \"none\" for disabled"]
+    TYPE -->|ZAI| ZAI["thinking object:<br/>{thinking: {type: enabled|disabled}}<br/>model-specific allowlist"]
     TYPE -->|DashScope| DASH["enable_thinking: true<br/>Budget: low=4K, medium=16K, high=32K<br/>⚠ No streaming with tools"]
 ```
 
@@ -301,7 +302,22 @@ Anthropic requires thinking blocks (including cryptographic signatures) to be ec
 
 ---
 
-## 9. DashScope and Bailian Providers
+## 9. ZAI Provider
+
+ZAI (Z.ai) provides GLM models via an OpenAI-compatible API with native thinking support.
+
+- **Base URLs**:
+  - `zai`: `https://api.z.ai/api/paas/v4`
+  - `zai-coding`: `https://api.z.ai/api/coding/paas/v4`
+- **Default model**: `glm-5`
+- **Thinking support**: `{"thinking": {"type": "enabled"|"disabled"}}` injected for GLM models `glm-5.1`, `glm-5`, `glm-4.7`. Unsupported models silently clear the thinking option to avoid API errors.
+- **Capabilities**: Streaming, tool calling, thinking, vision, 128K context window
+
+The ZAI provider wraps the OpenAI-compatible wire format with a thin adapter (`ZaiAdapter`) that sets `Thinking: true` in capabilities and handles model-specific thinking guardrails.
+
+---
+
+## 10. DashScope and Bailian Providers
 
 Two providers for the Alibaba Cloud AI ecosystem.
 
@@ -322,7 +338,7 @@ Standard OpenAI-compatible provider targeting the Alibaba Coding API.
 
 ---
 
-## 10. ACP Provider (Agent Client Protocol)
+## 11. ACP Provider (Agent Client Protocol)
 
 The ACP provider enables GoClaw to orchestrate external coding agents (Claude Code, Codex CLI, Gemini CLI, or any ACP-compatible agent) as subprocesses via JSON-RPC 2.0 over stdio. This allows delegating complex code generation tasks to specialized agents while maintaining GoClaw's unified interface.
 
@@ -482,7 +498,7 @@ Emits `StreamChunk` for each text delta via callback. Supports context cancellat
 
 ---
 
-## 11. Claude CLI Provider
+## 12. Claude CLI Provider
 
 The Claude CLI provider enables GoClaw to delegate requests to a local `claude` CLI binary. The CLI manages session history, context files, and tool execution independently; GoClaw only passes messages and streams responses back.
 
@@ -560,7 +576,7 @@ Claude CLI inherits thinking support from the underlying Claude model. Thinking 
 
 ---
 
-## 12. Codex Provider
+## 13. Codex Provider
 
 The Codex provider integrates with OpenAI's ChatGPT Responses API (OAuth-based), enabling access to gpt-5.3-codex model through the chatgpt.com backend. Unlike standard OpenAI endpoints, Codex uses OAuth token refresh and a custom response format with "phase" markers.
 
@@ -701,7 +717,7 @@ Reasoning behavior:
 
 ---
 
-## 13. Wave 2: Provider Resilience (v3)
+## 14. Wave 2: Provider Resilience (v3)
 
 GoClaw v3 Wave 2 adds composable request middleware, error classification, per-model cooldown, and 2-tier failover for production resilience.
 
@@ -725,7 +741,7 @@ GoClaw v3 Wave 2 adds composable request middleware, error classification, per-m
 
 ---
 
-## 14. File Reference
+## 15. File Reference
 
 | Module | Path | Purpose |
 |---|---|---|

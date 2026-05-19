@@ -4,6 +4,19 @@ Significant changes, features, and fixes in reverse chronological order.
 
 ---
 
+## v3.11.4 — 2026-05-18
+
+### Features
+
+- **ZAI Coding Provider** — New `ZaiProvider` and `ZaiAdapter` for Z.ai GLM models with model-specific thinking support. Supports `glm-5.1`, `glm-5`, `glm-4.7` via `{"thinking": {"type": "enabled"|"disabled"}}`. Unsupported models silently clear thinking option to avoid API errors. Capabilities: streaming, tools, thinking, vision, 128K context.
+- **OpenRouter Site Constants** — Centralized `OpenRouterSiteURL` and `OpenRouterSiteTitle` constants for consistent provider registration.
+
+### Fixes
+
+- ZAI and ZAI Coding providers now use `NewZaiProvider` instead of generic `NewOpenAIProvider`, ensuring correct thinking behavior and capabilities.
+
+---
+
 ## v3.11.3E-rclaw — 2026-05-17
 
 ### Features
