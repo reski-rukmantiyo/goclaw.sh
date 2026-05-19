@@ -293,8 +293,15 @@ export function SessionDetailPage({
           description={t("detail.compactDescription")}
           confirmLabel={t("detail.confirmCompact")}
           onConfirm={async () => {
-            await onCompact(session.key);
+            console.log("[compact] start", session.key);
+            try {
+              await onCompact(session.key);
+              console.log("[compact] success", session.key);
+            } catch (err) {
+              console.error("[compact] failed", session.key, err);
+            }
             setConfirmCompact(false);
+            console.log("[compact] reloading messages");
             loadMessages();
           }}
         />
