@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -279,7 +280,11 @@ func (l *Loop) buildGuardRefusal(ctx context.Context, err *ErrContextGuardBlocke
 	}
 	// Use custom refusal message if configured.
 	if l.contextGuard != nil && l.contextGuard.config.RefusalMessage != "" {
-		return fmt.Sprintf(l.contextGuard.config.RefusalMessage, scope)
+		msg := l.contextGuard.config.RefusalMessage
+		if strings.Contains(msg, "%s") {
+			return fmt.Sprintf(msg, scope)
+		}
+		return msg
 	}
 	locale := store.LocaleFromContext(ctx)
 	return i18n.T(locale, i18n.MsgContextGuardRefusal, scope)
