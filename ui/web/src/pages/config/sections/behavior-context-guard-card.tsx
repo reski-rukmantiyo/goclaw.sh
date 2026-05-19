@@ -205,12 +205,6 @@ export function BehaviorContextGuardCard({ value, onChange }: Props) {
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
-                    <Textarea
-                      value={rule.description}
-                      onChange={(e) => changeRule(idx, { description: e.target.value })}
-                      placeholder={t("behavior.contextGuardRuleDescription")}
-                      className="text-sm min-h-[48px]"
-                    />
                   </div>
                 ))}
               </div>

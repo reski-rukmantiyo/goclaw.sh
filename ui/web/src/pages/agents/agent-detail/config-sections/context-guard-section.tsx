@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Shield, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,17 +12,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { AgentData } from "@/types/agent";
+import { ProviderModelSelect } from "@/components/shared/provider-model-select";
 
-interface ContextGuardRule {
+export interface ContextGuardRule {
   name: string;
   description: string;
   type: "allow" | "deny";
   action: "block" | "warn";
 }
 
-interface ContextGuardConfig {
+export interface ContextGuardConfig {
   enabled?: boolean;
+  provider?: string;
   model?: string;
   scope_description?: string;
   rules?: ContextGuardRule[];
@@ -32,160 +32,121 @@ interface ContextGuardConfig {
 }
 
 interface Props {
-  agent: AgentData;
-  onUpdate: (updates: Record<string, unknown>) => Promise<void>;
+  value: ContextGuardConfig;
+  onChange: (v: ContextGuardConfig) => void;
 }
 
-function readContextGuard(agent: AgentData): ContextGuardConfig {
-  const bag = (agent.other_config ?? {}) as Record<string, unknown>;
-  return (bag.context_guard as ContextGuardConfig) ?? {};
-}
-
-export function ContextGuardSection({ agent, onUpdate }: Props) {
+export function ContextGuardSection({ value, onChange }: Props) {
   const { t } = useTranslation("agents");
-  const saved = readContextGuard(agent);
+  const enabled = value.enabled ?? false;
+  const rules = value.rules ?? [];
 
-  const [enabled, setEnabled] = useState(saved.enabled ?? false);
-  const [model, setModel] = useState(saved.model ?? "");
-  const [scope, setScope] = useState(saved.scope_description ?? "");
-  const [notifyOwner, setNotifyOwner] = useState(saved.notify_owner ?? false);
-  const [maxHistory, setMaxHistory] = useState<number | undefined>(saved.max_history_turns ?? 5);
-  const [rules, setRules] = useState<ContextGuardRule[]>(saved.rules ?? []);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    const s = readContextGuard(agent);
-    setEnabled(s.enabled ?? false);
-    setModel(s.model ?? "");
-    setScope(s.scope_description ?? "");
-    setNotifyOwner(s.notify_owner ?? false);
-    setMaxHistory(s.max_history_turns ?? 5);
-    setRules(s.rules ?? []);
-  }, [agent.other_config]);
-
-  const dirty =
-    enabled !== (saved.enabled ?? false) ||
-    model !== (saved.model ?? "") ||
-    scope !== (saved.scope_description ?? "") ||
-    notifyOwner !== (saved.notify_owner ?? false) ||
-    maxHistory !== (saved.max_history_turns ?? 5) ||
-    JSON.stringify(rules) !== JSON.stringify(saved.rules ?? []);
+  const updateRules = (next: ContextGuardRule[]) => {
+    onChange({ ...value, rules: next });
+  };
 
   const addRule = () => {
-    setRules([...rules, { name: "", description: "", type: "deny", action: "block" }]);
+    updateRules([...rules, { name: "", description: "", type: "deny", action: "block" }]);
   };
 
   const removeRule = (idx: number) => {
-    setRules(rules.filter((_, i) => i !== idx));
+    updateRules(rules.filter((_, i) => i !== idx));
   };
 
   const changeRule = (idx: number, patch: Partial<ContextGuardRule>) => {
-    setRules(rules.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const bag = { ...((agent.other_config ?? {}) as Record<string, unknown>) };
-      const cfg: ContextGuardConfig | undefined = enabled
-        ? {
-            enabled: true,
-            model: model || undefined,
-            scope_description: scope || undefined,
-            notify_owner: notifyOwner,
-            max_history_turns: maxHistory,
-            rules: rules.length > 0 ? rules : undefined,
-          }
-        : undefined;
-      if (cfg) {
-        bag.context_guard = cfg;
-      } else {
-        delete bag.context_guard;
-      }
-      await onUpdate({ other_config: bag });
-    } finally {
-      setSaving(false);
-    }
+    updateRules(rules.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
   };
 
   return (
     <section className="space-y-2.5 rounded-lg border p-3 sm:p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Shield className="h-4 w-4 text-emerald-500 shrink-0" />
-          <h3 className="text-sm font-medium">{t("detail.contextGuard.title", "Context Guard")}</h3>
-        </div>
-        {dirty && (
-          <Button size="xs" onClick={handleSave} disabled={saving}>
-            {saving ? t("saving", "Saving...") : t("save", "Save")}
-          </Button>
-        )}
+      <div className="flex items-center gap-2">
+        <Shield className="h-4 w-4 text-emerald-500 shrink-0" />
+        <h3 className="text-sm font-medium">{t("detail.contextGuard.title")}</h3>
       </div>
 
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-0.5">
-          <Label className="text-sm font-medium">{t("detail.contextGuard.enabled", "Enable Context Guard")}</Label>
-          <p className="text-xs text-muted-foreground">{t("detail.contextGuard.enabledHint", "Evaluate messages against rules using conversation context.")}</p>
+          <Label className="text-sm font-medium">{t("detail.contextGuard.enabled")}</Label>
+          <p className="text-xs text-muted-foreground">{t("detail.contextGuard.enabledHint")}</p>
         </div>
-        <Switch checked={enabled} onCheckedChange={setEnabled} />
+        <Switch
+          checked={enabled}
+          onCheckedChange={(v) => onChange({ ...value, enabled: v })}
+        />
       </div>
 
       {enabled && (
         <div className="space-y-4 pt-2">
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">{t("detail.contextGuard.model", "Evaluator Model")}</Label>
-            <Input
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="e.g. haiku"
-              className="text-sm"
-            />
-            <p className="text-xs text-muted-foreground">{t("detail.contextGuard.modelHint", "Lightweight model for guard evaluation. Leave empty to use the agent's default model.")}</p>
-          </div>
+          {/* Provider + Model */}
+          <ProviderModelSelect
+            provider={value.provider ?? ""}
+            onProviderChange={(v) => onChange({ ...value, provider: v || undefined })}
+            model={value.model ?? ""}
+            onModelChange={(v) => onChange({ ...value, model: v || undefined })}
+            allowEmpty
+            providerTip="LLM provider for guard evaluation. Leave empty to use the agent's provider."
+            modelTip="Model for guard evaluation. Leave empty to use the agent's model."
+          />
 
+          {/* Scope description */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">{t("detail.contextGuard.scope", "Scope Description")}</Label>
+            <Label className="text-sm font-medium">{t("detail.contextGuard.scope")}</Label>
             <Textarea
-              value={scope}
-              onChange={(e) => setScope(e.target.value)}
-              placeholder="e.g. coding assistant — only help with software development"
+              value={value.scope_description ?? ""}
+              onChange={(e) =>
+                onChange({ ...value, scope_description: e.target.value || undefined })
+              }
+              placeholder={t("detail.contextGuard.scopePlaceholder", "e.g. coding assistant — only help with software development")}
               className="text-sm min-h-[60px]"
             />
-            <p className="text-xs text-muted-foreground">{t("detail.contextGuard.scopeHint", "Describes what this agent is allowed to discuss.")}</p>
+            <p className="text-xs text-muted-foreground">{t("detail.contextGuard.scopeHint")}</p>
           </div>
 
+          {/* Max history turns */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">{t("detail.contextGuard.maxHistory", "History Turns")}</Label>
-            <Input
+            <Label className="text-sm font-medium">{t("detail.contextGuard.maxHistory")}</Label>
+            <input
               type="number"
               min={0}
               max={50}
-              value={maxHistory ?? 5}
-              onChange={(e) => setMaxHistory(e.target.value ? parseInt(e.target.value, 10) : undefined)}
-              className="text-sm w-24"
+              value={value.max_history_turns ?? 5}
+              onChange={(e) =>
+                onChange({
+                  ...value,
+                  max_history_turns: e.target.value ? parseInt(e.target.value, 10) : undefined,
+                })
+              }
+              className="text-sm w-24 h-9 rounded-md border border-input bg-transparent px-3 py-1 shadow-sm transition-colors"
             />
-            <p className="text-xs text-muted-foreground">{t("detail.contextGuard.maxHistoryHint", "Recent messages to include in evaluation context.")}</p>
+            <p className="text-xs text-muted-foreground">{t("detail.contextGuard.maxHistoryHint")}</p>
           </div>
 
+          {/* Notify owner */}
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-0.5">
-              <Label className="text-sm font-medium">{t("detail.contextGuard.notifyOwner", "Notify Owner on Block")}</Label>
-              <p className="text-xs text-muted-foreground">{t("detail.contextGuard.notifyOwnerHint", "Emit security event when a message is blocked.")}</p>
+              <Label className="text-sm font-medium">{t("detail.contextGuard.notifyOwner")}</Label>
+              <p className="text-xs text-muted-foreground">{t("detail.contextGuard.notifyOwnerHint")}</p>
             </div>
-            <Switch checked={notifyOwner} onCheckedChange={setNotifyOwner} />
+            <Switch
+              checked={value.notify_owner ?? false}
+              onCheckedChange={(v) => onChange({ ...value, notify_owner: v })}
+            />
           </div>
 
+          {/* Rules */}
           <div className="space-y-2 pt-2">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">{t("detail.contextGuard.rules", "Rules")}</Label>
+              <Label className="text-sm font-medium">{t("detail.contextGuard.rules")}</Label>
               <Button size="xs" variant="outline" onClick={addRule} className="gap-1">
                 <Plus className="h-3.5 w-3.5" />
-                {t("detail.contextGuard.addRule", "Add Rule")}
+                {t("detail.contextGuard.addRule")}
               </Button>
             </div>
 
             {rules.length === 0 && (
-              <p className="text-xs text-muted-foreground italic">{t("detail.contextGuard.noRules", "No rules configured.")}</p>
+              <p className="text-xs text-muted-foreground italic">
+                {t("detail.contextGuard.noRules")}
+              </p>
             )}
 
             <div className="space-y-3">
@@ -195,7 +156,7 @@ export function ContextGuardSection({ agent, onUpdate }: Props) {
                     <Input
                       value={rule.name}
                       onChange={(e) => changeRule(idx, { name: e.target.value })}
-                      placeholder={t("detail.contextGuard.ruleName", "Rule name")}
+                      placeholder={t("detail.contextGuard.ruleName")}
                       className="text-sm flex-1"
                     />
                     <Select
@@ -206,8 +167,8 @@ export function ContextGuardSection({ agent, onUpdate }: Props) {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="allow">{t("detail.contextGuard.allow", "Allow")}</SelectItem>
-                        <SelectItem value="deny">{t("detail.contextGuard.deny", "Deny")}</SelectItem>
+                        <SelectItem value="allow">{t("detail.contextGuard.allow")}</SelectItem>
+                        <SelectItem value="deny">{t("detail.contextGuard.deny")}</SelectItem>
                       </SelectContent>
                     </Select>
                     <Select
@@ -218,8 +179,8 @@ export function ContextGuardSection({ agent, onUpdate }: Props) {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="block">{t("detail.contextGuard.block", "Block")}</SelectItem>
-                        <SelectItem value="warn">{t("detail.contextGuard.warn", "Warn")}</SelectItem>
+                        <SelectItem value="block">{t("detail.contextGuard.block")}</SelectItem>
+                        <SelectItem value="warn">{t("detail.contextGuard.warn")}</SelectItem>
                       </SelectContent>
                     </Select>
                     <Button
@@ -231,12 +192,6 @@ export function ContextGuardSection({ agent, onUpdate }: Props) {
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-                  <Textarea
-                    value={rule.description}
-                    onChange={(e) => changeRule(idx, { description: e.target.value })}
-                    placeholder={t("detail.contextGuard.ruleDescription", "What this rule covers")}
-                    className="text-sm min-h-[48px]"
-                  />
                 </div>
               ))}
             </div>

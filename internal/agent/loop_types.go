@@ -378,6 +378,7 @@ type LoopConfig struct {
 	InjectionAction string      // "log", "warn" (default), "block", "off"
 	MaxMessageChars int         // 0 = use default (32000)
 	ContextGuard    *config.ContextGuardConfig
+	GuardProvider   providers.Provider // evaluator provider for context guard; nil = use agent's provider
 
 	// Global builtin tool settings (from builtin_tools table, merged with per-agent overrides)
 	BuiltinToolSettings tools.BuiltinToolSettings
@@ -506,7 +507,11 @@ func NewLoop(cfg LoopConfig) *Loop {
 	// Create ContextGuard when configured
 	var cg *ContextGuard
 	if cfg.ContextGuard != nil && cfg.ContextGuard.Enabled {
-		cg = NewContextGuard(cfg.ContextGuard, cfg.Provider, cfg.Model)
+		guardProvider := cfg.GuardProvider
+		if guardProvider == nil {
+			guardProvider = cfg.Provider
+		}
+		cg = NewContextGuard(cfg.ContextGuard, guardProvider, cfg.Model)
 	}
 
 	return &Loop{

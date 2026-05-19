@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type {
   AgentData, MemoryConfig, SubagentsConfig, ToolPolicyConfig,
 } from "@/types/agent";
+import type { ContextGuardConfig } from "./config-sections/context-guard-section";
 import { StickySaveBar } from "@/components/shared/sticky-save-bar";
 import { PersonalitySection } from "./overview-sections/personality-section";
 import { ModelBudgetSection } from "./overview-sections/model-budget-section";
@@ -61,6 +62,13 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
   const [toolsEnabled, setToolsEnabled] = useState(agent.tools_config != null);
   const [tools, setTools] = useState<ToolPolicyConfig>(agent.tools_config ?? {});
 
+  // Context Guard (stored in other_config)
+  const readContextGuard = (): ContextGuardConfig => {
+    const bag = (agent.other_config ?? {}) as Record<string, unknown>;
+    return (bag.context_guard as ContextGuardConfig) ?? {};
+  };
+  const [contextGuard, setContextGuard] = useState<ContextGuardConfig>(readContextGuard());
+
   // Save state
   const [saving, setSaving] = useState(false);
   const [llmSaveBlocked, setLlmSaveBlocked] = useState(false);
@@ -90,6 +98,15 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
         skill_evolve: skillEvolve,
         skill_nudge_interval: skillEvolve ? skillNudgeInterval : 15,
       };
+      // Merge other_config preserving existing bag values
+      const otherBag = { ...((agent.other_config ?? {}) as Record<string, unknown>) };
+      if (contextGuard.enabled) {
+        otherBag.context_guard = contextGuard;
+      } else {
+        delete otherBag.context_guard;
+      }
+      updates.other_config = otherBag;
+
       // When the provider changes, clear stale pool routing config so it
       // doesn't reference members from the previous provider's pool.
       if (provider !== agent.provider) {
@@ -186,7 +203,7 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
         onToolsChange={setTools}
       />
 
-      <ContextGuardSection agent={agent} onUpdate={onUpdate} />
+      <ContextGuardSection value={contextGuard} onChange={setContextGuard} />
 
       <StickySaveBar
         onSave={handleSave}

@@ -378,6 +378,7 @@ type ContextGuardRule struct {
 // ContextGuardConfig configures LLM-based context-aware guardrails.
 type ContextGuardConfig struct {
 	Enabled          bool               `json:"enabled,omitempty"`
+	Provider         string             `json:"provider,omitempty"`          // evaluator provider name; empty = use agent's provider
 	Model            string             `json:"model,omitempty"`             // evaluator model override (e.g. "haiku")
 	ScopeDescription string             `json:"scope_description,omitempty"` // agent purpose / domain description
 	Rules            []ContextGuardRule `json:"rules,omitempty"`

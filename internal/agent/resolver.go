@@ -463,6 +463,15 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 			evoMetricsStore = deps.EvolutionMetricsStore
 		}
 
+		// Resolve context-guard evaluator provider (may differ from agent's chat provider)
+		guardCfg := resolveContextGuard(deps.ContextGuard, ag.ParseContextGuardConfig())
+		var guardProvider providers.Provider
+		if guardCfg != nil && guardCfg.Provider != "" && deps.ProviderReg != nil {
+			if gp, _ := deps.ProviderReg.Get(ctx, guardCfg.Provider); gp != nil {
+				guardProvider = gp
+			}
+		}
+
 		restrictVal := true // always restrict agents to their workspace
 		loop := NewLoop(LoopConfig{
 			ID:                     ag.AgentKey,
@@ -506,7 +515,8 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 			TraceCollector:         deps.TraceCollector,
 			InjectionAction:        deps.InjectionAction,
 			MaxMessageChars:        deps.MaxMessageChars,
-			ContextGuard:           resolveContextGuard(deps.ContextGuard, ag.ParseContextGuardConfig()),
+			ContextGuard:           guardCfg,
+			GuardProvider:          guardProvider,
 			CompactionCfg:          compactionCfg,
 			ContextPruningCfg:      contextPruningCfg,
 			SandboxEnabled:         sandboxEnabled,
