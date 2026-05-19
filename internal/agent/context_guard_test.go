@@ -49,7 +49,7 @@ func TestContextGuard_Disabled(t *testing.T) {
 		&mockGuardProvider{},
 		"",
 	)
-	res, err := g.Evaluate(context.Background(), "hello", nil, "")
+	res, _, _, err := g.Evaluate(context.Background(), "hello", nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestContextGuard_NoRules(t *testing.T) {
 		&mockGuardProvider{},
 		"",
 	)
-	res, err := g.Evaluate(context.Background(), "hello", nil, "")
+	res, _, _, err := g.Evaluate(context.Background(), "hello", nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestContextGuard_NoProvider(t *testing.T) {
 		nil,
 		"",
 	)
-	_, err := g.Evaluate(context.Background(), "hello", nil, "")
+	_, _, _, err := g.Evaluate(context.Background(), "hello", nil, "")
 	if err == nil {
 		t.Fatalf("expected error when provider is nil")
 	}
@@ -91,7 +91,7 @@ func TestContextGuard_ProviderError(t *testing.T) {
 		&mockGuardProvider{err: errors.New("boom")},
 		"",
 	)
-	_, err := g.Evaluate(context.Background(), "hello", nil, "")
+	_, _, _, err := g.Evaluate(context.Background(), "hello", nil, "")
 	if err == nil {
 		t.Fatalf("expected error on provider failure")
 	}
@@ -108,7 +108,7 @@ func TestContextGuard_DenyBlock(t *testing.T) {
 		&mockGuardProvider{denyRules: []string{"politics"}, decision: "block", reason: "political topic"},
 		"",
 	)
-	res, err := g.Evaluate(context.Background(), "elections?", nil, "")
+	res, _, _, err := g.Evaluate(context.Background(), "elections?", nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestContextGuard_DenyWarn(t *testing.T) {
 		&mockGuardProvider{denyRules: []string{"politics"}, decision: "block", reason: "political topic"},
 		"",
 	)
-	res, err := g.Evaluate(context.Background(), "elections?", nil, "")
+	res, _, _, err := g.Evaluate(context.Background(), "elections?", nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestContextGuard_AllowlistFailClosed(t *testing.T) {
 		&mockGuardProvider{allowRules: []string{}, decision: "allow", reason: ""},
 		"",
 	)
-	res, err := g.Evaluate(context.Background(), "cooking recipes", nil, "")
+	res, _, _, err := g.Evaluate(context.Background(), "cooking recipes", nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestContextGuard_AllowlistAllowed(t *testing.T) {
 		&mockGuardProvider{allowRules: []string{"coding"}, decision: "allow", reason: ""},
 		"",
 	)
-	res, err := g.Evaluate(context.Background(), "write Go code", nil, "")
+	res, _, _, err := g.Evaluate(context.Background(), "write Go code", nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestContextGuard_Both_DenyBlockWins(t *testing.T) {
 		&mockGuardProvider{allowRules: []string{"coding"}, denyRules: []string{"politics"}, decision: "block", reason: "politics"},
 		"",
 	)
-	res, err := g.Evaluate(context.Background(), "mixed", nil, "")
+	res, _, _, err := g.Evaluate(context.Background(), "mixed", nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestContextGuard_Both_DenyWarnWithAllow(t *testing.T) {
 		&mockGuardProvider{allowRules: []string{"coding"}, denyRules: []string{"politics"}, decision: "block", reason: "politics"},
 		"",
 	)
-	res, err := g.Evaluate(context.Background(), "mixed", nil, "")
+	res, _, _, err := g.Evaluate(context.Background(), "mixed", nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestContextGuard_Both_DenyWarnNoAllow(t *testing.T) {
 		&mockGuardProvider{allowRules: []string{}, denyRules: []string{"politics"}, decision: "block", reason: "politics"},
 		"",
 	)
-	res, err := g.Evaluate(context.Background(), "mixed", nil, "")
+	res, _, _, err := g.Evaluate(context.Background(), "mixed", nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -263,12 +263,12 @@ func TestContextGuard_CacheHit(t *testing.T) {
 	)
 
 	// Prime cache.
-	_, _ = g.Evaluate(context.Background(), "elections?", nil, "")
+	_, _, _, _ = g.Evaluate(context.Background(), "elections?", nil, "")
 
 	// Second call should hit cache without calling provider again.
 	// We verify by breaking the provider.
 	provider.err = errors.New("should not be called")
-	res, err := g.Evaluate(context.Background(), "elections?", nil, "")
+	res, _, _, err := g.Evaluate(context.Background(), "elections?", nil, "")
 	if err != nil {
 		t.Fatalf("cache hit should not error: %v", err)
 	}
@@ -292,9 +292,9 @@ func TestContextGuard_CacheTTLExpiry(t *testing.T) {
 	// Override cache TTL to 0 for instant expiry.
 	g.cache.init(0, func() time.Time { return time.Now() })
 
-	_, _ = g.Evaluate(context.Background(), "elections?", nil, "")
+	_, _, _, _ = g.Evaluate(context.Background(), "elections?", nil, "")
 	provider.err = errors.New("cache expired")
-	_, err := g.Evaluate(context.Background(), "elections?", nil, "")
+	_, _, _, err := g.Evaluate(context.Background(), "elections?", nil, "")
 	if err == nil {
 		t.Fatalf("expected error after cache expiry")
 	}
@@ -314,7 +314,7 @@ func TestContextGuard_ParseError_FailClosed(t *testing.T) {
 		},
 		"",
 	)
-	res, err := g.Evaluate(context.Background(), "whatever", nil, "")
+	res, _, _, err := g.Evaluate(context.Background(), "whatever", nil, "")
 	if err != nil {
 		t.Fatalf("parse error should not propagate: %v", err)
 	}
@@ -338,7 +338,7 @@ func TestContextGuard_HistoryTruncation(t *testing.T) {
 		{Role: "assistant", Content: "ok"},
 		{Role: "user", Content: "write code"},
 	}
-	_, err := g.Evaluate(context.Background(), "write code", history, "coding agent")
+	_, _, _, err := g.Evaluate(context.Background(), "write code", history, "coding agent")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -326,12 +326,12 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 			scope = l.displayName
 		}
 		cgStart := time.Now().UTC()
-		result, err := l.contextGuard.Evaluate(ctx, req.Message, history, scope)
+		result, sysPrompt, inputPreview, err := l.contextGuard.Evaluate(ctx, req.Message, history, scope)
 		providerName := ""
 		if l.contextGuard.provider != nil {
 			providerName = l.contextGuard.provider.Name()
 		}
-		emitContextGuardSpan(ctx, cgStart, req.Message, l.contextGuard.config, providerName, l.contextGuard.model, result, err)
+		emitContextGuardSpan(ctx, cgStart, req.Message, l.contextGuard.config, providerName, l.contextGuard.model, result, sysPrompt, inputPreview, err)
 		if err != nil {
 			slog.Warn("security.context_guard_error",
 				"agent", l.id, "user", req.UserID,

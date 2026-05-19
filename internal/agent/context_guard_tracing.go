@@ -30,6 +30,8 @@ func emitContextGuardSpan(
 	providerName string,
 	model string,
 	result *ContextGuardResult,
+	systemPromptPreview string,
+	inputPreview string,
 	evalErr error,
 ) {
 	collector := tracing.CollectorFromContext(ctx)
@@ -94,18 +96,20 @@ func emitContextGuardSpan(
 	metaJSON, _ := json.Marshal(metadata)
 
 	span := store.SpanData{
-		TraceID:    tracing.TraceIDFromContext(ctx),
-		SpanType:   store.SpanTypeEvent,
-		Name:       name,
-		StartTime:  startedAt,
-		EndTime:    &end,
-		DurationMS: durationMS,
-		Status:     status,
-		Error:      errMsg,
-		Metadata:   metaJSON,
-		TeamID:     tracing.TraceTeamIDPtrFromContext(ctx),
-		TenantID:   store.TenantIDFromContext(ctx),
-		CreatedAt:  end,
+		TraceID:             tracing.TraceIDFromContext(ctx),
+		SpanType:            store.SpanTypeEvent,
+		Name:                name,
+		StartTime:           startedAt,
+		EndTime:             &end,
+		DurationMS:          durationMS,
+		Status:              status,
+		Error:               errMsg,
+		SystemPromptPreview: systemPromptPreview,
+		InputPreview:        inputPreview,
+		Metadata:            metaJSON,
+		TeamID:              tracing.TraceTeamIDPtrFromContext(ctx),
+		TenantID:            store.TenantIDFromContext(ctx),
+		CreatedAt:           end,
 	}
 	if parent := tracing.ParentSpanIDFromContext(ctx); parent != uuid.Nil {
 		p := parent

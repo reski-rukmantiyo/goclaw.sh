@@ -56,19 +56,21 @@ func NewContextGuard(cfg *config.ContextGuardConfig, provider providers.Provider
 
 // Evaluate checks whether message complies with the guardrail rules given
 // conversation history and agent scope. Fail-closed on any error.
-func (g *ContextGuard) Evaluate(ctx context.Context, message string, history []providers.Message, scopeDescription string) (*ContextGuardResult, error) {
+// Returns result, systemPromptPreview, inputPreview, error.
+func (g *ContextGuard) Evaluate(ctx context.Context, message string, history []providers.Message, scopeDescription string) (*ContextGuardResult, string, string, error) {
 	if g.config == nil || !g.config.Enabled || len(g.config.Rules) == 0 {
-		return &ContextGuardResult{}, nil
+		return &ContextGuardResult{}, "", "", nil
 	}
 	if g.provider == nil {
-		return nil, errors.New("context guard: no provider")
+		return nil, "", "", errors.New("context guard: no provider")
 	}
 
 	// 1. Cache lookup
 	g.cacheOnce.Do(func() { g.cache.init(g.cacheTTL(), time.Now) })
 	cacheKey := g.cacheKey(message, scopeDescription)
 	if res, ok := g.cache.get(cacheKey); ok {
-		return res, nil
+		req := g.buildRequest(message, history, scopeDescription)
+		return res, req.Messages[0].Content, req.Messages[1].Content, nil
 	}
 
 	// 2. Build request with structured tool-call output.
@@ -77,7 +79,7 @@ func (g *ContextGuard) Evaluate(ctx context.Context, message string, history []p
 	// 3. Call provider.
 	resp, err := g.provider.Chat(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("context guard: provider call: %w", err)
+		return nil, req.Messages[0].Content, req.Messages[1].Content, fmt.Errorf("context guard: provider call: %w", err)
 	}
 
 	// 4. Parse structured tool call. Fail-closed on deviation.
@@ -87,7 +89,7 @@ func (g *ContextGuard) Evaluate(ctx context.Context, message string, history []p
 			"err", parseErr,
 			"model", g.model,
 		)
-		return &ContextGuardResult{Blocked: true, Reason: "guard evaluation parse error"}, nil
+		return &ContextGuardResult{Blocked: true, Reason: "guard evaluation parse error"}, req.Messages[0].Content, req.Messages[1].Content, nil
 	}
 
 	// 5. Apply policy logic.
@@ -96,7 +98,7 @@ func (g *ContextGuard) Evaluate(ctx context.Context, message string, history []p
 	// 6. Cache successful evaluation.
 	g.cache.set(cacheKey, result)
 
-	return result, nil
+	return result, req.Messages[0].Content, req.Messages[1].Content, nil
 }
 
 // ── Constants ───────────────────────────────────────────────────────────────
