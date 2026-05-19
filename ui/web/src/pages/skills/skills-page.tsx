@@ -1,6 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from "react";
+import { useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
-import { Zap, RefreshCw, Upload, ScanSearch } from "lucide-react";
+import { Zap, RefreshCw, Upload, ScanSearch, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -35,12 +36,14 @@ export function SkillsPage() {
     getSkillVersions, getSkillFiles, getSkillFileContent, rescanDeps, installSingleDep, toggleSkill,
     setTenantConfig, deleteTenantConfig,
   } = useSkills();
+  const [params, setParams] = useSearchParams();
   const { runtimes } = useRuntimes();
   const { currentTenantId } = useTenants();
   const hasTenantScope = !!currentTenantId && currentTenantId !== MASTER_TENANT_ID;
   const spinning = useMinLoading(loading);
   const showSkeleton = useDeferredLoading(loading && skills.length === 0);
-  const [tab, setTab] = useState<Tab>("core");
+  const urlTab = params.get("tab") === "custom" ? "custom" : "core";
+  const tab: Tab = urlTab;
   const [search, setSearch] = useState("");
   const [selectedSkill, setSelectedSkill] = useState<(SkillInfo & { content: string }) | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -48,6 +51,7 @@ export function SkillsPage() {
   const [deleteTarget, setDeleteTarget] = useState<SkillInfo | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [rescanning, setRescanning] = useState(false);
+  const [installingDeps, setInstallingDeps] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
 
   const coreSkills = skills.filter((s: SkillInfo) => s.is_system);
@@ -63,10 +67,57 @@ export function SkillsPage() {
 
   useEffect(() => { resetPage(); }, [search, tab, resetPage]);
 
-  const handleViewSkill = async (name: string) => {
-    const detail = await getSkill(name);
-    if (detail) setSelectedSkill(detail);
+  const setParamValues = (updates: Record<string, string | null>) => {
+    const next = new URLSearchParams(params);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    setParams(next, { replace: true });
   };
+
+  const setTab = (nextTab: Tab) => {
+    const next = new URLSearchParams(params);
+    next.set("tab", nextTab);
+    next.delete("skill");
+    next.delete("detailTab");
+    next.delete("version");
+    next.delete("file");
+    setParams(next, { replace: true });
+  };
+
+  const closeDetail = () => {
+    const next = new URLSearchParams(params);
+    next.delete("skill");
+    next.delete("detailTab");
+    next.delete("version");
+    next.delete("file");
+    setParams(next, { replace: true });
+    setSelectedSkill(null);
+  };
+
+  const handleViewSkill = async (skill: SkillInfo) => {
+    const next = new URLSearchParams(params);
+    next.set("tab", skill.is_system ? "core" : "custom");
+    next.set("skill", skill.id || skill.slug || skill.name);
+    next.set("detailTab", "content");
+    next.delete("version");
+    next.delete("file");
+    setParams(next, { replace: true });
+  };
+
+  useEffect(() => {
+    const skillRef = params.get("skill");
+    if (!skillRef) {
+      setSelectedSkill(null);
+      return;
+    }
+    let cancelled = false;
+    getSkill(skillRef).then((detail) => {
+      if (!cancelled) setSelectedSkill(detail);
+    });
+    return () => { cancelled = true; };
+  }, [params, getSkill]);
 
   const handleCycleVisibility = async (skill: SkillInfo) => {
     if (!skill.id) return;
@@ -85,6 +136,11 @@ export function SkillsPage() {
   const handleRescanDeps = async () => {
     setRescanning(true);
     try { await rescanDeps(); } finally { setRescanning(false); }
+  };
+
+  const handleInstallDeps = async () => {
+    setInstallingDeps(true);
+    try { await installDeps(); } finally { setInstallingDeps(false); }
   };
 
   const handleToggle = async (skill: SkillInfo, enabled: boolean) => {
@@ -117,6 +173,9 @@ export function SkillsPage() {
             )}
             <Button variant="outline" size="sm" onClick={handleRescanDeps} disabled={rescanning} className="gap-1">
               <ScanSearch className="h-3.5 w-3.5" /> {t("deps.rescan")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleInstallDeps} disabled={installingDeps || allMissing.length === 0} className="gap-1">
+              <Download className="h-3.5 w-3.5" /> {installingDeps ? t("deps.installing") : t("deps.installAll")}
             </Button>
             <Button variant="outline" size="sm" onClick={refresh} disabled={spinning} className="gap-1">
               <RefreshCw className={"h-3.5 w-3.5" + (spinning ? " animate-spin" : "")} /> {t("refresh", { ns: "common" })}
@@ -164,7 +223,7 @@ export function SkillsPage() {
                 <tr className="border-b bg-muted/50">
                   <th className="px-4 py-3 text-left font-medium">{t("columns.name")}</th>
                   <th className="px-4 py-3 text-left font-medium">{t("columns.description")}</th>
-                  {tab === "custom" && <th className="px-4 py-3 text-left font-medium">{t("columns.author")}</th>}
+                  {tab === "custom" && <th className="px-4 py-3 text-left font-medium">{t("columns.agents")}</th>}
                   <th className="px-4 py-3 text-left font-medium">{t("columns.status")}</th>
                   {tab === "custom" && <th className="px-4 py-3 text-left font-medium">{t("columns.visibility")}</th>}
                   <th className="px-4 py-3 text-right font-medium">{t("columns.actions")}</th>
@@ -204,7 +263,11 @@ export function SkillsPage() {
       {selectedSkill && (
         <SkillDetailDialog
           skill={selectedSkill}
-          onClose={() => setSelectedSkill(null)}
+          detailTab={params.get("detailTab") || "content"}
+          selectedVersionParam={params.get("version")}
+          selectedFilePath={params.get("file")}
+          onStateChange={setParamValues}
+          onClose={closeDetail}
           getSkillVersions={getSkillVersions}
           getSkillFiles={getSkillFiles}
           getSkillFileContent={getSkillFileContent}
@@ -220,7 +283,7 @@ export function SkillsPage() {
       )}
 
       <Suspense fallback={null}>
-        <SkillUploadDialog open={uploadOpen} onOpenChange={setUploadOpen} onUpload={(f) => uploadSkill(f)} />
+        <SkillUploadDialog open={uploadOpen} onOpenChange={setUploadOpen} onUpload={uploadSkill} />
       </Suspense>
 
       <ConfirmDeleteDialog

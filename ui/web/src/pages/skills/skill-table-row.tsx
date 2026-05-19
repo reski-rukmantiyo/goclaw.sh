@@ -18,7 +18,7 @@ interface SkillTableRowProps {
   tab: "core" | "custom";
   hasTenantScope: boolean;
   toggling: string | null;
-  onView: (name: string) => void;
+  onView: (skill: SkillInfo) => void;
   onEdit: (skill: SkillInfo) => void;
   onDelete: (skill: SkillInfo) => void;
   onToggle: (skill: SkillInfo, enabled: boolean) => void;
@@ -62,7 +62,23 @@ export function SkillTableRow({
         {skill.description || t("noDescription")}
       </td>
       {tab === "custom" && (
-        <td className="px-4 py-3 text-sm text-muted-foreground">{skill.author || "—"}</td>
+        <td className="px-4 py-3 text-sm text-muted-foreground">
+          <div className="flex max-w-[220px] flex-col gap-1">
+            {skill.author && <span className="truncate">{skill.author}</span>}
+            {skill.creator_agent && (
+              <span className="truncate text-2xs">
+                {t("agents.creator")}: {skill.creator_agent.display_name || skill.creator_agent.agent_key || skill.creator_agent.id}
+              </span>
+            )}
+            {skill.manager_agents && skill.manager_agents.length > 0 ? (
+              <span className="truncate text-2xs">
+                {t("agents.managers")}: {skill.manager_agents.map((agent) => agent.display_name || agent.agent_key || agent.id).join(", ")}
+              </span>
+            ) : !skill.author && !skill.creator_agent ? (
+              <span>—</span>
+            ) : null}
+          </div>
+        </td>
       )}
       <td className="px-4 py-3">
         <div className="flex flex-col gap-1">

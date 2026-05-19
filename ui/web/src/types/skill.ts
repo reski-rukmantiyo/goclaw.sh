@@ -12,7 +12,15 @@ export interface SkillInfo {
   enabled?: boolean;
   tenant_enabled?: boolean | null;
   author?: string;
+  creator_agent?: SkillAgentRef;
+  manager_agents?: SkillAgentRef[];
   missing_deps?: string[];
+}
+
+export interface SkillAgentRef {
+  id?: string;
+  agent_key?: string;
+  display_name?: string;
 }
 
 export interface SkillFile {

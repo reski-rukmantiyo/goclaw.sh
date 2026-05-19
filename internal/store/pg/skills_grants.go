@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )

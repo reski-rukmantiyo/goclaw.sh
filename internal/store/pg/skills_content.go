@@ -89,33 +89,54 @@ func (s *PGSkillStore) BuildSummary(ctx context.Context, allowList []string) str
 }
 
 func (s *PGSkillStore) GetSkill(ctx context.Context, name string) (*store.SkillInfo, bool) {
-	var id uuid.UUID
-	var skillName, slug, visibility, ownerID string
-	var desc *string
-	var tags []string
-	var version int
-	var isSystem bool
-	var filePath *string
-	q := "SELECT id, name, slug, description, visibility, owner_id, tags, version, is_system, file_path FROM skills WHERE slug = $1 AND status = 'active'"
-	args := []any{name}
+	baseSelect := `SELECT id, name, slug, description, visibility, owner_id, tags, version, is_system, status, enabled, deps, frontmatter, file_path
+		FROM skills WHERE `
+	scope := ""
+	args := []any{}
 	if !store.IsCrossTenant(ctx) {
 		tid := store.TenantIDFromContext(ctx)
 		if tid == uuid.Nil {
 			tid = store.MasterTenantID
 		}
-		q += " AND (is_system = true OR tenant_id = $2)"
 		args = append(args, tid)
+		scope = fmt.Sprintf(" AND (is_system = true OR tenant_id = $%d)", len(args))
 	}
-	err := s.db.QueryRowContext(ctx, q, args...).Scan(&id, &skillName, &slug, &desc, &visibility, &ownerID, pq.Array(&tags), &version, &isSystem, &filePath)
-	if err != nil {
-		return nil, false
+
+	scan := func(q string, qArgs ...any) (*store.SkillInfo, bool) {
+		var id uuid.UUID
+		var skillName, slug, visibility, ownerID, status string
+		var desc *string
+		var tags []string
+		var version int
+		var isSystem, enabled bool
+		var depsRaw, fmRaw []byte
+		var filePath *string
+		err := s.db.QueryRowContext(ctx, q, qArgs...).Scan(&id, &skillName, &slug, &desc, &visibility, &ownerID, pq.Array(&tags), &version, &isSystem, &status, &enabled, &depsRaw, &fmRaw, &filePath)
+		if err != nil {
+			return nil, false
+		}
+		info := buildSkillInfo(id.String(), skillName, slug, desc, version, s.baseDir, filePath)
+		info.Visibility = visibility
+		info.OwnerID = ownerID
+		info.Tags = tags
+		info.IsSystem = isSystem
+		info.Status = status
+		info.Enabled = enabled
+		info.Author = parseFrontmatterAuthor(fmRaw)
+		info.CreatorAgent = parseFrontmatterCreatorAgent(fmRaw)
+		info.MissingDeps = parseDepsColumn(depsRaw)
+		enriched := []store.SkillInfo{info}
+		s.attachSkillAgentMetadata(ctx, enriched)
+		return &enriched[0], true
 	}
-	info := buildSkillInfo(id.String(), skillName, slug, desc, version, s.baseDir, filePath)
-	info.Visibility = visibility
-	info.OwnerID = ownerID
-	info.Tags = tags
-	info.IsSystem = isSystem
-	return &info, true
+
+	if id, err := uuid.Parse(name); err == nil {
+		return scan(baseSelect+"id = $"+fmt.Sprint(len(args)+1)+" AND status IN ('active', 'archived')"+scope, append(args, id)...)
+	}
+	if info, ok := scan(baseSelect+"slug = $"+fmt.Sprint(len(args)+1)+" AND status = 'active'"+scope, append(args, name)...); ok {
+		return info, true
+	}
+	return scan(baseSelect+"name = $"+fmt.Sprint(len(args)+1)+" AND status = 'active'"+scope+" ORDER BY id LIMIT 1", append(args, name)...)
 }
 
 func (s *PGSkillStore) FilterSkills(ctx context.Context, allowList []string) []store.SkillInfo {

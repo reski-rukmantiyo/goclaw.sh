@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"os"
 
 	"github.com/google/uuid"
 
@@ -71,6 +72,12 @@ func (m *SkillsMethods) handleList(ctx context.Context, client *gateway.Client, 
 		if s.Author != "" {
 			entry["author"] = s.Author
 		}
+		if s.CreatorAgent != nil {
+			entry["creator_agent"] = s.CreatorAgent
+		}
+		if len(s.ManagerAgents) > 0 {
+			entry["manager_agents"] = s.ManagerAgents
+		}
 		if len(s.MissingDeps) > 0 {
 			entry["missing_deps"] = s.MissingDeps
 		}
@@ -130,7 +137,12 @@ func (m *SkillsMethods) handleGet(ctx context.Context, client *gateway.Client, r
 		return
 	}
 
-	content, _ := m.store.LoadSkill(ctx, params.Name)
+	content, ok := m.store.LoadSkill(ctx, info.Slug)
+	if !ok && info.Path != "" {
+		if b, err := os.ReadFile(info.Path); err == nil {
+			content = string(b)
+		}
+	}
 
 	resp := map[string]any{
 		"name":        info.Name,
@@ -139,6 +151,7 @@ func (m *SkillsMethods) handleGet(ctx context.Context, client *gateway.Client, r
 		"source":      info.Source,
 		"content":     content,
 		"version":     info.Version,
+		"enabled":     info.Enabled,
 	}
 	if info.ID != "" {
 		resp["id"] = info.ID
@@ -148,6 +161,21 @@ func (m *SkillsMethods) handleGet(ctx context.Context, client *gateway.Client, r
 	}
 	if len(info.Tags) > 0 {
 		resp["tags"] = info.Tags
+	}
+	if info.Status != "" {
+		resp["status"] = info.Status
+	}
+	if info.Author != "" {
+		resp["author"] = info.Author
+	}
+	if info.CreatorAgent != nil {
+		resp["creator_agent"] = info.CreatorAgent
+	}
+	if len(info.ManagerAgents) > 0 {
+		resp["manager_agents"] = info.ManagerAgents
+	}
+	if len(info.MissingDeps) > 0 {
+		resp["missing_deps"] = info.MissingDeps
 	}
 	client.SendResponse(protocol.NewOKResponse(req.ID, resp))
 }

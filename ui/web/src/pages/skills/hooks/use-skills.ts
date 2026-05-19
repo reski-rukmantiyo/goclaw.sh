@@ -24,6 +24,11 @@ export type SkillUploadResponse = {
   deps_errors?: string[];
   missing_deps?: string[];
   deps_installed?: boolean;
+  grant_errors?: string[];
+};
+
+export type SkillUploadOptions = {
+  managerAgentIds?: string[];
 };
 
 export function useSkills() {
@@ -62,9 +67,12 @@ export function useSkills() {
   );
 
   const uploadSkill = useCallback(
-    async (file: File) => {
+    async (file: File, options?: SkillUploadOptions) => {
       const formData = new FormData();
       formData.append("file", file);
+      if (options?.managerAgentIds?.length) {
+        formData.append("manager_agent_ids", JSON.stringify(options.managerAgentIds));
+      }
       const res = await http.upload<SkillUploadResponse>(
         "/v1/skills/upload",
         formData,

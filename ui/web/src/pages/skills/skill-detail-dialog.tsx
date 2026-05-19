@@ -19,9 +19,14 @@ import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 import type { SkillInfo, SkillFile, SkillVersions } from "@/types/skill";
 import { buildTree } from "./skill-file-helpers";
 import { FileBrowser } from "./skill-file-browser";
+import { parseSkillDetailVersionParam, shouldLoadSkillDetailFile } from "./lib/skill-detail-deeplink";
 
 interface SkillDetailDialogProps {
   skill: SkillInfo & { content: string };
+  detailTab: string;
+  selectedVersionParam: string | null;
+  selectedFilePath: string | null;
+  onStateChange: (updates: Record<string, string | null>) => void;
   onClose: () => void;
   getSkillVersions: (id: string) => Promise<SkillVersions>;
   getSkillFiles: (id: string, version?: number) => Promise<SkillFile[]>;
@@ -30,6 +35,10 @@ interface SkillDetailDialogProps {
 
 export function SkillDetailDialog({
   skill,
+  detailTab,
+  selectedVersionParam,
+  selectedFilePath,
+  onStateChange,
   onClose,
   getSkillVersions,
   getSkillFiles,
@@ -40,7 +49,9 @@ export function SkillDetailDialog({
 
   // Version state
   const [versions, setVersions] = useState<SkillVersions | null>(null);
-  const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
+  const [selectedVersion, setSelectedVersion] = useState<number | null>(
+    parseSkillDetailVersionParam(selectedVersionParam),
+  );
 
   // File tree state
   const [files, setFiles] = useState<SkillFile[]>([]);
@@ -53,12 +64,22 @@ export function SkillDetailDialog({
 
   const tree = useMemo(() => buildTree(files), [files]);
 
+  useEffect(() => {
+    setVersions(null);
+    setSelectedVersion(parseSkillDetailVersionParam(selectedVersionParam));
+    setFiles([]);
+    setActivePath(null);
+    setFileContent(null);
+  }, [skill.id, selectedVersionParam]);
+
   const loadVersions = useCallback(async () => {
     if (!skill.id || versions) return;
     const v = await getSkillVersions(skill.id);
     setVersions(v);
-    setSelectedVersion(v.current);
-  }, [skill.id, versions, getSkillVersions]);
+    if (!selectedVersionParam) {
+      setSelectedVersion(v.current);
+    }
+  }, [skill.id, versions, selectedVersionParam, getSkillVersions]);
 
   const loadFiles = useCallback(async (version?: number) => {
     if (!skill.id) return;
@@ -91,13 +112,47 @@ export function SkillDetailDialog({
     }
   }, [selectedVersion, loadFiles]);
 
+  useEffect(() => {
+    if (detailTab !== "files" || !hasFiles) return;
+    loadVersions();
+    const versionParam = parseSkillDetailVersionParam(selectedVersionParam);
+    if (versionParam !== null && versionParam !== selectedVersion) {
+      setSelectedVersion(versionParam);
+      return;
+    }
+    if (selectedVersion == null && skill.version) {
+      setSelectedVersion(skill.version);
+    }
+  }, [detailTab, hasFiles, loadVersions, selectedVersion, selectedVersionParam, skill.version]);
+
+  useEffect(() => {
+    if (!shouldLoadSkillDetailFile(detailTab, selectedFilePath, files.length, activePath)) return;
+    loadFileContent(selectedFilePath);
+  }, [activePath, detailTab, files.length, loadFileContent, selectedFilePath]);
+
   const handleTabChange = (tab: string) => {
+    onStateChange({ detailTab: tab });
     if (tab === "files" && hasFiles) {
       loadVersions();
       if (files.length === 0 && !filesLoading) {
         loadFiles(selectedVersion ?? undefined);
       }
     }
+  };
+
+  const handleVersionChange = (v: string) => {
+    const next = Number(v);
+    setSelectedVersion(next);
+    onStateChange({ version: v, file: null });
+  };
+
+  const handleFileSelect = (path: string) => {
+    onStateChange({
+      detailTab: "files",
+      version: selectedVersion != null ? String(selectedVersion) : null,
+      file: path,
+    });
+    loadFileContent(path);
   };
 
   return (
@@ -117,6 +172,15 @@ export function SkillDetailDialog({
           {skill.description && (
             <p className="text-sm text-muted-foreground">{skill.description}</p>
           )}
+          <div className="flex flex-wrap gap-1 pt-1 text-xs text-muted-foreground">
+            {skill.author && <span>{t("columns.author")}: {skill.author}</span>}
+            {skill.creator_agent && (
+              <span>{t("agents.creator")}: {skill.creator_agent.display_name || skill.creator_agent.agent_key || skill.creator_agent.id}</span>
+            )}
+            {skill.manager_agents && skill.manager_agents.length > 0 && (
+              <span>{t("agents.managers")}: {skill.manager_agents.map((agent) => agent.display_name || agent.agent_key || agent.id).join(", ")}</span>
+            )}
+          </div>
           {skill.tags && skill.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 pt-1">
               {skill.tags.map((tag) => (
@@ -126,7 +190,7 @@ export function SkillDetailDialog({
           )}
         </DialogHeader>
 
-        <Tabs defaultValue="content" className="flex-1 overflow-hidden flex flex-col" onValueChange={handleTabChange}>
+        <Tabs value={detailTab === "files" && hasFiles ? "files" : "content"} className="flex-1 overflow-hidden flex flex-col" onValueChange={handleTabChange}>
           <TabsList>
             <TabsTrigger value="content">{t("detail.content")}</TabsTrigger>
             {hasFiles && <TabsTrigger value="files">{t("detail.files")}</TabsTrigger>}
@@ -149,7 +213,7 @@ export function SkillDetailDialog({
                   <span className="text-sm text-muted-foreground">{t("detail.version")}</span>
                   <Select
                     value={String(selectedVersion ?? versions.current)}
-                    onValueChange={(v) => setSelectedVersion(Number(v))}
+                    onValueChange={handleVersionChange}
                   >
                     <SelectTrigger className="w-40 h-8">
                       <SelectValue />
@@ -169,7 +233,7 @@ export function SkillDetailDialog({
                 tree={tree}
                 filesLoading={filesLoading}
                 activePath={activePath}
-                onSelect={loadFileContent}
+                onSelect={handleFileSelect}
                 contentLoading={contentLoading}
                 fileContent={fileContent}
               />

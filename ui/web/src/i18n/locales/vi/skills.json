@@ -11,6 +11,7 @@
     "description": "Mô tả",
     "source": "Nguồn",
     "author": "Tác giả",
+    "agents": "Agents",
     "visibility": "Hiển thị",
     "status": "Trạng thái",
     "actions": "Thao tác"
@@ -52,7 +53,12 @@
     "skillUnchanged": "Nội dung không đổi — đã bỏ qua",
     "slugConflict": "Slug trùng với kỹ năng hệ thống",
     "unchanged": "Không đổi",
-    "new": "Mới"
+    "new": "Mới",
+    "agentManagers": "Cấp quyền quản lý cho agents",
+    "managerAgentsHelp": "Các agent hiện tại được chọn có thể cập nhật skill này sau.",
+    "selectAllAgents": "Chọn tất cả agents",
+    "clearAgents": "Bỏ chọn agents",
+    "noAgents": "Chưa có agent"
   },
   "edit": {
     "title": "Chỉnh sửa skill",
@@ -92,6 +98,7 @@
     "rescanSuccess": "Updated {{count}} skills",
     "missing": "Missing: {{deps}}",
     "install": "Install Dependencies",
+    "installAll": "Install all dependencies",
     "installing": "Installing...",
     "installSuccess": "Dependencies installed",
     "installPartial": "Some dependencies failed",
@@ -108,6 +115,10 @@
     "runtimeMissingDesc": "Các core skill cần runtime Python và/hoặc Node.js bên trong container runtime GoClaw. Runtime cài trên máy host sẽ không được dùng ở đây. Nếu bạn đang dùng image latest đã phát hành thì việc thiếu runtime có thể là bình thường.",
     "runtimeMissingAction": "Mở trang Packages để kiểm tra hoặc cài runtime trong container này.",
     "runtimeRequired": "Hãy cài runtime trong container trước"
+  },
+  "agents": {
+    "creator": "Agent tạo",
+    "managers": "Agent quản lý"
   },
   "detail": {
     "title": "Chi tiết skill",

@@ -11,6 +11,7 @@
     "description": "描述",
     "source": "来源",
     "author": "作者",
+    "agents": "Agent",
     "visibility": "可见性",
     "status": "状态",
     "actions": "操作"
@@ -52,7 +53,12 @@
     "skillUnchanged": "内容未更改 — 已跳过",
     "slugConflict": "Slug 与系统技能冲突",
     "unchanged": "未更改",
-    "new": "新建"
+    "new": "新建",
+    "agentManagers": "授予 Agent 管理权限",
+    "managerAgentsHelp": "所选当前 Agent 以后可以更新此 Skill。",
+    "selectAllAgents": "选择所有 Agent",
+    "clearAgents": "清除 Agent",
+    "noAgents": "暂无 Agent"
   },
   "edit": {
     "title": "编辑Skill",
@@ -92,6 +98,7 @@
     "rescanSuccess": "Updated {{count}} skills",
     "missing": "Missing: {{deps}}",
     "install": "Install Dependencies",
+    "installAll": "Install all dependencies",
     "installing": "Installing...",
     "installSuccess": "Dependencies installed",
     "installPartial": "Some dependencies failed",
@@ -108,6 +115,10 @@
     "runtimeMissingDesc": "核心技能需要在 GoClaw 运行时容器内提供 Python 和/或 Node.js 运行时。宿主机上的运行时不会在这里被使用。如果你使用的是已发布的 latest 镜像，那么缺少这些运行时可能是正常现象。",
     "runtimeMissingAction": "打开 Packages 页面，在此容器中检查或安装运行时。",
     "runtimeRequired": "请先安装容器内运行时"
+  },
+  "agents": {
+    "creator": "创建 Agent",
+    "managers": "管理 Agent"
   },
   "detail": {
     "title": "Skill详情",
