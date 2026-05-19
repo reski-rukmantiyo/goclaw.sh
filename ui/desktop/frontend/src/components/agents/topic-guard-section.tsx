@@ -93,6 +93,16 @@ export function TopicGuardSection({ enabled, value, onToggle, onChange }: TopicG
         </select>
       </div>
 
+      {/* Intercept timing */}
+      <div className="space-y-1">
+        <label className="text-[11px] font-medium text-text-secondary">{t(`${s}.intercept`)}</label>
+        <select value={value.intercept ?? 'before'} onChange={(e) => update({ intercept: e.target.value as TopicGuardConfig['intercept'] })} className={selectCls}>
+          <option value="before">{t(`${s}.interceptBefore`)}</option>
+          <option value="after">{t(`${s}.interceptAfter`)}</option>
+          <option value="both">{t(`${s}.interceptBoth`)}</option>
+        </select>
+      </div>
+
       {/* Allow keywords */}
       <div className="space-y-1">
         <label className="text-[11px] font-medium text-text-secondary">{t(`${s}.allowKeywords`)}</label>

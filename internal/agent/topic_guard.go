@@ -26,12 +26,23 @@ type TopicGuard struct {
 	blockKeywords []string // pre-lowercased
 	mode          string   // "keyword" or "keyword_and_llm"
 	defaultAction string   // "allow" or "block"
+	intercept     string   // "before", "after", or "both"
 	rejectionMsg  string
 	llmProvider   string
 	llmModel      string
 	llmMaxTokens  int
 	llmTimeoutMs  int
 	provider      providers.Provider
+}
+
+// ShouldCheckBefore returns true if the guard should check the user message before the LLM call.
+func (g *TopicGuard) ShouldCheckBefore() bool {
+	return g.intercept != "after"
+}
+
+// ShouldCheckAfter returns true if the guard should check the LLM response after generation.
+func (g *TopicGuard) ShouldCheckAfter() bool {
+	return g.intercept == "after" || g.intercept == "both"
 }
 
 // NewTopicGuard creates a guard from config. Returns nil if disabled.
@@ -60,6 +71,7 @@ func NewTopicGuard(cfg *config.TopicGuardConfig, provider providers.Provider) *T
 		blockKeywords: lowercaseAll(cfg.BlockKeywords),
 		mode:          mode,
 		defaultAction: defaultAction,
+		intercept:     normalizeIntercept(cfg.Intercept),
 		rejectionMsg:  cfg.RejectionMessage,
 		llmProvider:   cfg.LLMProvider,
 		llmModel:      cfg.LLMModel,
@@ -184,6 +196,81 @@ func (g *TopicGuard) classifyWithLLM(ctx context.Context, message string) (bool,
 
 	answer := strings.TrimSpace(strings.ToLower(resp.Content))
 	return answer == "yes" || strings.Contains(answer, "yes"), nil
+}
+
+// CheckResponse evaluates whether an LLM response is within the agent's topic scope.
+// Only checks blocklist against response — allowlist is not relevant for output checking.
+func (g *TopicGuard) CheckResponse(ctx context.Context, response string) *TopicGuardResult {
+	respLower := strings.ToLower(response)
+
+	// Check blocklist keywords in response.
+	for _, kw := range g.blockKeywords {
+		if strings.Contains(respLower, kw) {
+			return &TopicGuardResult{
+				Allowed:      false,
+				Reason:       "block_keyword_response",
+				RejectionMsg: g.rejectionMsg,
+			}
+		}
+	}
+
+	// LLM fallback for response classification.
+	if g.mode == "keyword_and_llm" && g.provider != nil {
+		inContext, err := g.classifyResponseWithLLM(ctx, response)
+		if err != nil {
+			slog.Warn("topic_guard.llm_response_error", "error", err)
+			return &TopicGuardResult{Allowed: true, Reason: "llm_response_error"}
+		}
+		if !inContext {
+			return &TopicGuardResult{
+				Allowed:      false,
+				Reason:       "llm_block_response",
+				RejectionMsg: g.rejectionMsg,
+			}
+		}
+		return &TopicGuardResult{Allowed: true, Reason: "llm_allow_response"}
+	}
+
+	return &TopicGuardResult{Allowed: true, Reason: "response_passed"}
+}
+
+func (g *TopicGuard) classifyResponseWithLLM(ctx context.Context, response string) (bool, error) {
+	timeout := time.Duration(g.llmTimeoutMs) * time.Millisecond
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	topics := strings.Join(g.allowKeywords, ", ")
+	prompt := fmt.Sprintf(
+		"You are a topic classifier. The agent handles: %s.\n"+
+			"Is the following AI response on-topic for these domains? Answer ONLY \"yes\" or \"no\".\n\n"+
+			"AI response: %s",
+		topics, response,
+	)
+
+	req := providers.ChatRequest{
+		Messages: []providers.Message{
+			{Role: "user", Content: prompt},
+		},
+		Model:   g.llmModel,
+		Options: map[string]any{"max_tokens": g.llmMaxTokens},
+	}
+
+	resp, err := g.provider.Chat(ctx, req)
+	if err != nil {
+		return false, fmt.Errorf("LLM response classification failed: %w", err)
+	}
+
+	answer := strings.TrimSpace(strings.ToLower(resp.Content))
+	return answer == "yes" || strings.Contains(answer, "yes"), nil
+}
+
+func normalizeIntercept(v string) string {
+	switch v {
+	case "after", "both":
+		return v
+	default:
+		return "before"
+	}
 }
 
 // ParseTopicGuardConfig parses raw JSON into TopicGuardConfig.

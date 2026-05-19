@@ -131,6 +131,7 @@ export interface ShellDenyGroups {
 export interface TopicGuardConfig {
   enabled?: boolean;
   mode?: "keyword" | "keyword_and_llm";
+  intercept?: "before" | "after" | "both";
   allow_keywords?: string[];
   block_keywords?: string[];
   default_action?: "allow" | "block";

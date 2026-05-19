@@ -192,3 +192,101 @@ func TestParseTopicGuardConfig_Valid(t *testing.T) {
 		t.Fatalf("unexpected allow keywords: %v", cfg.AllowKeywords)
 	}
 }
+
+func TestTopicGuard_InterceptDefaults(t *testing.T) {
+	g := NewTopicGuard(&config.TopicGuardConfig{
+		Enabled: boolPtr(true),
+	}, nil)
+	if g == nil {
+		t.Fatal("expected non-nil guard")
+	}
+	if !g.ShouldCheckBefore() {
+		t.Fatal("default should check before")
+	}
+	if g.ShouldCheckAfter() {
+		t.Fatal("default should NOT check after")
+	}
+}
+
+func TestTopicGuard_InterceptAfter(t *testing.T) {
+	g := NewTopicGuard(&config.TopicGuardConfig{
+		Enabled:   boolPtr(true),
+		Intercept: "after",
+	}, nil)
+	if g.ShouldCheckBefore() {
+		t.Fatal("after mode should NOT check before")
+	}
+	if !g.ShouldCheckAfter() {
+		t.Fatal("after mode should check after")
+	}
+}
+
+func TestTopicGuard_InterceptBoth(t *testing.T) {
+	g := NewTopicGuard(&config.TopicGuardConfig{
+		Enabled:   boolPtr(true),
+		Intercept: "both",
+	}, nil)
+	if !g.ShouldCheckBefore() {
+		t.Fatal("both mode should check before")
+	}
+	if !g.ShouldCheckAfter() {
+		t.Fatal("both mode should check after")
+	}
+}
+
+func TestTopicGuard_CheckResponse_BlockKeyword(t *testing.T) {
+	g := NewTopicGuard(&config.TopicGuardConfig{
+		Enabled:       boolPtr(true),
+		BlockKeywords: []string{"hack", "exploit"},
+	}, nil)
+
+	result := g.CheckResponse(context.Background(), "Here is how to hack a server")
+	if result.Allowed {
+		t.Fatal("expected response to be blocked by blocklist keyword")
+	}
+	if result.Reason != "block_keyword_response" {
+		t.Fatalf("expected block_keyword_response, got %s", result.Reason)
+	}
+}
+
+func TestTopicGuard_CheckResponse_AllowKeywordIgnored(t *testing.T) {
+	g := NewTopicGuard(&config.TopicGuardConfig{
+		Enabled:       boolPtr(true),
+		AllowKeywords: []string{"python"},
+		BlockKeywords: []string{"hack"},
+	}, nil)
+
+	// Response with allow keyword but no block keyword should pass
+	result := g.CheckResponse(context.Background(), "Python is a great language for programming")
+	if !result.Allowed {
+		t.Fatal("expected response to pass — allow keywords don't gate responses")
+	}
+}
+
+func TestTopicGuard_CheckResponse_NoBlockMatch(t *testing.T) {
+	g := NewTopicGuard(&config.TopicGuardConfig{
+		Enabled:       boolPtr(true),
+		BlockKeywords: []string{"hack"},
+	}, nil)
+
+	result := g.CheckResponse(context.Background(), "Python is a great programming language")
+	if !result.Allowed {
+		t.Fatal("expected response to pass — no block keyword match")
+	}
+}
+
+func TestTopicGuard_CheckResponse_CustomRejection(t *testing.T) {
+	g := NewTopicGuard(&config.TopicGuardConfig{
+		Enabled:          boolPtr(true),
+		BlockKeywords:    []string{"hack"},
+		RejectionMessage: "Custom rejection!",
+	}, nil)
+
+	result := g.CheckResponse(context.Background(), "how to hack")
+	if result.Allowed {
+		t.Fatal("expected blocked")
+	}
+	if result.RejectionMsg != "Custom rejection!" {
+		t.Fatalf("unexpected rejection: %s", result.RejectionMsg)
+	}
+}

@@ -52,6 +52,26 @@ export function TopicGuardSection({ enabled, value, onToggle, onChange }: TopicG
         </Select>
       </div>
 
+      {/* Intercept timing */}
+      <div className="max-w-xs space-y-2">
+        <InfoLabel tip={t(`${s}.interceptTip`, "Before = check question before LLM (saves tokens). After = check response after LLM. Both = maximum protection.")}>
+          {t(`${s}.intercept`, "Intercept Timing")}
+        </InfoLabel>
+        <Select
+          value={value.intercept || "before"}
+          onValueChange={(v) => onChange({ ...value, intercept: v as TopicGuardConfig["intercept"] })}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="before">{t(`${s}.interceptBefore`, "Before (save tokens)")}</SelectItem>
+            <SelectItem value="after">{t(`${s}.interceptAfter`, "After (check response)")}</SelectItem>
+            <SelectItem value="both">{t(`${s}.interceptBoth`, "Both (maximum protection)")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* Allow keywords */}
       <div className="space-y-2">
         <InfoLabel tip={t(`${s}.allowTip`, "Comma-separated keywords for in-context topics. Questions matching these are always allowed.")}>

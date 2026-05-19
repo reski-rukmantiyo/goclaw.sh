@@ -162,8 +162,9 @@ func (l *Loop) buildPipelineDeps(req *RunRequest, bridgeRS *runState) pipeline.P
 		FlushMessages:          cb.flushMessages,
 		PersistAssistantImages: persistAssistantImages,
 		SkillPostscript:        l.makeSkillPostscript(),
-		SanitizeContent:        cb.sanitizeContent,
-		StripMessageDirectives: StripMessageDirectives,
+		SanitizeContent:          cb.sanitizeContent,
+		CheckTopicGuardResponse: l.makeTopicGuardResponseCheck(),
+		StripMessageDirectives:   StripMessageDirectives,
 		DeduplicateMediaSuffix: deduplicateMediaSuffix,
 		IsSilentReply:          IsSilentReply,
 		EmitSessionCompleted: func(ctx context.Context, sessionKey string, msgCount, tokensUsed, compactionCount int) {

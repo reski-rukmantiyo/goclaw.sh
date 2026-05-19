@@ -319,7 +319,7 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 	}
 
 	// Topic guardrail: check if message is within agent's defined scope.
-	if l.topicGuard != nil {
+	if l.topicGuard != nil && l.topicGuard.ShouldCheckBefore() {
 		result := l.topicGuard.Check(ctx, req.Message)
 		if !result.Allowed {
 			slog.Warn("topic_guard.blocked",

@@ -249,6 +249,12 @@ type TopicGuardConfig struct {
 	// Custom rejection message. Empty = use i18n default.
 	RejectionMessage string `json:"rejection_message,omitempty"`
 
+	// Intercept timing: "before" (default), "after", or "both".
+	// "before" = check user message before LLM call (saves tokens).
+	// "after" = let LLM answer, then check response (catches off-topic output).
+	// "both" = check both user message and LLM response.
+	Intercept string `json:"intercept,omitempty"`
+
 	// LLM fallback config (only used when mode = "keyword_and_llm").
 	LLMProvider  string `json:"llm_provider,omitempty"`  // provider name for classification (empty = use agent's provider)
 	LLMModel     string `json:"llm_model,omitempty"`     // model name (must be <7B params, empty = smallest available)

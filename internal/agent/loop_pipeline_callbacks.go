@@ -448,6 +448,16 @@ func (l *Loop) makeSkillPostscript() func(ctx context.Context, content string, t
 	}
 }
 
+func (l *Loop) makeTopicGuardResponseCheck() func(ctx context.Context, response string) (bool, string) {
+	if l.topicGuard == nil || !l.topicGuard.ShouldCheckAfter() {
+		return nil
+	}
+	return func(ctx context.Context, response string) (bool, string) {
+		result := l.topicGuard.CheckResponse(ctx, response)
+		return result.Allowed, result.RejectionMsg
+	}
+}
+
 func (l *Loop) makeBootstrapCleanup() func(ctx context.Context, state *pipeline.RunState) error {
 	return func(ctx context.Context, state *pipeline.RunState) error {
 		if l.bootstrapCleanup == nil {
