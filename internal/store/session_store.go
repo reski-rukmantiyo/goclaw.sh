@@ -127,6 +127,7 @@ type SessionListingStore interface {
 	List(ctx context.Context, agentID string) []SessionInfo
 	ListPaged(ctx context.Context, opts SessionListOpts) SessionListResult
 	ListPagedRich(ctx context.Context, opts SessionListOpts) SessionListRichResult
+	ListOverThreshold(ctx context.Context, threshold float64, idleSince time.Duration) ([]SessionInfoRich, error)
 	LastUsedChannel(ctx context.Context, agentID string) (channel, chatID string)
 }
 

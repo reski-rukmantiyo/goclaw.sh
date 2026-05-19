@@ -17,6 +17,11 @@
   "contextBar": {
     "compacted": "Đã nén {{count}} lần"
   },
+  "settings": {
+    "title": "Cài đặt",
+    "autoCompactThreshold": "Ngưỡng tự động nén",
+    "autoCompactThresholdTip": "Các session vượt quá tỷ lệ này của context window sẽ được tự động nén khi không hoạt động."
+  },
   "detail": {
     "reset": "Đặt lại",
     "delete": "Xóa",

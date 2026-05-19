@@ -1,17 +1,21 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { History, RefreshCw } from "lucide-react";
+import { History, RefreshCw, Settings, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { SearchInput } from "@/components/shared/search-input";
 import { Pagination } from "@/components/shared/pagination";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
 import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { useMinLoading } from "@/hooks/use-min-loading";
 import { useUiStore } from "@/stores/use-ui-store";
+import { useConfig } from "@/pages/config/hooks/use-config";
 import { useSessions } from "./hooks/use-sessions";
 import { SessionDetailPage } from "./session-detail-page";
 import { parseSessionKey } from "@/lib/session-key";
@@ -28,6 +32,9 @@ export function SessionsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSizeRaw] = useState(globalPageSize);
   const setPageSize = (size: number) => { setPageSizeRaw(size); setPage(1); setGlobalPageSize(size); };
+
+  const { config, patch: patchConfig, saving: configSaving } = useConfig();
+  const threshold = (config?.agents as any)?.defaults?.compaction?.autoCompactThreshold ?? 0.75;
 
   const { sessions, total, loading, fetching, refresh, preview, deleteSession, resetSession, patchSession } = useSessions({
     limit: pageSize,
@@ -76,10 +83,46 @@ export function SessionsPage() {
         title={t("title")}
         description={t("description")}
         actions={
-          <Button variant="outline" size="sm" onClick={refresh} disabled={spinning} className="gap-1">
-            <RefreshCw className={"h-3.5 w-3.5" + (spinning ? " animate-spin" : "")} />
-            {t("refresh")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1">
+                  <Settings className="h-3.5 w-3.5" />
+                  {t("settings.title")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72">
+                <div className="space-y-3">
+                  <h4 className="font-medium text-sm">{t("settings.title")}</h4>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">{t("settings.autoCompactThreshold")}</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        defaultValue={threshold}
+                        onBlur={(e) => {
+                          const v = parseFloat(e.target.value);
+                          if (!isNaN(v) && v >= 0 && v <= 1) {
+                            patchConfig({ agents: { defaults: { compaction: { autoCompactThreshold: v } } } });
+                          }
+                        }}
+                        className="h-8 text-sm"
+                      />
+                      {configSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                    </div>
+                    <p className="text-2xs text-muted-foreground">{t("settings.autoCompactThresholdTip")}</p>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+            <Button variant="outline" size="sm" onClick={refresh} disabled={spinning} className="gap-1">
+              <RefreshCw className={"h-3.5 w-3.5" + (spinning ? " animate-spin" : "")} />
+              {t("refresh")}
+            </Button>
+          </div>
         }
       />
 
@@ -118,6 +161,7 @@ export function SessionsPage() {
                   <SessionRow
                     key={session.key}
                     session={session}
+                    threshold={threshold}
                     onClick={() => navigate(`/sessions/${encodeURIComponent(session.key)}`)}
                   />
                 ))}
@@ -140,9 +184,11 @@ export function SessionsPage() {
 
 function SessionRow({
   session,
+  threshold,
   onClick,
 }: {
   session: SessionInfo;
+  threshold: number;
   onClick: () => void;
 }) {
   const { t } = useTranslation("sessions");
@@ -172,6 +218,7 @@ function SessionRow({
           estimatedTokens={session.estimatedTokens ?? 0}
           contextWindow={session.contextWindow ?? 0}
           compactionCount={session.compactionCount ?? 0}
+          threshold={threshold}
           t={t}
         />
       </td>
@@ -188,17 +235,19 @@ function ContextUsageBar({
   estimatedTokens,
   contextWindow,
   compactionCount,
+  threshold,
   t,
 }: {
   estimatedTokens: number;
   contextWindow: number;
   compactionCount: number;
+  threshold: number;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   if (contextWindow <= 0) return <span className="text-xs text-muted-foreground">—</span>;
 
-  const threshold = contextWindow * 0.75;
-  const pct = Math.min(Math.round((estimatedTokens / threshold) * 100), 100);
+  const barThreshold = contextWindow * threshold;
+  const pct = Math.min(Math.round((estimatedTokens / barThreshold) * 100), 100);
 
   let barColor = "bg-emerald-500";
   if (pct >= 85) barColor = "bg-red-500";

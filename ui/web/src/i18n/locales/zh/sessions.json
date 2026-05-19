@@ -17,6 +17,11 @@
   "contextBar": {
     "compacted": "已压缩 {{count}} 次"
   },
+  "settings": {
+    "title": "设置",
+    "autoCompactThreshold": "自动压缩阈值",
+    "autoCompactThresholdTip": "超过此上下文窗口比例的空闲会话将被自动压缩。"
+  },
   "detail": {
     "reset": "重置",
     "delete": "删除",

@@ -17,6 +17,11 @@
   "contextBar": {
     "compacted": "Compacted {{count}} time(s)"
   },
+  "settings": {
+    "title": "Settings",
+    "autoCompactThreshold": "Auto-compact threshold",
+    "autoCompactThresholdTip": "Sessions exceeding this fraction of their context window will be auto-compacted when idle."
+  },
   "detail": {
     "reset": "Reset",
     "delete": "Delete",

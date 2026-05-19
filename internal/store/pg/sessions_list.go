@@ -274,6 +274,63 @@ func (s *PGSessionStore) Save(ctx context.Context, key string) error {
 	return nil
 }
 
+// ListOverThreshold returns sessions where estimatedTokens >= threshold * contextWindow
+// and updated_at is older than idleSince (to avoid racing with active agent loops).
+func (s *PGSessionStore) ListOverThreshold(ctx context.Context, threshold float64, idleSince time.Duration) ([]store.SessionInfoRich, error) {
+	var conditions []string
+	var args []any
+	idx := 1
+
+	if !store.IsCrossTenant(ctx) {
+		tid := store.TenantIDFromContext(ctx)
+		if tid != uuid.Nil {
+			conditions = append(conditions, fmt.Sprintf("s.tenant_id = $%d", idx))
+			args = append(args, tid)
+			idx++
+		}
+	}
+
+	conditions = append(conditions, fmt.Sprintf(`COALESCE(
+		NULLIF(s.metadata->>'last_prompt_tokens', '')::int,
+		octet_length(s.messages::text) / 4 + 12000
+	) >= COALESCE(a.context_window, 200000) * $%d`, idx))
+	args = append(args, threshold)
+	idx++
+
+	conditions = append(conditions, fmt.Sprintf("s.updated_at < NOW() - INTERVAL '%d seconds'", int(idleSince.Seconds())))
+
+	where := ""
+	if len(conditions) > 0 {
+		where = " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	const richCols = `s.session_key, jsonb_array_length(s.messages) AS message_count, s.created_at, s.updated_at,
+		s.label, s.channel, s.user_id, COALESCE(s.metadata, '{}') AS metadata,
+		s.model, s.provider, s.input_tokens, s.output_tokens,
+		COALESCE(a.display_name, '') AS agent_name,
+		COALESCE(
+		  NULLIF(s.metadata->>'last_prompt_tokens', '')::int,
+		  octet_length(s.messages::text) / 4 + 12000
+		) AS estimated_tokens,
+		COALESCE(a.context_window, 200000) AS context_window,
+		s.compaction_count`
+
+	selectQ := fmt.Sprintf(`SELECT %s
+		FROM sessions s LEFT JOIN agents a ON s.agent_id = a.id
+		%s ORDER BY s.updated_at DESC`, richCols, where)
+
+	var scanned []sessionRichRow
+	if err := pkgSqlxDB.SelectContext(ctx, &scanned, selectQ, args...); err != nil {
+		return nil, err
+	}
+
+	result := make([]store.SessionInfoRich, 0, len(scanned))
+	for i := range scanned {
+		result = append(result, scanned[i].toSessionInfoRich())
+	}
+	return result, nil
+}
+
 func (s *PGSessionStore) LastUsedChannel(ctx context.Context, agentID string) (string, string) {
 	prefix := "agent:" + agentID + ":%"
 	tid := tenantIDForInsert(ctx)

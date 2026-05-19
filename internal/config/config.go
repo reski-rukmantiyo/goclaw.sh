@@ -153,10 +153,11 @@ type AgentDefaults struct {
 // CompactionConfig configures session compaction behaviour.
 // Matching TS agents.defaults.compaction.
 type CompactionConfig struct {
-	ReserveTokensFloor int                `json:"reserveTokensFloor,omitempty"` // min reserve tokens (default 20000)
-	MaxHistoryShare    float64            `json:"maxHistoryShare,omitempty"`    // max share of context for history (default 0.85)
-	KeepLastMessages   int                `json:"keepLastMessages,omitempty"`   // messages to keep after compaction (default 4)
-	MemoryFlush        *MemoryFlushConfig `json:"memoryFlush,omitempty"`        // pre-compaction flush
+	ReserveTokensFloor   int                `json:"reserveTokensFloor,omitempty"`   // min reserve tokens (default 20000)
+	MaxHistoryShare      float64            `json:"maxHistoryShare,omitempty"`      // max share of context for history (default 0.85)
+	KeepLastMessages     int                `json:"keepLastMessages,omitempty"`     // messages to keep after compaction (default 4)
+	AutoCompactThreshold float64            `json:"autoCompactThreshold,omitempty"` // auto-compact idle sessions when estimatedTokens >= threshold * contextWindow (default 0.75, 0 = disabled)
+	MemoryFlush          *MemoryFlushConfig `json:"memoryFlush,omitempty"`          // pre-compaction flush
 }
 
 // MemoryFlushConfig configures the pre-compaction memory flush.
