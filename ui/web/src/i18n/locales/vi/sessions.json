@@ -38,7 +38,11 @@
     "showDetails": "xem chi tiết",
     "hide": "ẩn",
     "systemMessage": "Tin nhắn hệ thống",
-    "messages": "tin nhắn"
+    "messages": "tin nhắn",
+    "compact": "Nén",
+    "compactTitle": "Nén Session",
+    "compactDescription": "Thao tác này sẽ tóm tắt các tin nhắn cũ để giảm sử dụng token. Các tin nhắn gần đây sẽ được giữ lại.",
+    "confirmCompact": "Nén"
   },
   "toast": {
     "deleted": "Đã xóa session",
@@ -46,6 +50,8 @@
     "reset": "Đã đặt lại session",
     "resetFailed": "Không thể đặt lại session",
     "updated": "Đã cập nhật session",
-    "updateFailed": "Không thể cập nhật session"
+    "updateFailed": "Không thể cập nhật session",
+    "compacted": "Đã nén session",
+    "compactFailed": "Không thể nén session"
   }
 }

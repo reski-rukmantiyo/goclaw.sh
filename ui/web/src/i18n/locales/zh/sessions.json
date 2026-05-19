@@ -38,7 +38,11 @@
     "showDetails": "显示详情",
     "hide": "隐藏",
     "systemMessage": "系统消息",
-    "messages": "条消息"
+    "messages": "条消息",
+    "compact": "压缩",
+    "compactTitle": "压缩Session",
+    "compactDescription": "这将总结较旧的消息以减少令牌使用。最近的消息将被保留。",
+    "confirmCompact": "压缩"
   },
   "toast": {
     "deleted": "Session已删除",
@@ -46,6 +50,8 @@
     "reset": "Session已重置",
     "resetFailed": "重置Session失败",
     "updated": "Session已更新",
-    "updateFailed": "更新Session失败"
+    "updateFailed": "更新Session失败",
+    "compacted": "Session已压缩",
+    "compactFailed": "压缩Session失败"
   }
 }

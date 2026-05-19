@@ -36,7 +36,7 @@ export function SessionsPage() {
   const { config, patch: patchConfig, saving: configSaving } = useConfig();
   const threshold = (config?.agents as any)?.defaults?.compaction?.autoCompactThreshold ?? 0.75;
 
-  const { sessions, total, loading, fetching, refresh, preview, deleteSession, resetSession, patchSession } = useSessions({
+  const { sessions, total, loading, fetching, refresh, preview, deleteSession, resetSession, compactSession, patchSession } = useSessions({
     limit: pageSize,
     offset: (page - 1) * pageSize,
   });
@@ -60,6 +60,7 @@ export function SessionsPage() {
           navigate("/sessions");
         }}
         onReset={resetSession}
+        onCompact={compactSession}
         onPatch={patchSession}
       />
     );
