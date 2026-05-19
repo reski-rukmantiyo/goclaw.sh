@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,6 +23,14 @@ interface TopicGuardSectionProps {
 export function TopicGuardSection({ enabled, value, onToggle, onChange }: TopicGuardSectionProps) {
   const { t } = useTranslation("agents");
   const s = "configSections.topicGuard";
+
+  // Local string state for keyword inputs — avoids round-trip trimming that eats spaces.
+  const [allowInput, setAllowInput] = useState(arrayToTags(value.allow_keywords));
+  const [blockInput, setBlockInput] = useState(arrayToTags(value.block_keywords));
+
+  // Sync local state when external value changes (e.g. after save/reload).
+  useEffect(() => { setAllowInput(arrayToTags(value.allow_keywords)); }, [value.allow_keywords]);
+  useEffect(() => { setBlockInput(arrayToTags(value.block_keywords)); }, [value.block_keywords]);
 
   return (
     <ConfigSection
@@ -80,9 +89,10 @@ export function TopicGuardSection({ enabled, value, onToggle, onChange }: TopicG
         <Input
           type="text"
           placeholder={t(`${s}.keywordsPlaceholder`, "e.g. python, api, database")}
-          value={arrayToTags(value.allow_keywords)}
-          onChange={(e) =>
-            onChange({ ...value, allow_keywords: tagsToArray(e.target.value) })
+          value={allowInput}
+          onChange={(e) => setAllowInput(e.target.value)}
+          onBlur={() =>
+            onChange({ ...value, allow_keywords: tagsToArray(allowInput) })
           }
         />
       </div>
@@ -95,9 +105,10 @@ export function TopicGuardSection({ enabled, value, onToggle, onChange }: TopicG
         <Input
           type="text"
           placeholder={t(`${s}.keywordsPlaceholder`, "e.g. hack, exploit")}
-          value={arrayToTags(value.block_keywords)}
-          onChange={(e) =>
-            onChange({ ...value, block_keywords: tagsToArray(e.target.value) })
+          value={blockInput}
+          onChange={(e) => setBlockInput(e.target.value)}
+          onBlur={() =>
+            onChange({ ...value, block_keywords: tagsToArray(blockInput) })
           }
         />
       </div>

@@ -7,6 +7,16 @@ import { getApiClient } from '../../lib/api'
 import { numOrUndef } from '../../lib/format'
 import type { TopicGuardConfig } from '../../types/agent'
 
+/** Convert comma-separated string to string array, or undefined if empty. */
+function tagsToArray(s: string): string[] | undefined {
+  if (!s) return undefined
+  return s.split(',').map((t) => t.trim()).filter(Boolean)
+}
+/** Convert string array to comma-separated display string. */
+function arrayToTags(arr?: string[]): string {
+  return arr?.join(', ') ?? ''
+}
+
 interface TopicGuardSectionProps {
   enabled: boolean
   value: TopicGuardConfig
@@ -23,12 +33,13 @@ export function TopicGuardSection({ enabled, value, onToggle, onChange }: TopicG
   const inputCls = 'w-full bg-surface-tertiary border border-border rounded-lg px-3 py-2 text-base md:text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent'
   const selectCls = inputCls
 
-  const tagsToArray = (s: string): string[] | undefined => {
-    const trimmed = s.trim()
-    if (!trimmed) return undefined
-    return trimmed.split(',').map((t) => t.trim()).filter(Boolean)
-  }
-  const arrayToTags = (arr?: string[]): string => arr?.join(', ') ?? ''
+  // Local string state for keyword inputs — avoids round-trip trimming that eats spaces.
+  const [allowInput, setAllowInput] = useState(arrayToTags(value.allow_keywords))
+  const [blockInput, setBlockInput] = useState(arrayToTags(value.block_keywords))
+
+  // Sync local state when external value changes.
+  useEffect(() => { setAllowInput(arrayToTags(value.allow_keywords)) }, [value.allow_keywords])
+  useEffect(() => { setBlockInput(arrayToTags(value.block_keywords)) }, [value.block_keywords])
 
   // Provider/model dropdown data for LLM classification
   const enabledProviders = useMemo(
@@ -109,8 +120,9 @@ export function TopicGuardSection({ enabled, value, onToggle, onChange }: TopicG
         <input
           type="text"
           placeholder={t(`${s}.keywordsPlaceholder`)}
-          value={arrayToTags(value.allow_keywords)}
-          onChange={(e) => update({ allow_keywords: tagsToArray(e.target.value) })}
+          value={allowInput}
+          onChange={(e) => setAllowInput(e.target.value)}
+          onBlur={() => update({ allow_keywords: tagsToArray(allowInput) })}
           className={inputCls}
         />
       </div>
@@ -121,8 +133,9 @@ export function TopicGuardSection({ enabled, value, onToggle, onChange }: TopicG
         <input
           type="text"
           placeholder={t(`${s}.keywordsPlaceholder`)}
-          value={arrayToTags(value.block_keywords)}
-          onChange={(e) => update({ block_keywords: tagsToArray(e.target.value) })}
+          value={blockInput}
+          onChange={(e) => setBlockInput(e.target.value)}
+          onBlur={() => update({ block_keywords: tagsToArray(blockInput) })}
           className={inputCls}
         />
       </div>

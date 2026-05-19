@@ -108,7 +108,6 @@ export function useAgentDetail(agentId: string | undefined) {
           content,
         });
         await invalidate();
-        toast.success(i18n.t("agents:toast.updated"));
       } catch (err) {
         toast.error(i18n.t("agents:toast.updateFailed"), userFriendlyError(err));
         throw err;
