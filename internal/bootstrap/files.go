@@ -41,6 +41,7 @@ const (
 	MemoryFile     = "MEMORY.md"
 	MemoryAltFile  = "memory.md"
 	MemoryJSONFile = "MEMORY.json"
+	GuardrailFile  = "GUARDRAIL.json"
 )
 
 // standardFiles is the ordered list of bootstrap files to load.

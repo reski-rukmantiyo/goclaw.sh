@@ -230,6 +230,38 @@ type DreamingConfig struct {
 	VerboseLog *bool `json:"verbose_log,omitempty"` // log debounce/below-threshold skips at info level (default false)
 }
 
+// TopicGuardConfig configures per-agent topic guardrails to restrict conversations
+// to defined domains. Keyword matching runs first; optional LLM fallback classifies
+// ambiguous messages that match neither allowlist nor blocklist.
+type TopicGuardConfig struct {
+	Enabled *bool `json:"enabled,omitempty"` // nil/false = disabled
+
+	// "keyword" (default) — only keyword matching, no LLM call.
+	// "keyword_and_llm" — keyword first, LLM classification for unmatched messages.
+	Mode string `json:"mode,omitempty"`
+
+	AllowKeywords []string `json:"allow_keywords,omitempty"` // in-context topic keywords
+	BlockKeywords []string `json:"block_keywords,omitempty"` // out-of-context (priority over allow)
+
+	// Default behavior when no keyword matches: "allow" (default) or "block".
+	DefaultAction string `json:"default_action,omitempty"`
+
+	// Custom rejection message. Empty = use i18n default.
+	RejectionMessage string `json:"rejection_message,omitempty"`
+
+	// Intercept timing: "before" (default), "after", or "both".
+	// "before" = check user message before LLM call (saves tokens).
+	// "after" = let LLM answer, then check response (catches off-topic output).
+	// "both" = check both user message and LLM response.
+	Intercept string `json:"intercept,omitempty"`
+
+	// LLM fallback config (only used when mode = "keyword_and_llm").
+	LLMProvider  string `json:"llm_provider,omitempty"`  // provider name for classification (empty = use agent's provider)
+	LLMModel     string `json:"llm_model,omitempty"`     // model name (must be <7B params, empty = smallest available)
+	LLMMaxTokens int    `json:"llm_max_tokens,omitempty"` // max response tokens for classification (default 10)
+	LLMTimeoutMs int    `json:"llm_timeout_ms,omitempty"` // timeout for classification call (default 5000)
+}
+
 // SandboxConfig configures Docker-based sandbox execution.
 // Matching TS agents.defaults.sandbox.
 type SandboxConfig struct {

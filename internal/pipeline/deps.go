@@ -105,8 +105,9 @@ type PipelineDeps struct {
 	// nil = feature disabled (no Codex image gen or no workspace).
 	PersistAssistantImages   func(msg *providers.Message, workspace string)
 	SkillPostscript          func(ctx context.Context, content string, totalToolCalls int) string // skill evolution nudge (nil = disabled)
-	SanitizeContent          func(content string) string
-	StripMessageDirectives   func(content string) string
+	SanitizeContent              func(content string) string
+	CheckTopicGuardResponse     func(ctx context.Context, response string) (allowed bool, rejectionMsg string) // nil = no guard
+	StripMessageDirectives      func(content string) string
 	DeduplicateMediaSuffix   func(content, suffix string) string
 	IsSilentReply          func(content string) bool
 	EmitSessionCompleted   func(ctx context.Context, sessionKey string, msgCount, tokensUsed, compactionCount int)

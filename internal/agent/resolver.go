@@ -264,6 +264,17 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 			sandboxCfgOverride = &resolved
 		}
 
+		// Load topic guardrail config from GUARDRAIL.json context file.
+		var topicGuardCfg *config.TopicGuardConfig
+		if files, err := deps.AgentStore.GetAgentContextFiles(ctx, ag.ID); err == nil {
+			for _, f := range files {
+				if f.FileName == bootstrap.GuardrailFile {
+					topicGuardCfg = ParseTopicGuardConfig([]byte(f.Content))
+					break
+				}
+			}
+		}
+
 		// Resolve tenant slug once for workspace + dataDir scoping.
 		var tenantSlug string
 		if ag.TenantID != store.MasterTenantID && ag.TenantID != uuid.Nil {
@@ -505,6 +516,7 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 			TraceCollector:         deps.TraceCollector,
 			InjectionAction:        deps.InjectionAction,
 			MaxMessageChars:        deps.MaxMessageChars,
+			TopicGuardCfg:          topicGuardCfg,
 			CompactionCfg:          compactionCfg,
 			ContextPruningCfg:      contextPruningCfg,
 			SandboxEnabled:         sandboxEnabled,

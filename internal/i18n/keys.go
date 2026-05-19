@@ -228,4 +228,8 @@ const (
 	MsgHookBudgetExceeded          = "hook.budget_exceeded"           // "tenant hook token budget exceeded"
 	MsgHookPerTurnCapReached       = "hook.per_turn_cap_reached"      // "hook invocation per-turn cap reached"
 	MsgHookBuiltinReadOnly         = "hook.builtin_readonly"          // "builtin hooks are read-only except for the enabled toggle"
+
+	// --- Topic guard ---
+	MsgTopicGuardBlocked = "topic_guard.blocked" // "This question is outside the scope of this agent. %s"
+	MsgTopicGuardError   = "topic_guard.error"   // "topic classification error: %s"
 )

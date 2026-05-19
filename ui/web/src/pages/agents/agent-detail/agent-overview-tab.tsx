@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
-  AgentData, MemoryConfig, SubagentsConfig, ToolPolicyConfig,
+  AgentData, MemoryConfig, SubagentsConfig, ToolPolicyConfig, TopicGuardConfig,
 } from "@/types/agent";
 import { StickySaveBar } from "@/components/shared/sticky-save-bar";
 import { PersonalitySection } from "./overview-sections/personality-section";
@@ -15,19 +15,22 @@ import { CapabilitiesSection } from "./overview-sections/capabilities-section";
 import { ChatGPTOAuthRoutingSummarySection } from "./overview-sections/chatgpt-oauth-routing-summary-section";
 import { HeartbeatCard } from "./overview-sections/heartbeat-card";
 import { HooksSummaryCard } from "./overview-sections/hooks-summary-card";
-import { MemorySection } from "./config-sections";
+import { MemorySection, TopicGuardSection } from "./config-sections";
 import type { UseAgentHeartbeatReturn } from "../hooks/use-agent-heartbeat";
+import type { BootstrapFile } from "@/types/agent";
 
 interface AgentOverviewTabProps {
   agent: AgentData;
   onUpdate: (updates: Record<string, unknown>) => Promise<void>;
+  getFile: (name: string) => Promise<BootstrapFile | null>;
+  setFile: (name: string, content: string) => Promise<void>;
   heartbeat: UseAgentHeartbeatReturn;
   onManageCodexPool: () => void;
   onViewHooks: () => void;
   onAddHook: () => void;
 }
 
-export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool, onViewHooks, onAddHook }: AgentOverviewTabProps) {
+export function AgentOverviewTab({ agent, onUpdate, getFile, setFile, heartbeat, onManageCodexPool, onViewHooks, onAddHook }: AgentOverviewTabProps) {
   const { t } = useTranslation("agents");
 
   // Personality
@@ -60,6 +63,29 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
   const [sub, setSub] = useState<SubagentsConfig>(agent.subagents_config ?? {});
   const [toolsEnabled, setToolsEnabled] = useState(agent.tools_config != null);
   const [tools, setTools] = useState<ToolPolicyConfig>(agent.tools_config ?? {});
+
+  // Topic guard (stored as GUARDRAIL.json context file)
+  const [topicGuard, setTopicGuard] = useState<TopicGuardConfig>({});
+  const [topicGuardEnabled, setTopicGuardEnabled] = useState(false);
+  const [topicGuardLoaded, setTopicGuardLoaded] = useState(false);
+
+  // Load topic guard config from file on first render
+  if (!topicGuardLoaded) {
+    setTopicGuardLoaded(true);
+    getFile("GUARDRAIL.json").then((f) => {
+      if (f?.content) {
+        try {
+          const cfg = JSON.parse(f.content) as TopicGuardConfig;
+          setTopicGuard(cfg);
+          setTopicGuardEnabled(!!cfg.enabled);
+        } catch { /* ignore parse errors */ }
+      }
+    });
+  }
+
+  const handleTopicGuardSave = (cfg: TopicGuardConfig) => {
+    setTopicGuard({ ...cfg, enabled: topicGuardEnabled });
+  };
 
   // Save state
   const [saving, setSaving] = useState(false);
@@ -96,6 +122,10 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
         updates.chatgpt_oauth_routing = null;
       }
       await onUpdate(updates);
+      // Save topic guard config to GUARDRAIL.json alongside agent updates.
+      if (topicGuardEnabled || Object.keys(topicGuard).length > 0) {
+        await setFile("GUARDRAIL.json", JSON.stringify({ ...topicGuard, enabled: topicGuardEnabled }, null, 2));
+      }
     } catch {
       // toast shown by hook
     } finally {
@@ -184,6 +214,16 @@ export function AgentOverviewTab({ agent, onUpdate, heartbeat, onManageCodexPool
         tools={tools}
         onToolsToggle={setToolsEnabled}
         onToolsChange={setTools}
+      />
+
+      <TopicGuardSection
+        enabled={topicGuardEnabled}
+        value={topicGuard}
+        onToggle={(v) => {
+          setTopicGuardEnabled(v);
+          setTopicGuard({ ...topicGuard, enabled: v });
+        }}
+        onChange={(cfg) => setTopicGuard({ ...cfg, enabled: topicGuardEnabled })}
       />
 
       <StickySaveBar

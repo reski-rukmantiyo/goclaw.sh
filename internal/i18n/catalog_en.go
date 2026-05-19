@@ -224,6 +224,10 @@ func init() {
 		MsgHookPerTurnCapReached:       "hook invocation per-turn cap reached",
 		MsgHookBuiltinReadOnly:         "builtin hooks are read-only except for the enabled toggle",
 
+		// Topic guard
+		MsgTopicGuardBlocked: "This question is outside the scope of this agent. %s",
+		MsgTopicGuardError:   "topic classification error: %s",
+
 		// Message tool cross-target forward notice
 		MessageCrossTargetForwarded: "📤 Forwarded to %s as requested: %q",
 	})

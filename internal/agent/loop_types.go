@@ -173,6 +173,9 @@ type Loop struct {
 	injectionAction string // "log", "warn" (default), "block", "off"
 	maxMessageChars int    // 0 = use default (32000)
 
+	// Topic guardrail: keyword + optional LLM classification
+	topicGuard *TopicGuard
+
 	// Global builtin tool settings (from builtin_tools.settings table).
 	// Tier 3 in the overlay — tenant (tier 2) and future per-agent (tier 1) sit above.
 	builtinToolSettings tools.BuiltinToolSettings
@@ -377,6 +380,9 @@ type LoopConfig struct {
 	InjectionAction string      // "log", "warn" (default), "block", "off"
 	MaxMessageChars int         // 0 = use default (32000)
 
+	// Topic guardrail: per-agent keyword + optional LLM classification
+	TopicGuardCfg *config.TopicGuardConfig
+
 	// Global builtin tool settings (from builtin_tools table, merged with per-agent overrides)
 	BuiltinToolSettings tools.BuiltinToolSettings
 
@@ -555,6 +561,7 @@ func NewLoop(cfg LoopConfig) *Loop {
 		inputGuard:             guard,
 		injectionAction:        action,
 		maxMessageChars:        cfg.MaxMessageChars,
+		topicGuard:             NewTopicGuard(cfg.TopicGuardCfg, cfg.Provider),
 		builtinToolSettings:    cfg.BuiltinToolSettings,
 		tenantToolSettings:     cfg.TenantToolSettings,
 		tenantAllowedPaths:     cfg.TenantAllowedPaths,

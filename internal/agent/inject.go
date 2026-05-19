@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -43,6 +44,17 @@ func (l *Loop) processInjectedMessage(injected InjectedMessage, emitRun func(Age
 			slog.Warn("security.injection_detected_midrun",
 				"agent", l.id, "user", injected.UserID,
 				"patterns", matchStr)
+		}
+	}
+
+	// Topic guardrail: check injected content against scope rules.
+	if l.topicGuard != nil {
+		result := l.topicGuard.Check(context.Background(), injected.Content)
+		if !result.Allowed {
+			slog.Warn("topic_guard.blocked_midrun",
+				"agent", l.id, "user", injected.UserID,
+				"reason", result.Reason)
+			return nil, false
 		}
 	}
 
