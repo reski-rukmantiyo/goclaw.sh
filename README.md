@@ -70,6 +70,7 @@ Single binary. Production-tested. Agents that orchestrate for you.
 - **20+ LLM Providers** — Anthropic (native HTTP+SSE with prompt caching), OpenAI, OpenRouter, Groq, DeepSeek, Gemini, Mistral, xAI, MiniMax, DashScope, ZAI, ZAI Coding, Claude CLI, Codex, ACP, and any OpenAI-compatible endpoint
 - **7 Messaging Channels** — Telegram, Discord, Slack, Zalo OA, Zalo Personal, Feishu/Lark, WhatsApp
 - **WhatsApp Group Intelligence** — Per-group settings (agent routing, mention requirements, enable/disable), listen-only agents that silently collect conversations for knowledge graph extraction, raw message buffering, and shared knowledge groups that unify insights across multiple WhatsApp groups into a single knowledge graph scope
+- **Context Guardrails** — Keyword allow/block lists with word-boundary regex matching, optional LLM classification fallback, configurable intercept timing (before/after/both)
 - **Production Security** — 5-layer permission system, rate limiting, prompt injection detection, SSRF protection, AES-256-GCM encryption
 - **Single Binary** — ~25 MB static Go binary, no Node.js runtime, <1s startup, runs on a $5 VPS
 - **Observability** — Built-in LLM call tracing with spans and prompt cache metrics, optional OpenTelemetry OTLP export

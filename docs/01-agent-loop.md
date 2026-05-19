@@ -248,6 +248,7 @@ flowchart TD
 ### Phase 2: Input Validation
 
 - **InputGuard**: scans the user message against 6 regex patterns that detect prompt injection attempts. See Section 4 for details.
+- **ContextGuard**: checks user messages (and optionally LLM responses) against keyword allow/block lists with word-boundary regex matching. Block keywords take priority. Unmatched messages fall back to default action (`allow`/`block`) or optional LLM classification (`keyword_and_llm` mode). Intercept timing: `before` (pre-LLM), `after` (post-LLM), or `both`.
 - **Message truncation**: if the message exceeds `max_message_chars` (default 32,768), the content is truncated and the LLM receives a notification that the input was shortened. The message is never rejected outright.
 
 ### Phase 3: Build Messages

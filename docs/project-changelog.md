@@ -4,6 +4,19 @@ Significant changes, features, and fixes in reverse chronological order.
 
 ---
 
+## v3.11.5 — 2026-05-19
+
+### Features
+
+- **Context Guardrails** — New per-agent content filter (`ContextGuard`) with keyword allow/block lists using word-boundary regex matching. Optional LLM classification fallback (`keyword_and_llm` mode) for unmatched messages. Configurable intercept timing: `before` (pre-LLM), `after` (post-LLM), or `both`. Block keywords take priority. Small-model warning (<7B params) for classification LLM. UI config sections in web and desktop dashboards.
+
+### Fixes
+
+- Local keyword input state with `onBlur` updates prevents premature trimming.
+- Removed redundant save toast on context guard config changes.
+
+---
+
 ## v3.11.4 — 2026-05-18
 
 ### Features
@@ -21,7 +34,7 @@ Significant changes, features, and fixes in reverse chronological order.
 
 ### Features
 
-- **Session Clear Scheduler** — Automated session clearing via `sessionclear.ClearScheduler`. Supports channel-level and per-group schedules stored in channel instance config JSONB. Actions: reset (clear history) / delete (remove session). Scopes: all/dm/group. Listen-only channels and groups excluded. 1-minute evaluation ticker. Subscribes to channel reload events.
+- **Session Clear Scheduler** — Automated session clearing via `sessionclear.ClearScheduler`. Supports channel-level and per-group schedules stored in channel instance config JSONB. Actions: reset (clear history) / delete (remove session). Scopes: all/dm/group. Listen-only channels and groups excluded. 1-minute evaluation ticker. Subscribes to channel reload events. Web UI session clear config section for Telegram and WhatsApp group overrides.
 - **Raw Message Embedding Pipeline** — Full pipeline from WhatsApp listen-only message capture through KG extraction (batch 50, max 3 concurrent) to embedding worker (separate worker, configurable batch/concurrent/poll/chunk/overlap) to `raw_message_chunks` with hybrid FTS + vector + RRF search.
 - **Shared Knowledge Search** — New `shared_knowledge_search` tool enabling two-phase cross-scope search (initial query then entity drill-down). Hidden when no shared KG scopes configured. Date range extraction support.
 - **OpenRouter Provider Routing** — New `OpenRouterRoutingConfig` stored in provider settings JSONB. Fields: order, allow_fallbacks, require_parameters, data_collection, only, ignore, quantizations, sort, max_price. Injected at request time as `provider` object.
