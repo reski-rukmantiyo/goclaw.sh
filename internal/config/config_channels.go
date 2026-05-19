@@ -381,6 +381,7 @@ type ContextGuardConfig struct {
 	Provider         string             `json:"provider,omitempty"`          // evaluator provider name; empty = use agent's provider
 	Model            string             `json:"model,omitempty"`             // evaluator model override (e.g. "haiku")
 	ScopeDescription string             `json:"scope_description,omitempty"` // agent purpose / domain description
+	RefusalMessage   string             `json:"refusal_message,omitempty"`   // custom refusal template; %s = scope
 	Rules            []ContextGuardRule `json:"rules,omitempty"`
 	NotifyOwner      bool               `json:"notify_owner,omitempty"`
 	MaxHistoryTurns  int                `json:"max_history_turns,omitempty"` // recent messages to include (default 5)

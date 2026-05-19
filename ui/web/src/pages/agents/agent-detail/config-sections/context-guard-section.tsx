@@ -26,6 +26,7 @@ export interface ContextGuardConfig {
   provider?: string;
   model?: string;
   scope_description?: string;
+  refusal_message?: string;
   rules?: ContextGuardRule[];
   notify_owner?: boolean;
   max_history_turns?: number;
@@ -100,6 +101,20 @@ export function ContextGuardSection({ value, onChange }: Props) {
               className="text-sm min-h-[60px]"
             />
             <p className="text-xs text-muted-foreground">{t("detail.contextGuard.scopeHint")}</p>
+          </div>
+
+          {/* Refusal message */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">{t("detail.contextGuard.refusal")}</Label>
+            <Textarea
+              value={value.refusal_message ?? ""}
+              onChange={(e) =>
+                onChange({ ...value, refusal_message: e.target.value || undefined })
+              }
+              placeholder={t("detail.contextGuard.refusalPlaceholder", "I'm designed to help with %s. I can't assist with requests outside that scope.")}
+              className="text-sm min-h-[60px]"
+            />
+            <p className="text-xs text-muted-foreground">{t("detail.contextGuard.refusalHint")}</p>
           </div>
 
           {/* Max history turns */}

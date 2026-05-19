@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -269,7 +270,6 @@ func (l *Loop) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
 // guard blocks a user query. It mentions the agent's scope so the user knows
 // what topics are allowed.
 func (l *Loop) buildGuardRefusal(ctx context.Context, err *ErrContextGuardBlocked) string {
-	locale := store.LocaleFromContext(ctx)
 	scope := err.Scope
 	if scope == "" {
 		scope = l.displayName
@@ -277,5 +277,10 @@ func (l *Loop) buildGuardRefusal(ctx context.Context, err *ErrContextGuardBlocke
 	if scope == "" {
 		scope = l.id
 	}
+	// Use custom refusal message if configured.
+	if l.contextGuard != nil && l.contextGuard.config.RefusalMessage != "" {
+		return fmt.Sprintf(l.contextGuard.config.RefusalMessage, scope)
+	}
+	locale := store.LocaleFromContext(ctx)
 	return i18n.T(locale, i18n.MsgContextGuardRefusal, scope)
 }

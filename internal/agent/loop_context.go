@@ -327,7 +327,11 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 		}
 		cgStart := time.Now().UTC()
 		result, err := l.contextGuard.Evaluate(ctx, req.Message, history, scope)
-		emitContextGuardSpan(ctx, cgStart, result, err)
+		providerName := ""
+		if l.contextGuard.provider != nil {
+			providerName = l.contextGuard.provider.Name()
+		}
+		emitContextGuardSpan(ctx, cgStart, req.Message, l.contextGuard.config, providerName, l.contextGuard.model, result, err)
 		if err != nil {
 			slog.Warn("security.context_guard_error",
 				"agent", l.id, "user", req.UserID,

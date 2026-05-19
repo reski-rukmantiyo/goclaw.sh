@@ -31,6 +31,7 @@ export interface ContextGuardValues {
   enabled?: boolean;
   model?: string;
   scope_description?: string;
+  refusal_message?: string;
   rules?: ContextGuardRule[];
   notify_owner?: boolean;
   max_history_turns?: number;
@@ -113,6 +114,20 @@ export function BehaviorContextGuardCard({ value, onChange }: Props) {
                 className="text-sm min-h-[60px]"
               />
               <p className="text-xs text-muted-foreground">{t("behavior.contextGuardScopeHint")}</p>
+            </div>
+
+            {/* Refusal message */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">{t("behavior.contextGuardRefusal")}</Label>
+              <Textarea
+                value={value.refusal_message ?? ""}
+                onChange={(e) =>
+                  onChange({ ...value, refusal_message: e.target.value || undefined })
+                }
+                placeholder={t("behavior.contextGuardRefusalPlaceholder")}
+                className="text-sm min-h-[60px]"
+              />
+              <p className="text-xs text-muted-foreground">{t("behavior.contextGuardRefusalHint")}</p>
             </div>
 
             {/* Max history turns */}
