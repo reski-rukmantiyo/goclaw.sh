@@ -163,7 +163,7 @@ func (s *PGSessionStore) ListPagedRich(ctx context.Context, opts store.SessionLi
 
 	// Fetch page with agent name via LEFT JOIN
 	const richCols = `s.session_key, jsonb_array_length(s.messages) AS message_count, s.created_at, s.updated_at,
-		s.label, s.channel, s.user_id, COALESCE(s.metadata, '{}') AS metadata,
+		s.label, s.channel, s.user_id, s.tenant_id, COALESCE(s.metadata, '{}') AS metadata,
 		s.model, s.provider, s.input_tokens, s.output_tokens,
 		COALESCE(a.display_name, '') AS agent_name,
 		COALESCE(
@@ -305,7 +305,7 @@ func (s *PGSessionStore) ListOverThreshold(ctx context.Context, threshold float6
 	}
 
 	const richCols = `s.session_key, jsonb_array_length(s.messages) AS message_count, s.created_at, s.updated_at,
-		s.label, s.channel, s.user_id, COALESCE(s.metadata, '{}') AS metadata,
+		s.label, s.channel, s.user_id, s.tenant_id, COALESCE(s.metadata, '{}') AS metadata,
 		s.model, s.provider, s.input_tokens, s.output_tokens,
 		COALESCE(a.display_name, '') AS agent_name,
 		COALESCE(

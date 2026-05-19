@@ -189,14 +189,20 @@ func (d *gatewayDeps) runLifecycle(
 		taskTicker.Start()
 	}
 
-	// Session auto-compaction ticker: truncates idle sessions over token threshold.
+	// Session auto-compaction ticker: compacts idle sessions over token threshold.
 	var sessionCompactTicker *tasks.SessionCompactionTicker
 	if d.pgStores.Sessions != nil {
 		interval := d.cfg.Gateway.SessionAutoCompactIntervalSec
 		if interval <= 0 {
 			interval = 300
 		}
-		sessionCompactTicker = tasks.NewSessionCompactionTicker(d.pgStores.Sessions, d.cfg, interval)
+		sessionCompactTicker = tasks.NewSessionCompactionTicker(
+			d.pgStores.Sessions,
+			d.providerRegistry,
+			d.pgStores.SystemConfigs,
+			d.cfg,
+			interval,
+		)
 		sessionCompactTicker.Start()
 	}
 

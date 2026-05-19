@@ -181,7 +181,7 @@ func (s *SQLiteSessionStore) ListPagedRich(ctx context.Context, opts store.Sessi
 
 	// Use json_array_length and length() instead of PG-specific functions.
 	const richCols = `s.session_key, json_array_length(s.messages), s.created_at, s.updated_at,
-		s.label, s.channel, s.user_id, COALESCE(s.metadata, '{}'),
+		s.label, s.channel, s.user_id, s.tenant_id, COALESCE(s.metadata, '{}'),
 		s.model, s.provider, s.input_tokens, s.output_tokens,
 		COALESCE(a.display_name, ''),
 		COALESCE(
@@ -208,12 +208,13 @@ func (s *SQLiteSessionStore) ListPagedRich(ctx context.Context, opts store.Sessi
 		var msgCount int
 		stCreated, stUpdated := scanTimePair()
 		var label, channel, userID *string
+		var tenantID uuid.UUID
 		var metaJSON []byte
 		var model, provider *string
 		var inputTokens, outputTokens int64
 		var agentName string
 		var estimatedTokens, contextWindow, compactionCount int
-		if err := rows.Scan(&key, &msgCount, stCreated, stUpdated, &label, &channel, &userID, &metaJSON,
+		if err := rows.Scan(&key, &msgCount, stCreated, stUpdated, &label, &channel, &userID, &tenantID, &metaJSON,
 			&model, &provider, &inputTokens, &outputTokens, &agentName,
 			&estimatedTokens, &contextWindow, &compactionCount); err != nil {
 			continue
@@ -231,6 +232,7 @@ func (s *SQLiteSessionStore) ListPagedRich(ctx context.Context, opts store.Sessi
 				Label:        derefStr(label),
 				Channel:      derefStr(channel),
 				UserID:       derefStr(userID),
+				TenantID:     tenantID,
 				Metadata:     meta,
 			},
 			Model:           derefStr(model),
@@ -278,7 +280,7 @@ func (s *SQLiteSessionStore) ListOverThreshold(ctx context.Context, threshold fl
 	}
 
 	const richCols = `s.session_key, json_array_length(s.messages), s.created_at, s.updated_at,
-		s.label, s.channel, s.user_id, COALESCE(s.metadata, '{}'),
+		s.label, s.channel, s.user_id, s.tenant_id, COALESCE(s.metadata, '{}'),
 		s.model, s.provider, s.input_tokens, s.output_tokens,
 		COALESCE(a.display_name, ''),
 		COALESCE(
@@ -304,12 +306,13 @@ func (s *SQLiteSessionStore) ListOverThreshold(ctx context.Context, threshold fl
 		var msgCount int
 		stCreated, stUpdated := scanTimePair()
 		var label, channel, userID *string
+		var tenantID uuid.UUID
 		var metaJSON []byte
 		var model, provider *string
 		var inputTokens, outputTokens int64
 		var agentName string
 		var estimatedTokens, contextWindow, compactionCount int
-		if err := rows.Scan(&key, &msgCount, stCreated, stUpdated, &label, &channel, &userID, &metaJSON,
+		if err := rows.Scan(&key, &msgCount, stCreated, stUpdated, &label, &channel, &userID, &tenantID, &metaJSON,
 			&model, &provider, &inputTokens, &outputTokens, &agentName,
 			&estimatedTokens, &contextWindow, &compactionCount); err != nil {
 			continue
@@ -327,6 +330,7 @@ func (s *SQLiteSessionStore) ListOverThreshold(ctx context.Context, threshold fl
 				Label:        derefStr(label),
 				Channel:      derefStr(channel),
 				UserID:       derefStr(userID),
+				TenantID:     tenantID,
 				Metadata:     meta,
 			},
 			Model:           derefStr(model),

@@ -48,6 +48,7 @@ type SessionInfo struct {
 	Label        string            `json:"label,omitempty" db:"label"`
 	Channel      string            `json:"channel,omitempty" db:"channel"`
 	UserID       string            `json:"userID,omitempty" db:"user_id"`
+	TenantID     uuid.UUID         `json:"tenantID,omitempty" db:"tenant_id"`
 	Metadata     map[string]string `json:"metadata,omitempty" db:"metadata"`
 }
 

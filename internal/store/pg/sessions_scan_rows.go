@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
 
@@ -78,6 +79,7 @@ type sessionRichRow struct {
 	Label           *string   `db:"label"`
 	Channel         *string   `db:"channel"`
 	UserID          *string   `db:"user_id"`
+	TenantID        uuid.UUID `db:"tenant_id"`
 	MetaJSON        []byte    `db:"metadata"`
 	Model           *string   `db:"model"`
 	Provider        *string   `db:"provider"`
@@ -104,6 +106,7 @@ func (r *sessionRichRow) toSessionInfoRich() store.SessionInfoRich {
 			Label:        derefStr(r.Label),
 			Channel:      derefStr(r.Channel),
 			UserID:       derefStr(r.UserID),
+			TenantID:     r.TenantID,
 			Metadata:     meta,
 		},
 		Model:           derefStr(r.Model),

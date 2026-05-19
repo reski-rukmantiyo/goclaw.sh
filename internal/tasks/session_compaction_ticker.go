@@ -6,8 +6,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nextlevelbuilder/goclaw/internal/agent"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
+	"github.com/nextlevelbuilder/goclaw/internal/providerresolve"
+	"github.com/nextlevelbuilder/goclaw/internal/providers"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/tokencount"
 )
 
 const defaultSessionAutoCompactInterval = 5 * time.Minute
@@ -16,11 +20,13 @@ const minMessagesToCompact = 6
 
 // SessionCompactionTicker periodically scans for idle sessions whose estimated
 // token count exceeds a configurable threshold of their context window and
-// truncates their history (truncate-only, no LLM summarization).
+// compacts their history using LLM-based summarization.
 type SessionCompactionTicker struct {
-	sessions store.SessionStore
-	cfg      *config.Config
-	interval time.Duration
+	sessions     store.SessionStore
+	registry     *providers.Registry
+	systemConfigs store.SystemConfigStore
+	cfg          *config.Config
+	interval     time.Duration
 
 	stopCh chan struct{}
 	wg     sync.WaitGroup
@@ -28,16 +34,24 @@ type SessionCompactionTicker struct {
 
 // NewSessionCompactionTicker creates a new background ticker for auto-compaction.
 // intervalSec <= 0 falls back to 300s (5min).
-func NewSessionCompactionTicker(sessions store.SessionStore, cfg *config.Config, intervalSec int) *SessionCompactionTicker {
+func NewSessionCompactionTicker(
+	sessions store.SessionStore,
+	registry *providers.Registry,
+	systemConfigs store.SystemConfigStore,
+	cfg *config.Config,
+	intervalSec int,
+) *SessionCompactionTicker {
 	interval := defaultSessionAutoCompactInterval
 	if intervalSec > 0 {
 		interval = time.Duration(intervalSec) * time.Second
 	}
 	return &SessionCompactionTicker{
-		sessions: sessions,
-		cfg:      cfg,
-		interval: interval,
-		stopCh:   make(chan struct{}),
+		sessions:      sessions,
+		registry:      registry,
+		systemConfigs: systemConfigs,
+		cfg:           cfg,
+		interval:      interval,
+		stopCh:        make(chan struct{}),
 	}
 }
 
@@ -93,6 +107,7 @@ func (t *SessionCompactionTicker) compactOverThreshold() {
 	}
 
 	keepLast := t.effectiveKeepLast()
+	tokenCounter := tokencount.NewTiktokenCounter()
 
 	for _, info := range sessions {
 		history := t.sessions.GetHistory(ctx, info.Key)
@@ -100,7 +115,20 @@ func (t *SessionCompactionTicker) compactOverThreshold() {
 			continue
 		}
 
-		t.sessions.TruncateHistory(ctx, info.Key, keepLast)
+		// Resolve background provider for the session's tenant.
+		provider, model := providerresolve.ResolveBackgroundProvider(ctx, info.TenantID, t.registry, t.systemConfigs)
+		if provider == nil || model == "" {
+			slog.Warn("session_compaction_ticker: no provider resolved", "key", info.Key, "tenant", info.TenantID)
+			continue
+		}
+
+		compacted := agent.CompactMessagesWithProvider(ctx, provider, model, history, keepLast, tokenCounter, info.Key)
+		if compacted == nil {
+			slog.Warn("session_compaction_ticker: compaction failed", "key", info.Key)
+			continue
+		}
+
+		t.sessions.SetHistory(ctx, info.Key, compacted)
 		t.sessions.IncrementCompaction(ctx, info.Key)
 		if err := t.sessions.Save(ctx, info.Key); err != nil {
 			slog.Warn("session_compaction_ticker: save failed", "key", info.Key, "error", err)
@@ -110,10 +138,12 @@ func (t *SessionCompactionTicker) compactOverThreshold() {
 		slog.Info("session_auto_compact",
 			"key", info.Key,
 			"before", len(history),
-			"after", keepLast,
+			"after", len(compacted),
 			"tokens", info.EstimatedTokens,
 			"window", info.ContextWindow,
 			"threshold", threshold,
+			"provider", provider.Name(),
+			"model", model,
 		)
 	}
 }
