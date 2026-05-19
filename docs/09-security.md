@@ -510,6 +510,41 @@ When concurrency limits are hit, the error message is written for LLM reasoning:
 
 ---
 
+## 13. Context Guardrails
+
+Agent-level content filter that checks user messages (and optionally LLM responses) against keyword allow/block lists. Independent from the input injection guard.
+
+### Configuration
+
+Stored in `GUARDRAIL.json` agent context file.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | false | Master switch |
+| `mode` | string | `"keyword"` | `"keyword"` (regex only) or `"keyword_and_llm"` (regex + LLM fallback) |
+| `allow_keywords` | []string | — | In-context topic keywords (word-boundary match) |
+| `block_keywords` | []string | — | Out-of-context keywords (priority over allow) |
+| `default_action` | string | `"allow"` | `"allow"` or `"block"` when no keyword matches |
+| `intercept` | string | `"before"` | `"before"` (pre-LLM), `"after"` (post-LLM), `"both"` |
+| `rejection_message` | string | — | Custom rejection message (empty = i18n default) |
+| `llm_provider` | string | — | Provider for classification (empty = agent's provider) |
+| `llm_model` | string | — | Model for classification (<7B params recommended) |
+| `llm_max_tokens` | int | 10 | Max tokens for classification response |
+| `llm_timeout_ms` | int | 5000 | Classification timeout |
+
+### Matching Behavior
+
+- **Word-boundary regex**: Keywords are compiled as `\b<keyword>\b` to avoid substring false positives (e.g. "cat" does not match "category").
+- **Block priority**: Block keywords are checked before allow keywords.
+- **LLM fallback**: When `mode` is `"keyword_and_llm"` and no keyword matches, a small LLM classifies the message against the allow keywords. The prompt asks for a yes/no answer.
+- **Response checking**: When `intercept` is `"after"` or `"both"`, only block keywords and LLM fallback are checked against the LLM response (allowlist is not relevant for output).
+
+### Provider Warnings
+
+If the configured LLM model does not match known small-model patterns (<7B params), a warning is logged: `topic_guard.large_model`.
+
+---
+
 ## File Reference
 
 | Module | Path | Purpose |

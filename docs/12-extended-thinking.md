@@ -126,6 +126,16 @@ Reasoning content still streams in the provider-native format, and span metadata
 
 **Gemini (via OpenAI-compat)**: Uses `mapGeminiReasoningEffort()` to map levels: `"off"` → `"low"` (Gemini minimum accepted), `"medium"` → `"high"` (Gemini rejects "medium" with HTTP 400), `"low"`/`"minimal"`/`"high"` pass through unchanged. Unknown values are not forwarded.
 
+### ZAI (Z.ai GLM)
+
+ZAI uses a `thinking` object instead of a top-level reasoning string: `{"thinking": {"type": "enabled"|"disabled"}}`.
+
+- **Model-specific support**: Only `glm-5.1`, `glm-5`, and `glm-4.7` accept the thinking parameter.
+- **Guardrail**: For unsupported models, the provider silently clears the `thinking_level` option to avoid API errors.
+- **Levels**: `off` → `{"type": "disabled"}`, any other level (`low`/`medium`/`high`) → `{"type": "enabled"}`.
+
+The OpenAI request builder checks `p.zaiPassthrough()` to decide format.
+
 ### DashScope (Alibaba Qwen)
 
 | Thinking Level | Budget Tokens |
