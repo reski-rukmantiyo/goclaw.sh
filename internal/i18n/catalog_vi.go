@@ -29,7 +29,8 @@ func init() {
 		MsgRateLimitExceeded: "vượt quá giới hạn tốc độ — vui lòng đợi",
 		MsgNoUserMessage:     "không tìm thấy tin nhắn người dùng",
 		MsgUserIDRequired:    "user_id là bắt buộc",
-		MsgMsgRequired:       "tin nhắn là bắt buộc",
+		MsgMsgRequired:         "tin nhắn là bắt buộc",
+		MsgContextGuardBlocked: "tin nhắn bị chặn: %s",
 
 		// Abort
 		MsgAbortStopped:         "đã dừng tác vụ",

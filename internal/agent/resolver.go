@@ -53,6 +53,7 @@ type ResolverDeps struct {
 	// Security
 	InjectionAction string // "log", "warn", "block", "off"
 	MaxMessageChars int
+	ContextGuard    *config.ContextGuardConfig
 
 	// Global defaults (from config.json) — per-agent DB overrides take priority
 	CompactionCfg          *config.CompactionConfig
@@ -505,6 +506,7 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 			TraceCollector:         deps.TraceCollector,
 			InjectionAction:        deps.InjectionAction,
 			MaxMessageChars:        deps.MaxMessageChars,
+			ContextGuard:           resolveContextGuard(deps.ContextGuard, ag.ParseContextGuardConfig()),
 			CompactionCfg:          compactionCfg,
 			ContextPruningCfg:      contextPruningCfg,
 			SandboxEnabled:         sandboxEnabled,
@@ -613,6 +615,14 @@ func derefInt(p *int) int {
 		return 0
 	}
 	return *p
+}
+
+// resolveContextGuard returns the per-agent override if set, otherwise the global default.
+func resolveContextGuard(global, perAgent *config.ContextGuardConfig) *config.ContextGuardConfig {
+	if perAgent != nil {
+		return perAgent
+	}
+	return global
 }
 
 // resolveDefaultTimezone reads the current cron.default_timezone from the

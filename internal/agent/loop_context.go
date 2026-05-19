@@ -317,6 +317,52 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 		}
 	}
 
+	// Security: context-aware guardrail evaluation (conversation history + agent scope).
+	if l.contextGuard != nil {
+		history := l.sessions.GetHistory(ctx, req.SessionKey)
+		scope := l.contextGuard.config.ScopeDescription
+		if scope == "" {
+			scope = l.displayName
+		}
+		result, err := l.contextGuard.Evaluate(ctx, req.Message, history, scope)
+		if err != nil {
+			slog.Warn("security.context_guard_error",
+				"agent", l.id, "user", req.UserID,
+				"err", err,
+			)
+			return contextSetupResult{}, fmt.Errorf("context guard evaluation failed: %w", err)
+		}
+		if result.Blocked {
+			slog.Warn("security.context_guard_blocked",
+				"agent", l.id, "user", req.UserID,
+				"reason", result.Reason,
+				"matched_rules", result.MatchedRules,
+			)
+			if l.contextGuard.config.NotifyOwner && l.onEvent != nil {
+				l.onEvent(AgentEvent{
+					Type:       "security.guard.blocked",
+					AgentID:    l.id,
+					SessionKey: req.SessionKey,
+					UserID:     req.UserID,
+					Channel:    req.Channel,
+					Payload: map[string]any{
+						"reason":          result.Reason,
+						"matched_rules":   result.MatchedRules,
+						"message_preview": previewMessage(req.Message, 200),
+					},
+				})
+			}
+			return contextSetupResult{}, fmt.Errorf("message blocked: %s", result.Reason)
+		}
+		if result.Warning {
+			slog.Warn("security.context_guard_warned",
+				"agent", l.id, "user", req.UserID,
+				"reason", result.Reason,
+				"matched_rules", result.MatchedRules,
+			)
+		}
+	}
+
 	// Inject agent key into context for tool-level resolution (multiple agents share tool registry)
 	ctx = tools.WithToolAgentKey(ctx, l.id)
 

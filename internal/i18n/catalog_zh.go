@@ -29,7 +29,8 @@ func init() {
 		MsgRateLimitExceeded: "请求频率超限 — 请稍候",
 		MsgNoUserMessage:     "未找到用户消息",
 		MsgUserIDRequired:    "user_id 是必填项",
-		MsgMsgRequired:       "消息是必填项",
+		MsgMsgRequired:         "消息是必填项",
+		MsgContextGuardBlocked: "消息被拦截：%s",
 
 		// Abort
 		MsgAbortStopped:         "已停止运行",

@@ -248,6 +248,28 @@
       "noDelegates": "No delegate targets configured. Agent uses self-clone (spawn) mode.",
       "team": "Team"
     },
+    "contextGuard": {
+      "title": "Context Guard",
+      "enabled": "Enable Context Guard",
+      "enabledHint": "Evaluate messages against rules using conversation context.",
+      "model": "Evaluator Model",
+      "modelHint": "Lightweight model for guard evaluation. Leave empty to use the agent's default model.",
+      "scope": "Scope Description",
+      "scopeHint": "Describes what this agent is allowed to discuss.",
+      "maxHistory": "History Turns",
+      "maxHistoryHint": "Recent messages to include in evaluation context.",
+      "notifyOwner": "Notify Owner on Block",
+      "notifyOwnerHint": "Emit security event when a message is blocked.",
+      "rules": "Rules",
+      "addRule": "Add Rule",
+      "noRules": "No rules configured.",
+      "ruleName": "Rule name",
+      "ruleDescription": "What this rule covers",
+      "allow": "Allow",
+      "deny": "Deny",
+      "block": "Block",
+      "warn": "Warn"
+    },
     "evolution": {
       "title": "Evolution",
       "metricsLabel": "Evolution Metrics",
