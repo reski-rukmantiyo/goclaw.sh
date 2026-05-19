@@ -62,6 +62,8 @@ export interface SpanData {
       supported_levels?: string[];
       used_provider_default?: boolean;
     };
+    request?: Record<string, unknown>;
+    response?: Record<string, unknown>;
   };
   created_at: string;
 }

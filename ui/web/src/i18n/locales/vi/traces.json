@@ -68,6 +68,8 @@
     "input": "Đầu vào:",
     "systemPrompt": "System Prompt:",
     "output": "Đầu ra:",
+    "request": "Yêu cầu:",
+    "response": "Phản hồi:",
     "copy": "Sao chép",
     "startTime": "Bắt đầu:",
     "endTime": "Kết thúc:",
