@@ -62,14 +62,16 @@ func CompactMessagesWithProvider(
 		keepLast = minKeep
 	}
 
+	// Find a clean split boundary, increasing keepLast if needed to avoid
+	// cutting inside tool_use → tool_result pairs.
 	splitIdx := len(messages) - keepLast
-
-	// Walk backward from splitIdx to find a clean boundary —
-	// avoid splitting tool_use → tool_result pairs.
-	for splitIdx > 0 {
+	for splitIdx > 1 {
 		m := messages[splitIdx]
 		if m.Role == "tool" || (m.Role == "assistant" && len(m.ToolCalls) > 0) {
-			splitIdx--
+			// Boundary lands on a tool message or assistant with tool calls —
+			// shift keepLast up by 1 and recalculate.
+			keepLast++
+			splitIdx = len(messages) - keepLast
 			continue
 		}
 		break
