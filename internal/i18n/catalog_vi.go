@@ -113,6 +113,7 @@ func init() {
 		// Skills
 		MsgSkillsUpdateNotSupported: "skills.update không được hỗ trợ với skill dựa trên tệp",
 		MsgCannotResolveSkillID:     "không thể xác định ID skill dựa trên tệp",
+		MsgInvalidVisibility:        "visibility không hợp lệ %q: phải là private hoặc public",
 
 		// Logs
 		MsgInvalidLogAction: "action phải là 'start' hoặc 'stop'",
@@ -227,6 +228,12 @@ func init() {
 		// Topic guard
 		MsgTopicGuardBlocked: "Câu hỏi này nằm ngoài phạm vi của agent. %s",
 		MsgTopicGuardError:   "lỗi phân loại chủ đề: %s",
+
+		// Grant env validation
+		MsgGrantEnvDeniedKeys:   "các khóa env không được phép: %s",
+		MsgGrantEnvValueInvalid: "giá trị env không hợp lệ: %s",
+		MsgGrantEnvTooManyKeys:  "quá nhiều khóa env: tối đa 50",
+		MsgGrantEnvRevealLimit:  "đã vượt giới hạn yêu cầu xem env — vui lòng thử lại sau",
 
 		// Message tool cross-target forward notice
 		MessageCrossTargetForwarded: "📤 Đã forward sang %s theo yêu cầu: %q",

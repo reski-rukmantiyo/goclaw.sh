@@ -1250,6 +1250,7 @@ CREATE TABLE IF NOT EXISTS secure_cli_agent_grants (
     deny_verbose    TEXT,
     timeout_seconds INTEGER,
     tips            TEXT,
+    encrypted_env   BLOB,
     enabled         BOOLEAN NOT NULL DEFAULT 1,
     tenant_id       TEXT NOT NULL REFERENCES tenants(id),
     created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),

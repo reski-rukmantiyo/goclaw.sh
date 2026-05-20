@@ -113,6 +113,7 @@ func init() {
 		// Skills
 		MsgSkillsUpdateNotSupported: "skills.update not supported for file-based skills",
 		MsgCannotResolveSkillID:     "cannot resolve skill ID for file-based skill",
+		MsgInvalidVisibility:        "invalid visibility %q: must be one of private, public",
 
 		// Logs
 		MsgInvalidLogAction: "action must be 'start' or 'stop'",
@@ -227,6 +228,12 @@ func init() {
 		// Topic guard
 		MsgTopicGuardBlocked: "This question is outside the scope of this agent. %s",
 		MsgTopicGuardError:   "topic classification error: %s",
+
+		// Grant env validation
+		MsgGrantEnvDeniedKeys:   "env keys not allowed: %s",
+		MsgGrantEnvValueInvalid: "invalid env value: %s",
+		MsgGrantEnvTooManyKeys:  "too many env keys: max 50",
+		MsgGrantEnvRevealLimit:  "rate limit exceeded for env reveal — try again later",
 
 		// Message tool cross-target forward notice
 		MessageCrossTargetForwarded: "📤 Forwarded to %s as requested: %q",

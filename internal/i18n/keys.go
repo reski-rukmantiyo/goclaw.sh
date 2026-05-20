@@ -114,6 +114,7 @@ const (
 	// --- Skills ---
 	MsgSkillsUpdateNotSupported = "error.skills_update_not_supported" // "skills.update not supported for file-based skills"
 	MsgCannotResolveSkillID     = "error.cannot_resolve_skill_id"     // "cannot resolve skill ID for file-based skill"
+	MsgInvalidVisibility        = "error.invalid_visibility"          // "invalid visibility %q: must be one of private, public"
 
 	// --- Logs ---
 	MsgInvalidLogAction = "error.invalid_log_action" // "action must be 'start' or 'stop'"
@@ -232,4 +233,10 @@ const (
 	// --- Topic guard ---
 	MsgTopicGuardBlocked = "topic_guard.blocked" // "This question is outside the scope of this agent. %s"
 	MsgTopicGuardError   = "topic_guard.error"   // "topic classification error: %s"
+
+	// --- Grant env validation ---
+	MsgGrantEnvDeniedKeys   = "error.grant_env_denied_keys"   // "env keys not allowed: %s"
+	MsgGrantEnvValueInvalid = "error.grant_env_value_invalid" // "invalid env value: %s"
+	MsgGrantEnvTooManyKeys  = "error.grant_env_too_many_keys" // "too many env keys: max 50"
+	MsgGrantEnvRevealLimit  = "error.grant_env_reveal_limit"  // "rate limit exceeded for env reveal"
 )

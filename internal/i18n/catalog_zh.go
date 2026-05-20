@@ -113,6 +113,7 @@ func init() {
 		// Skills
 		MsgSkillsUpdateNotSupported: "基于文件的Skill不支持 skills.update",
 		MsgCannotResolveSkillID:     "无法解析基于文件的Skill ID",
+		MsgInvalidVisibility:        "无效的 visibility %q：必须为 private 或 public",
 
 		// Logs
 		MsgInvalidLogAction: "action 必须是 'start' 或 'stop'",
@@ -227,6 +228,12 @@ func init() {
 		// Topic guard
 		MsgTopicGuardBlocked: "此问题不在该代理的范围内。%s",
 		MsgTopicGuardError:   "主题分类错误：%s",
+
+		// Grant env validation
+		MsgGrantEnvDeniedKeys:   "不允许的环境变量键：%s",
+		MsgGrantEnvValueInvalid: "无效的环境变量值：%s",
+		MsgGrantEnvTooManyKeys:  "环境变量键过多：最多 50 个",
+		MsgGrantEnvRevealLimit:  "env 查看请求超出速率限制，请稍后再试",
 
 		// Message tool cross-target forward notice
 		MessageCrossTargetForwarded: "📤 已按请求转发至 %s:%q",
