@@ -156,6 +156,9 @@ func (m *mockSessionStore) ListPaged(context.Context, store.SessionListOpts) sto
 func (m *mockSessionStore) ListPagedRich(context.Context, store.SessionListOpts) store.SessionListRichResult {
 	return store.SessionListRichResult{}
 }
+func (m *mockSessionStore) ListOverThreshold(context.Context, float64, time.Duration) ([]store.SessionInfoRich, error) {
+	return nil, nil
+}
 func (m *mockSessionStore) LastUsedChannel(context.Context, string) (string, string) {
 	return "", ""
 }

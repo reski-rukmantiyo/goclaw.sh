@@ -78,6 +78,9 @@ func (n *nopSessionStore) ListPaged(_ context.Context, _ store.SessionListOpts) 
 func (n *nopSessionStore) ListPagedRich(_ context.Context, _ store.SessionListOpts) store.SessionListRichResult {
 	return store.SessionListRichResult{Sessions: []store.SessionInfoRich{}}
 }
+func (n *nopSessionStore) ListOverThreshold(_ context.Context, _ float64, _ time.Duration) ([]store.SessionInfoRich, error) {
+	return nil, nil
+}
 func (n *nopSessionStore) LastUsedChannel(_ context.Context, _ string) (string, string) {
 	return "", ""
 }

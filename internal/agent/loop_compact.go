@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
+	"github.com/nextlevelbuilder/goclaw/internal/tokencount"
 )
 
 // compactionSummaryPrompt is the structured summarization instruction used by both
@@ -37,38 +38,46 @@ Conversation to summarize:
 
 `
 
-// compactMessagesInPlace summarizes the first ~70% of messages into a condensed
-// summary, keeping the last ~30% intact. Operates purely on the local messages
-// slice — no session state touched, no locks needed.
+// CompactMessagesWithProvider summarizes the first ~70% of messages into a condensed
+// summary, keeping the last ~30% intact. It uses the given provider for the LLM call.
 // Returns nil on failure (caller keeps original messages).
-func (l *Loop) compactMessagesInPlace(ctx context.Context, messages []providers.Message) []providers.Message {
+func CompactMessagesWithProvider(
+	ctx context.Context,
+	provider providers.Provider,
+	model string,
+	messages []providers.Message,
+	keepLast int,
+	tokenCounter tokencount.TokenCounter,
+	logKey string,
+) []providers.Message {
 	if len(messages) < 6 {
 		return nil
 	}
 
-	// Resolve keepCount from compaction config (same defaults as maybeSummarize).
-	keepCount := 4
-	if l.compactionCfg != nil && l.compactionCfg.KeepLastMessages > 0 {
-		keepCount = l.compactionCfg.KeepLastMessages
+	if keepLast <= 0 {
+		keepLast = 4
 	}
 	// Ensure we keep at least 30% of messages.
-	if minKeep := len(messages) * 3 / 10; minKeep > keepCount {
-		keepCount = minKeep
+	if minKeep := len(messages) * 3 / 10; minKeep > keepLast {
+		keepLast = minKeep
 	}
 
-	splitIdx := len(messages) - keepCount
-
-	// Walk backward from splitIdx to find a clean boundary —
-	// avoid splitting tool_use → tool_result pairs.
-	for splitIdx > 0 {
+	// Find a clean split boundary, increasing keepLast if needed to avoid
+	// cutting inside tool_use → tool_result pairs.
+	splitIdx := len(messages) - keepLast
+	for splitIdx > 1 {
 		m := messages[splitIdx]
 		if m.Role == "tool" || (m.Role == "assistant" && len(m.ToolCalls) > 0) {
-			splitIdx--
+			// Boundary lands on a tool message or assistant with tool calls —
+			// shift keepLast up by 1 and recalculate.
+			keepLast++
+			splitIdx = len(messages) - keepLast
 			continue
 		}
 		break
 	}
 	if splitIdx <= 1 {
+		slog.Warn("compaction_split_boundary_failed", "key", logKey, "messages", len(messages), "keep_last", keepLast, "split_idx", splitIdx)
 		return nil
 	}
 
@@ -87,18 +96,24 @@ func (l *Loop) compactMessagesInPlace(ctx context.Context, messages []providers.
 	sctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	inTokens := l.estimateSummaryInputTokens(toSummarize)
-	slog.Info("compact_budget", "agent", l.id, "in_tokens", inTokens, "out_tokens", dynamicSummaryMax(inTokens))
-	resp, err := l.provider.Chat(sctx, providers.ChatRequest{
+	inTokens := estimateSummaryInputTokens(tokenCounter, model, toSummarize)
+	slog.Info("compact_budget", "key", logKey, "in_tokens", inTokens, "out_tokens", dynamicSummaryMax(inTokens))
+	resp, err := provider.Chat(sctx, providers.ChatRequest{
 		Messages: []providers.Message{{
 			Role:    "user",
 			Content: compactionSummaryPrompt + sb.String(),
 		}},
-		Model:   l.model,
+		Model:   model,
 		Options: map[string]any{"max_tokens": dynamicSummaryMax(inTokens), "temperature": 0.3},
 	})
 	if err != nil {
-		slog.Warn("mid_loop_compaction_failed", "agent", l.id, "error", err)
+		slog.Warn("compaction_failed", "key", logKey, "error", err)
+		return nil
+	}
+
+	summaryContent := SanitizeAssistantContent(resp.Content)
+	if summaryContent == "" {
+		slog.Warn("compaction_empty_summary", "key", logKey, "original_msgs", len(messages))
 		return nil
 	}
 
@@ -116,20 +131,29 @@ func (l *Loop) compactMessagesInPlace(ctx context.Context, messages []providers.
 
 	summary := providers.Message{
 		Role:      "user",
-		Content:   "[Summary of earlier conversation]\n" + SanitizeAssistantContent(resp.Content),
+		Content:   "[Summary of earlier conversation]\n" + summaryContent,
 		MediaRefs: preservedRefs,
 	}
-	result := make([]providers.Message, 0, 1+keepCount)
+	result := make([]providers.Message, 0, 1+keepLast)
 	result = append(result, summary)
 	result = append(result, messages[splitIdx:]...)
 
-	slog.Info("mid_loop_compacted",
-		"agent", l.id,
+	slog.Info("compacted",
+		"key", logKey,
 		"original_msgs", len(messages),
 		"summarized", splitIdx,
 		"kept", len(result))
 
 	return result
+}
+
+// compactMessagesInPlace wraps CompactMessagesWithProvider using Loop fields.
+func (l *Loop) compactMessagesInPlace(ctx context.Context, messages []providers.Message) []providers.Message {
+	keepLast := 4
+	if l.compactionCfg != nil && l.compactionCfg.KeepLastMessages > 0 {
+		keepLast = l.compactionCfg.KeepLastMessages
+	}
+	return CompactMessagesWithProvider(ctx, l.provider, l.model, messages, keepLast, l.tokenCounter, l.id)
 }
 
 // dynamicSummaryMax returns the output-token budget for a compaction or
@@ -143,13 +167,19 @@ func dynamicSummaryMax(inputTokens int) int {
 
 // estimateSummaryInputTokens returns a best-effort input-token count. Prefers
 // TokenCounter when attached; else rune/3 fallback (~±15% for UTF-8).
-func (l *Loop) estimateSummaryInputTokens(messages []providers.Message) int {
-	if l.tokenCounter != nil {
-		return l.tokenCounter.CountMessages(l.model, messages)
+func estimateSummaryInputTokens(counter tokencount.TokenCounter, model string, messages []providers.Message) int {
+	if counter != nil {
+		return counter.CountMessages(model, messages)
 	}
 	total := 0
 	for _, m := range messages {
 		total += len([]rune(m.Content)) / 3
 	}
 	return total
+}
+
+// estimateSummaryInputTokens returns a best-effort input-token count. Prefers
+// TokenCounter when attached; else rune/3 fallback (~±15% for UTF-8).
+func (l *Loop) estimateSummaryInputTokens(messages []providers.Message) int {
+	return estimateSummaryInputTokens(l.tokenCounter, l.model, messages)
 }

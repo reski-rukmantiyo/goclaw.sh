@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -180,7 +181,7 @@ func (s *SQLiteSessionStore) ListPagedRich(ctx context.Context, opts store.Sessi
 
 	// Use json_array_length and length() instead of PG-specific functions.
 	const richCols = `s.session_key, json_array_length(s.messages), s.created_at, s.updated_at,
-		s.label, s.channel, s.user_id, COALESCE(s.metadata, '{}'),
+		s.label, s.channel, s.user_id, s.tenant_id, COALESCE(s.metadata, '{}'),
 		s.model, s.provider, s.input_tokens, s.output_tokens,
 		COALESCE(a.display_name, ''),
 		COALESCE(
@@ -207,12 +208,13 @@ func (s *SQLiteSessionStore) ListPagedRich(ctx context.Context, opts store.Sessi
 		var msgCount int
 		stCreated, stUpdated := scanTimePair()
 		var label, channel, userID *string
+		var tenantID uuid.UUID
 		var metaJSON []byte
 		var model, provider *string
 		var inputTokens, outputTokens int64
 		var agentName string
 		var estimatedTokens, contextWindow, compactionCount int
-		if err := rows.Scan(&key, &msgCount, stCreated, stUpdated, &label, &channel, &userID, &metaJSON,
+		if err := rows.Scan(&key, &msgCount, stCreated, stUpdated, &label, &channel, &userID, &tenantID, &metaJSON,
 			&model, &provider, &inputTokens, &outputTokens, &agentName,
 			&estimatedTokens, &contextWindow, &compactionCount); err != nil {
 			continue
@@ -230,6 +232,7 @@ func (s *SQLiteSessionStore) ListPagedRich(ctx context.Context, opts store.Sessi
 				Label:        derefStr(label),
 				Channel:      derefStr(channel),
 				UserID:       derefStr(userID),
+				TenantID:     tenantID,
 				Metadata:     meta,
 			},
 			Model:           derefStr(model),
@@ -246,4 +249,102 @@ func (s *SQLiteSessionStore) ListPagedRich(ctx context.Context, opts store.Sessi
 		result = []store.SessionInfoRich{}
 	}
 	return store.SessionListRichResult{Sessions: result, Total: total}
+}
+
+// ListOverThreshold returns sessions where estimatedTokens >= threshold * contextWindow
+// and updated_at is older than idleSince (to avoid racing with active agent loops).
+func (s *SQLiteSessionStore) ListOverThreshold(ctx context.Context, threshold float64, idleSince time.Duration) ([]store.SessionInfoRich, error) {
+	var conditions []string
+	var args []any
+
+	if !store.IsCrossTenant(ctx) {
+		tid := store.TenantIDFromContext(ctx)
+		if tid != uuid.Nil {
+			conditions = append(conditions, "s.tenant_id = ?")
+			args = append(args, tid)
+		}
+	}
+
+	conditions = append(conditions, `COALESCE(
+		CAST(json_extract(s.metadata, '$.last_prompt_tokens') AS INTEGER),
+		length(s.messages) / 4 + 12000
+	) >= COALESCE(a.context_window, 200000) * ?`)
+	args = append(args, threshold)
+
+	conditions = append(conditions, "s.updated_at < datetime('now', ?)")
+	args = append(args, fmt.Sprintf("-%d seconds", int(idleSince.Seconds())))
+
+	where := ""
+	if len(conditions) > 0 {
+		where = " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	const richCols = `s.session_key, json_array_length(s.messages), s.created_at, s.updated_at,
+		s.label, s.channel, s.user_id, s.tenant_id, COALESCE(s.metadata, '{}'),
+		s.model, s.provider, s.input_tokens, s.output_tokens,
+		COALESCE(a.display_name, ''),
+		COALESCE(
+		  CAST(json_extract(s.metadata, '$.last_prompt_tokens') AS INTEGER),
+		  length(s.messages) / 4 + 12000
+		),
+		COALESCE(a.context_window, 200000),
+		s.compaction_count`
+
+	selectQ := fmt.Sprintf(`SELECT %s
+		FROM sessions s LEFT JOIN agents a ON s.agent_id = a.id
+		%s ORDER BY s.updated_at DESC`, richCols, where)
+
+	rows, err := s.db.QueryContext(ctx, selectQ, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []store.SessionInfoRich
+	for rows.Next() {
+		var key string
+		var msgCount int
+		stCreated, stUpdated := scanTimePair()
+		var label, channel, userID *string
+		var tenantID uuid.UUID
+		var metaJSON []byte
+		var model, provider *string
+		var inputTokens, outputTokens int64
+		var agentName string
+		var estimatedTokens, contextWindow, compactionCount int
+		if err := rows.Scan(&key, &msgCount, stCreated, stUpdated, &label, &channel, &userID, &tenantID, &metaJSON,
+			&model, &provider, &inputTokens, &outputTokens, &agentName,
+			&estimatedTokens, &contextWindow, &compactionCount); err != nil {
+			continue
+		}
+		var meta map[string]string
+		if len(metaJSON) > 0 {
+			json.Unmarshal(metaJSON, &meta)
+		}
+		result = append(result, store.SessionInfoRich{
+			SessionInfo: store.SessionInfo{
+				Key:          key,
+				MessageCount: msgCount,
+				Created:      stCreated.Time,
+				Updated:      stUpdated.Time,
+				Label:        derefStr(label),
+				Channel:      derefStr(channel),
+				UserID:       derefStr(userID),
+				TenantID:     tenantID,
+				Metadata:     meta,
+			},
+			Model:           derefStr(model),
+			Provider:        derefStr(provider),
+			InputTokens:     inputTokens,
+			OutputTokens:    outputTokens,
+			AgentName:       agentName,
+			EstimatedTokens: estimatedTokens,
+			ContextWindow:   contextWindow,
+			CompactionCount: compactionCount,
+		})
+	}
+	if result == nil {
+		result = []store.SessionInfoRich{}
+	}
+	return result, nil
 }

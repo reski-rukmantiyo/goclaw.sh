@@ -100,6 +100,10 @@
   "agents.compaction.reserveTokensFloorTip": "Bộ đệm token tối thiểu cần dự trữ cho phản hồi mới trước khi nén.",
   "agents.compaction.maxHistoryShare": "Phần lịch sử tối đa (0-1)",
   "agents.compaction.maxHistoryShareTip": "Tỷ lệ cửa sổ ngữ cảnh mà lịch sử cuộc trò chuyện có thể chiếm.",
+  "agents.compaction.autoCompactThreshold": "Ngưỡng tự động nén",
+  "agents.compaction.autoCompactThresholdTip": "Các session vượt quá tỷ lệ này của context window sẽ được tự động nén khi không hoạt động.",
+  "agents.compaction.keepLastMessages": "Giữ lại tin nhắn gần đây",
+  "agents.compaction.keepLastMessagesTip": "Số lượng tin nhắn gần đây được giữ lại sau khi nén.",
 
   "agents.pruning.title": "Cắt bớt ngữ cảnh",
   "agents.pruning.desc": "Cắt bỏ kết quả công cụ cũ để giải phóng không gian ngữ cảnh",

@@ -17,6 +17,15 @@
   "contextBar": {
     "compacted": "Đã nén {{count}} lần"
   },
+  "settings": {
+    "title": "Cài đặt",
+    "autoCompactThreshold": "Ngưỡng tự động nén",
+    "autoCompactThresholdTip": "Các session vượt quá tỷ lệ này của context window sẽ được tự động nén khi không hoạt động.",
+    "keepLastMessages": "Giữ lại tin nhắn gần đây",
+    "keepLastMessagesTip": "Số lượng tin nhắn gần đây được giữ lại sau khi nén.",
+    "save": "Lưu",
+    "saving": "Đang lưu..."
+  },
   "detail": {
     "reset": "Đặt lại",
     "delete": "Xóa",
@@ -33,7 +42,11 @@
     "showDetails": "xem chi tiết",
     "hide": "ẩn",
     "systemMessage": "Tin nhắn hệ thống",
-    "messages": "tin nhắn"
+    "messages": "tin nhắn",
+    "compact": "Nén",
+    "compactTitle": "Nén Session",
+    "compactDescription": "Thao tác này sẽ tóm tắt các tin nhắn cũ để giảm sử dụng token. Các tin nhắn gần đây sẽ được giữ lại.",
+    "confirmCompact": "Nén"
   },
   "toast": {
     "deleted": "Đã xóa session",
@@ -41,6 +54,9 @@
     "reset": "Đã đặt lại session",
     "resetFailed": "Không thể đặt lại session",
     "updated": "Đã cập nhật session",
-    "updateFailed": "Không thể cập nhật session"
+    "updateFailed": "Không thể cập nhật session",
+    "compacted": "Đã nén session",
+    "compactFailed": "Không thể nén session",
+    "compactSkipped": "Session quá ngắn để nén ({{count}} tin nhắn)"
   }
 }

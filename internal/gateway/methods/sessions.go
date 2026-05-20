@@ -3,6 +3,7 @@ package methods
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
@@ -272,7 +273,10 @@ func (m *SessionsMethods) handleCompact(ctx context.Context, client *gateway.Cli
 
 	history := m.sessions.GetHistory(ctx, params.Key)
 	originalLen := len(history)
+	slog.Info("session_compact_start", "key", params.Key, "original", originalLen, "keep_last", keepLast)
+
 	if originalLen < 6 {
+		slog.Info("session_compact_too_short", "key", params.Key, "original", originalLen)
 		client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
 			"ok":      true,
 			"message": "session too short to compact",
@@ -284,8 +288,13 @@ func (m *SessionsMethods) handleCompact(ctx context.Context, client *gateway.Cli
 	// Truncate history to last N messages
 	m.sessions.TruncateHistory(ctx, params.Key, keepLast)
 	m.sessions.IncrementCompaction(ctx, params.Key)
-	m.sessions.Save(ctx, params.Key)
+	if err := m.sessions.Save(ctx, params.Key); err != nil {
+		slog.Warn("session_compact_save_failed", "key", params.Key, "error", err)
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, err.Error()))
+		return
+	}
 
+	slog.Info("session_compact_done", "key", params.Key, "original", originalLen, "kept", keepLast)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
 		"ok":       true,
 		"original": originalLen,

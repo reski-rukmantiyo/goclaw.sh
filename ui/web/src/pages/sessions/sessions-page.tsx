@@ -1,17 +1,21 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { History, RefreshCw } from "lucide-react";
+import { History, RefreshCw, Settings, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { SearchInput } from "@/components/shared/search-input";
 import { Pagination } from "@/components/shared/pagination";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
 import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { useMinLoading } from "@/hooks/use-min-loading";
 import { useUiStore } from "@/stores/use-ui-store";
+import { useConfig } from "@/pages/config/hooks/use-config";
 import { useSessions } from "./hooks/use-sessions";
 import { SessionDetailPage } from "./session-detail-page";
 import { parseSessionKey } from "@/lib/session-key";
@@ -29,7 +33,27 @@ export function SessionsPage() {
   const [pageSize, setPageSizeRaw] = useState(globalPageSize);
   const setPageSize = (size: number) => { setPageSizeRaw(size); setPage(1); setGlobalPageSize(size); };
 
-  const { sessions, total, loading, fetching, refresh, preview, deleteSession, resetSession, patchSession } = useSessions({
+  const { config, patch: patchConfig, saving: configSaving } = useConfig();
+  const threshold = (config?.agents as any)?.defaults?.compaction?.autoCompactThreshold ?? 0.75;
+  const keepLast = (config?.agents as any)?.defaults?.compaction?.keepLastMessages ?? 4;
+
+  const [draftThreshold, setDraftThreshold] = useState(threshold.toString());
+  const [draftKeepLast, setDraftKeepLast] = useState(keepLast.toString());
+
+  useEffect(() => {
+    setDraftThreshold(threshold.toString());
+    setDraftKeepLast(keepLast.toString());
+  }, [threshold, keepLast]);
+
+  const handleSaveSettings = () => {
+    const t = parseFloat(draftThreshold);
+    const k = parseInt(draftKeepLast, 10);
+    if (!isNaN(t) && t >= 0 && t <= 1 && !isNaN(k) && k >= 1 && k <= 20) {
+      patchConfig({ agents: { defaults: { compaction: { autoCompactThreshold: t, keepLastMessages: k } } } });
+    }
+  };
+
+  const { sessions, total, loading, fetching, refresh, preview, deleteSession, resetSession, compactSession, patchSession } = useSessions({
     limit: pageSize,
     offset: (page - 1) * pageSize,
   });
@@ -53,6 +77,7 @@ export function SessionsPage() {
           navigate("/sessions");
         }}
         onReset={resetSession}
+        onCompact={compactSession}
         onPatch={patchSession}
       />
     );
@@ -76,10 +101,67 @@ export function SessionsPage() {
         title={t("title")}
         description={t("description")}
         actions={
-          <Button variant="outline" size="sm" onClick={refresh} disabled={spinning} className="gap-1">
-            <RefreshCw className={"h-3.5 w-3.5" + (spinning ? " animate-spin" : "")} />
-            {t("refresh")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1">
+                  <Settings className="h-3.5 w-3.5" />
+                  {t("settings.title")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72">
+                <div className="space-y-3">
+                  <h4 className="font-medium text-sm">{t("settings.title")}</h4>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">{t("settings.autoCompactThreshold")}</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={draftThreshold}
+                        onChange={(e) => setDraftThreshold(e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <p className="text-2xs text-muted-foreground">{t("settings.autoCompactThresholdTip")}</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">{t("settings.keepLastMessages")}</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={20}
+                        step={1}
+                        value={draftKeepLast}
+                        onChange={(e) => setDraftKeepLast(e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <p className="text-2xs text-muted-foreground">{t("settings.keepLastMessagesTip")}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    onClick={handleSaveSettings}
+                    disabled={configSaving}
+                  >
+                    {configSaving ? (
+                      <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> {t("settings.saving")}</>
+                    ) : (
+                      t("settings.save")
+                    )}
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+            <Button variant="outline" size="sm" onClick={refresh} disabled={spinning} className="gap-1">
+              <RefreshCw className={"h-3.5 w-3.5" + (spinning ? " animate-spin" : "")} />
+              {t("refresh")}
+            </Button>
+          </div>
         }
       />
 
@@ -118,6 +200,7 @@ export function SessionsPage() {
                   <SessionRow
                     key={session.key}
                     session={session}
+                    threshold={threshold}
                     onClick={() => navigate(`/sessions/${encodeURIComponent(session.key)}`)}
                   />
                 ))}
@@ -140,9 +223,11 @@ export function SessionsPage() {
 
 function SessionRow({
   session,
+  threshold,
   onClick,
 }: {
   session: SessionInfo;
+  threshold: number;
   onClick: () => void;
 }) {
   const { t } = useTranslation("sessions");
@@ -172,6 +257,7 @@ function SessionRow({
           estimatedTokens={session.estimatedTokens ?? 0}
           contextWindow={session.contextWindow ?? 0}
           compactionCount={session.compactionCount ?? 0}
+          threshold={threshold}
           t={t}
         />
       </td>
@@ -188,17 +274,19 @@ function ContextUsageBar({
   estimatedTokens,
   contextWindow,
   compactionCount,
+  threshold,
   t,
 }: {
   estimatedTokens: number;
   contextWindow: number;
   compactionCount: number;
+  threshold: number;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   if (contextWindow <= 0) return <span className="text-xs text-muted-foreground">—</span>;
 
-  const threshold = contextWindow * 0.75;
-  const pct = Math.min(Math.round((estimatedTokens / threshold) * 100), 100);
+  const barThreshold = contextWindow * threshold;
+  const pct = Math.min(Math.round((estimatedTokens / barThreshold) * 100), 100);
 
   let barColor = "bg-emerald-500";
   if (pct >= 85) barColor = "bg-red-500";

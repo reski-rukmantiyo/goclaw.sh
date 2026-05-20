@@ -100,6 +100,10 @@
   "agents.compaction.reserveTokensFloorTip": "Minimum token buffer to reserve for new responses before compacting.",
   "agents.compaction.maxHistoryShare": "Max History Share (0-1)",
   "agents.compaction.maxHistoryShareTip": "Fraction of the context window that conversation history can occupy.",
+  "agents.compaction.autoCompactThreshold": "Auto-Compact Threshold",
+  "agents.compaction.autoCompactThresholdTip": "Sessions exceeding this fraction of their context window will be auto-compacted when idle.",
+  "agents.compaction.keepLastMessages": "Keep Last Messages",
+  "agents.compaction.keepLastMessagesTip": "Number of recent messages to preserve after compaction.",
 
   "agents.pruning.title": "Context Pruning",
   "agents.pruning.desc": "Trim old tool results to free context space",

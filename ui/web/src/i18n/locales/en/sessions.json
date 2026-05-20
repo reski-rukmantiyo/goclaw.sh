@@ -17,6 +17,15 @@
   "contextBar": {
     "compacted": "Compacted {{count}} time(s)"
   },
+  "settings": {
+    "title": "Settings",
+    "autoCompactThreshold": "Auto-compact threshold",
+    "autoCompactThresholdTip": "Sessions exceeding this fraction of their context window will be auto-compacted when idle.",
+    "keepLastMessages": "Keep last messages",
+    "keepLastMessagesTip": "Number of recent messages to preserve after compaction.",
+    "save": "Save",
+    "saving": "Saving..."
+  },
   "detail": {
     "reset": "Reset",
     "delete": "Delete",
@@ -33,7 +42,11 @@
     "showDetails": "show details",
     "hide": "hide",
     "systemMessage": "System Message",
-    "messages": "messages"
+    "messages": "messages",
+    "compact": "Compact",
+    "compactTitle": "Compact Session",
+    "compactDescription": "This will summarize older messages to reduce token usage. Recent messages will be preserved.",
+    "confirmCompact": "Compact"
   },
   "toast": {
     "deleted": "Session deleted",
@@ -41,6 +54,9 @@
     "reset": "Session reset",
     "resetFailed": "Failed to reset session",
     "updated": "Session updated",
-    "updateFailed": "Failed to update session"
+    "updateFailed": "Failed to update session",
+    "compacted": "Session compacted",
+    "compactFailed": "Failed to compact session",
+    "compactSkipped": "Session too short to compact ({{count}} messages)"
   }
 }

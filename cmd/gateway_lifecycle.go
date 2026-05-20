@@ -189,6 +189,23 @@ func (d *gatewayDeps) runLifecycle(
 		taskTicker.Start()
 	}
 
+	// Session auto-compaction ticker: compacts idle sessions over token threshold.
+	var sessionCompactTicker *tasks.SessionCompactionTicker
+	if d.pgStores.Sessions != nil {
+		interval := d.cfg.Gateway.SessionAutoCompactIntervalSec
+		if interval <= 0 {
+			interval = 300
+		}
+		sessionCompactTicker = tasks.NewSessionCompactionTicker(
+			d.pgStores.Sessions,
+			d.providerRegistry,
+			d.pgStores.SystemConfigs,
+			d.cfg,
+			interval,
+		)
+		sessionCompactTicker.Start()
+	}
+
 	go func() {
 		sig := <-deps.sigCh
 		slog.Info("graceful shutdown initiated", "signal", sig)
@@ -205,6 +222,9 @@ func (d *gatewayDeps) runLifecycle(
 		deps.heartbeatTicker.Stop()
 		if taskTicker != nil {
 			taskTicker.Stop()
+		}
+		if sessionCompactTicker != nil {
+			sessionCompactTicker.Stop()
 		}
 
 		// Drain audit log queue before closing DB

@@ -381,9 +381,10 @@ type GatewayConfig struct {
 	Quota             *QuotaConfig `json:"quota,omitempty"`               // per-user/group request quotas
 	BlockReply              *bool        `json:"block_reply,omitempty"`                // deliver intermediate text during tool iterations (default false)
 	ToolStatus              *bool        `json:"tool_status,omitempty"`                // show tool name in streaming preview during tool execution (default true)
-	TaskRecoveryIntervalSec int          `json:"task_recovery_interval_sec,omitempty"` // team task recovery ticker interval in seconds (default 300 = 5min)
-	BackgroundProvider      string       `json:"background_provider,omitempty"`        // LLM provider for background workers (vault enrichment, consolidation)
-	BackgroundModel         string       `json:"background_model,omitempty"`           // LLM model for background workers
+	TaskRecoveryIntervalSec       int    `json:"task_recovery_interval_sec,omitempty"`        // team task recovery ticker interval in seconds (default 300 = 5min)
+	SessionAutoCompactIntervalSec int    `json:"session_auto_compact_interval_sec,omitempty"` // session auto-compaction ticker interval in seconds (default 300 = 5min, 0 = disabled)
+	BackgroundProvider            string `json:"background_provider,omitempty"`               // LLM provider for background workers (vault enrichment, consolidation)
+	BackgroundModel               string `json:"background_model,omitempty"`                  // LLM model for background workers
 }
 
 // ToolsConfig controls tool availability, policy, and web search.
