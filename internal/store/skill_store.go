@@ -6,24 +6,34 @@ import (
 	"github.com/google/uuid"
 )
 
+// SkillAgentRef is a small UI/API-safe agent reference for skill metadata.
+type SkillAgentRef struct {
+	ID          string `json:"id,omitempty" db:"id"`
+	AgentKey    string `json:"agent_key,omitempty" db:"agent_key"`
+	DisplayName string `json:"display_name,omitempty" db:"display_name"`
+}
+
 // SkillInfo describes a discovered skill.
 type SkillInfo struct {
-	ID          string   `json:"id,omitempty" db:"id"` // DB UUID
-	Name        string   `json:"name" db:"name"`
-	Slug        string   `json:"slug" db:"slug"`
-	Path        string   `json:"path" db:"path"`
-	BaseDir     string   `json:"baseDir" db:"-"`
-	Source      string   `json:"source" db:"-"`
-	Description string   `json:"description" db:"description"`
-	Visibility  string   `json:"visibility,omitempty" db:"visibility"`
-	OwnerID     string   `json:"owner_id,omitempty" db:"owner_id"`
-	Tags        []string `json:"tags,omitempty" db:"tags"`
-	Version     int      `json:"version,omitempty" db:"version"`
-	IsSystem    bool     `json:"is_system,omitempty" db:"is_system"`
-	Status      string   `json:"status,omitempty" db:"status"`
-	Enabled     bool     `json:"enabled" db:"enabled"`
-	Author      string   `json:"author,omitempty" db:"author"`
-	MissingDeps []string `json:"missing_deps,omitempty" db:"missing_deps"`
+	ID            string          `json:"id,omitempty" db:"id"` // DB UUID
+	TenantID      string          `json:"-" db:"tenant_id"`
+	Name          string          `json:"name" db:"name"`
+	Slug          string          `json:"slug" db:"slug"`
+	Path          string          `json:"path" db:"path"`
+	BaseDir       string          `json:"baseDir" db:"-"`
+	Source        string          `json:"source" db:"-"`
+	Description   string          `json:"description" db:"description"`
+	Visibility    string          `json:"visibility,omitempty" db:"visibility"`
+	OwnerID       string          `json:"owner_id,omitempty" db:"owner_id"`
+	Tags          []string        `json:"tags,omitempty" db:"tags"`
+	Version       int             `json:"version,omitempty" db:"version"`
+	IsSystem      bool            `json:"is_system,omitempty" db:"is_system"`
+	Status        string          `json:"status,omitempty" db:"status"`
+	Enabled       bool            `json:"enabled" db:"enabled"`
+	Author        string          `json:"author,omitempty" db:"author"`
+	CreatorAgent  *SkillAgentRef  `json:"creator_agent,omitempty" db:"-"`
+	ManagerAgents []SkillAgentRef `json:"manager_agents,omitempty" db:"-"`
+	MissingDeps   []string        `json:"missing_deps,omitempty" db:"missing_deps"`
 }
 
 // SkillSearchResult is a scored skill returned from embedding search.
@@ -91,6 +101,8 @@ type SkillWithGrantStatus struct {
 	Granted     bool      `json:"granted" db:"granted"`
 	PinnedVer   *int      `json:"pinned_version,omitempty" db:"pinned_version"`
 	IsSystem    bool      `json:"is_system" db:"is_system"`
+	AgentKey    string    `json:"agent_key,omitempty" db:"agent_key"`
+	DisplayName string    `json:"display_name,omitempty" db:"display_name"`
 }
 
 // SkillManageStore extends SkillStore with CRUD, ownership, and grant operations
@@ -119,7 +131,7 @@ type SkillManageStore interface {
 	ListSystemSkillDirs(ctx context.Context) map[string]string
 	StoreMissingDeps(ctx context.Context, id uuid.UUID, missing []string) error
 	// Grants
-	GrantToAgent(ctx context.Context, skillID, agentID uuid.UUID, version int, grantedBy string) error
+	GrantToAgent(ctx context.Context, skillID, agentID uuid.UUID, version int, grantedBy string, canManage ...bool) error
 	RevokeFromAgent(ctx context.Context, skillID, agentID uuid.UUID) error
 	GrantToUser(ctx context.Context, skillID uuid.UUID, userID, grantedBy string) error
 	RevokeFromUser(ctx context.Context, skillID uuid.UUID, userID string) error

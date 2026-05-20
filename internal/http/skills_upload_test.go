@@ -981,7 +981,30 @@ func (s *skillManageStoreStub) StoreMissingDeps(ctx context.Context, id uuid.UUI
 	s.skills[id] = skill
 	return nil
 }
-func (s *skillManageStoreStub) GrantToAgent(context.Context, uuid.UUID, uuid.UUID, int, string) error {
+func (s *skillManageStoreStub) canAccessSkill(ctx context.Context, skill store.SkillInfo) bool {
+	if skill.IsSystem || store.IsCrossTenant(ctx) {
+		return true
+	}
+	tid := store.TenantIDFromContext(ctx)
+	if tid == uuid.Nil {
+		tid = store.MasterTenantID
+	}
+	return skill.TenantID == "" || skill.TenantID == tid.String()
+}
+func (s *skillManageStoreStub) GrantToAgent(_ context.Context, skillID uuid.UUID, agentID uuid.UUID, version int, grantedBy string, canManage ...bool) error {
+	if err := s.grantErrors[agentID]; err != nil {
+		return err
+	}
+	call := skillGrantCall{
+		SkillID:   skillID,
+		AgentID:   agentID,
+		Version:   version,
+		GrantedBy: grantedBy,
+	}
+	if len(canManage) > 0 {
+		call.CanManage = canManage[0]
+	}
+	s.grantCalls = append(s.grantCalls, call)
 	return nil
 }
 func (s *skillManageStoreStub) RevokeFromAgent(context.Context, uuid.UUID, uuid.UUID) error {

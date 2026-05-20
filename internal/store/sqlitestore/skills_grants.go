@@ -4,6 +4,7 @@ package sqlitestore
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -21,19 +22,38 @@ type SkillGrantInfo struct {
 }
 
 // GrantToAgent grants a skill to an agent with version pinning.
-func (s *SQLiteSkillStore) GrantToAgent(ctx context.Context, skillID, agentID uuid.UUID, version int, grantedBy string) error {
+func (s *SQLiteSkillStore) GrantToAgent(ctx context.Context, skillID, agentID uuid.UUID, version int, grantedBy string, canManage ...bool) error {
 	if err := store.ValidateUserID(grantedBy); err != nil {
 		return err
 	}
-
 	// Upsert grant.
 	id := store.GenNewID()
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO skill_agent_grants (id, skill_id, agent_id, pinned_version, granted_by, created_at, tenant_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT (skill_id, agent_id) DO UPDATE SET pinned_version = excluded.pinned_version`,
-		id, skillID, agentID, version, grantedBy, time.Now().UTC(), tenantIDForInsert(ctx),
-	)
+	now := time.Now().UTC()
+	tid := tenantIDForInsert(ctx)
+	if err := s.verifySkillGrantScope(ctx, skillID, agentID, tid); err != nil {
+		return err
+	}
+	var err error
+	if len(canManage) > 0 {
+		_, err = s.db.ExecContext(ctx,
+			`INSERT INTO skill_agent_grants (id, skill_id, agent_id, pinned_version, granted_by, can_manage, created_at, tenant_id)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			 ON CONFLICT (skill_id, agent_id) DO UPDATE SET
+			    pinned_version = excluded.pinned_version,
+			    granted_by = excluded.granted_by,
+			    can_manage = excluded.can_manage`,
+			id, skillID, agentID, version, grantedBy, canManage[0], now, tid,
+		)
+	} else {
+		_, err = s.db.ExecContext(ctx,
+			`INSERT INTO skill_agent_grants (id, skill_id, agent_id, pinned_version, granted_by, created_at, tenant_id)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)
+			 ON CONFLICT (skill_id, agent_id) DO UPDATE SET
+			    pinned_version = excluded.pinned_version,
+			    granted_by = excluded.granted_by`,
+			id, skillID, agentID, version, grantedBy, now, tid,
+		)
+	}
 	if err != nil {
 		return err
 	}
@@ -47,6 +67,37 @@ func (s *SQLiteSkillStore) GrantToAgent(ctx context.Context, skillID, agentID uu
 	}
 
 	s.BumpVersion()
+	return nil
+}
+
+func (s *SQLiteSkillStore) verifySkillGrantScope(ctx context.Context, skillID, agentID, tenantID uuid.UUID) error {
+	if err := s.verifySkillInGrantScope(ctx, skillID, tenantID); err != nil {
+		return err
+	}
+
+	var agentTenantID uuid.UUID
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT tenant_id FROM agents WHERE id = ?", agentID,
+	).Scan(&agentTenantID); err != nil {
+		return fmt.Errorf("agent not found")
+	}
+	if agentTenantID != tenantID {
+		return fmt.Errorf("agent not found")
+	}
+	return nil
+}
+
+func (s *SQLiteSkillStore) verifySkillInGrantScope(ctx context.Context, skillID, tenantID uuid.UUID) error {
+	var skillTenantID uuid.UUID
+	var isSystem bool
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT tenant_id, is_system FROM skills WHERE id = ?", skillID,
+	).Scan(&skillTenantID, &isSystem); err != nil {
+		return fmt.Errorf("skill not found")
+	}
+	if !isSystem && skillTenantID != tenantID {
+		return fmt.Errorf("skill not found")
+	}
 	return nil
 }
 
@@ -237,4 +288,148 @@ func (s *SQLiteSkillStore) ListWithGrantStatus(ctx context.Context, agentID uuid
 		result = append(result, r)
 	}
 	return result, rows.Err()
+}
+
+func (s *SQLiteSkillStore) attachSkillAgentMetadata(ctx context.Context, skills []store.SkillInfo) {
+	if len(skills) == 0 {
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(skills))
+	byID := make(map[uuid.UUID]int, len(skills))
+	creatorIDs := make([]uuid.UUID, 0)
+	creatorByID := make(map[uuid.UUID][]int)
+	creatorKeys := make([]string, 0)
+	creatorByKey := make(map[string][]int)
+	for i := range skills {
+		id, err := uuid.Parse(skills[i].ID)
+		if err != nil {
+			continue
+		}
+		ids = append(ids, id)
+		byID[id] = i
+		if ref := skills[i].CreatorAgent; ref != nil {
+			skills[i].CreatorAgent = nil
+			if ref.ID != "" {
+				if agentID, err := uuid.Parse(ref.ID); err == nil {
+					if _, exists := creatorByID[agentID]; !exists {
+						creatorIDs = append(creatorIDs, agentID)
+					}
+					creatorByID[agentID] = append(creatorByID[agentID], i)
+				}
+			}
+			if ref.AgentKey != "" {
+				if _, exists := creatorByKey[ref.AgentKey]; !exists {
+					creatorKeys = append(creatorKeys, ref.AgentKey)
+				}
+				creatorByKey[ref.AgentKey] = append(creatorByKey[ref.AgentKey], i)
+			}
+		}
+	}
+	s.attachVerifiedCreatorAgents(ctx, skills, creatorIDs, creatorByID, creatorKeys, creatorByKey)
+	if len(ids) == 0 {
+		return
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, 0, len(ids)+1)
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	tClause, tArgs, err := scopeClause(ctx)
+	if err != nil {
+		return
+	}
+	args = append(args, tArgs...)
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT sag.skill_id, sag.agent_id, COALESCE(a.agent_key, ''), COALESCE(a.display_name, '')
+		   FROM skill_agent_grants sag
+		   LEFT JOIN agents a ON a.id = sag.agent_id
+		  WHERE sag.skill_id IN (`+strings.Join(placeholders, ",")+`) AND sag.can_manage = 1`+strings.ReplaceAll(tClause, "tenant_id", "sag.tenant_id")+`
+		  ORDER BY sag.created_at DESC`,
+		args...)
+	if err != nil {
+		slog.Warn("skill_grants: failed to attach manager agents", "error", err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var skillID, agentID uuid.UUID
+		var agentKey, displayName string
+		if err := rows.Scan(&skillID, &agentID, &agentKey, &displayName); err != nil {
+			continue
+		}
+		i, ok := byID[skillID]
+		if !ok {
+			continue
+		}
+		skills[i].ManagerAgents = append(skills[i].ManagerAgents, store.SkillAgentRef{
+			ID:          agentID.String(),
+			AgentKey:    agentKey,
+			DisplayName: displayName,
+		})
+	}
+}
+
+func (s *SQLiteSkillStore) attachVerifiedCreatorAgents(
+	ctx context.Context,
+	skills []store.SkillInfo,
+	creatorIDs []uuid.UUID,
+	creatorByID map[uuid.UUID][]int,
+	creatorKeys []string,
+	creatorByKey map[string][]int,
+) {
+	if len(creatorIDs) == 0 && len(creatorKeys) == 0 {
+		return
+	}
+	clauses := make([]string, 0, 2)
+	args := make([]any, 0, len(creatorIDs)+len(creatorKeys)+1)
+	if len(creatorIDs) > 0 {
+		placeholders := make([]string, len(creatorIDs))
+		for i, id := range creatorIDs {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		clauses = append(clauses, "a.id IN ("+strings.Join(placeholders, ",")+")")
+	}
+	if len(creatorKeys) > 0 {
+		placeholders := make([]string, len(creatorKeys))
+		for i, key := range creatorKeys {
+			placeholders[i] = "?"
+			args = append(args, key)
+		}
+		clauses = append(clauses, "a.agent_key IN ("+strings.Join(placeholders, ",")+")")
+	}
+	tClause, tArgs, err := scopeClause(ctx)
+	if err != nil {
+		return
+	}
+	args = append(args, tArgs...)
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT a.id, COALESCE(a.agent_key, ''), COALESCE(a.display_name, '')
+		   FROM agents a
+		  WHERE a.deleted_at IS NULL AND (`+strings.Join(clauses, " OR ")+`)`+strings.ReplaceAll(tClause, "tenant_id", "a.tenant_id"),
+		args...)
+	if err != nil {
+		slog.Warn("skill_grants: failed to resolve creator agents", "error", err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var agentID uuid.UUID
+		var agentKey, displayName string
+		if err := rows.Scan(&agentID, &agentKey, &displayName); err != nil {
+			continue
+		}
+		ref := store.SkillAgentRef{
+			ID:          agentID.String(),
+			AgentKey:    agentKey,
+			DisplayName: displayName,
+		}
+		for _, i := range creatorByID[agentID] {
+			skills[i].CreatorAgent = &ref
+		}
+		for _, i := range creatorByKey[agentKey] {
+			skills[i].CreatorAgent = &ref
+		}
+	}
 }
