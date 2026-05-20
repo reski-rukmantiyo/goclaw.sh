@@ -61,5 +61,7 @@ func NewPGStores(cfg store.StoreConfig) (*store.Stores, error) {
 		ListenRawMessages:     NewPGListenRawMessageStore(db),
 		RawMessageChunks:      NewPGRawMessageChunkStore(db),
 		Hooks:                 NewPGHookStore(db),
+		Webhooks:              NewPGWebhookStore(db),
+		WebhookCalls:          NewPGWebhookCallStore(db),
 	}, nil
 }

@@ -73,5 +73,7 @@ func NewSQLiteStores(cfg store.StoreConfig) (*store.Stores, error) {
 		ListenRawMessages:    NewSQLiteListenRawMessageStore(db),
 		RawMessageChunks:     NewSQLiteRawMessageChunkStore(),
 		Hooks:                NewSQLiteHookStore(db),
+		Webhooks:             NewSQLiteWebhookStore(db),
+		WebhookCalls:         NewSQLiteWebhookCallStore(db),
 	}, nil
 }
