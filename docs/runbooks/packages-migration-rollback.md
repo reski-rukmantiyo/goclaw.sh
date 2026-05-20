@@ -1,15 +1,15 @@
-# Rollback Runbook: packages-cli-credentials-unified-ui (migration 000058)
+# Rollback Runbook: packages-cli-credentials-unified-ui (migration 000069)
 
 ## Scope
 
-Migration `000058_agent_grants_env_override` adds `encrypted_env BYTEA` to `secure_cli_agent_grants`.
+Migration `000069_agent_grants_env_override` adds `encrypted_env BYTEA` to `secure_cli_agent_grants`.
 
 Phase 2 store code (`Get`, `ListByBinary`) SELECTs this column. If the schema is rolled
 back while Phase 2 code is still running, every query against that table will 500.
 
 
 > **WARNING — DESTRUCTIVE ROLLBACK**
-> Running `000058` down **permanently discards** all per-grant env override data.
+> Running `000069` down **permanently discards** all per-grant env override data.
 > Every row in `secure_cli_agent_grants` where `encrypted_env IS NOT NULL` will lose
 > its encrypted values. **There is no undo after the column is dropped.**
 > 
