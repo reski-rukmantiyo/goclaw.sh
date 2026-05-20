@@ -75,6 +75,7 @@ func CompactMessagesWithProvider(
 		break
 	}
 	if splitIdx <= 1 {
+		slog.Warn("compaction_split_boundary_failed", "key", logKey, "messages", len(messages), "keep_last", keepLast, "split_idx", splitIdx)
 		return nil
 	}
 
@@ -108,6 +109,12 @@ func CompactMessagesWithProvider(
 		return nil
 	}
 
+	summaryContent := SanitizeAssistantContent(resp.Content)
+	if summaryContent == "" {
+		slog.Warn("compaction_empty_summary", "key", logKey, "original_msgs", len(messages))
+		return nil
+	}
+
 	// Collect MediaRefs from compacted messages (keep up to 30 most recent).
 	const maxPreservedMediaRefs = 30
 	var preservedRefs []providers.MediaRef
@@ -122,7 +129,7 @@ func CompactMessagesWithProvider(
 
 	summary := providers.Message{
 		Role:      "user",
-		Content:   "[Summary of earlier conversation]\n" + SanitizeAssistantContent(resp.Content),
+		Content:   "[Summary of earlier conversation]\n" + summaryContent,
 		MediaRefs: preservedRefs,
 	}
 	result := make([]providers.Message, 0, 1+keepLast)

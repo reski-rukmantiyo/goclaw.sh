@@ -124,7 +124,13 @@ func (t *SessionCompactionTicker) compactOverThreshold() {
 
 		compacted := agent.CompactMessagesWithProvider(ctx, provider, model, history, keepLast, tokenCounter, info.Key)
 		if compacted == nil {
-			slog.Warn("session_compaction_ticker: compaction failed", "key", info.Key)
+			slog.Warn("session_compaction_ticker: compaction failed",
+				"key", info.Key,
+				"messages", len(history),
+				"keep_last", keepLast,
+				"provider", provider.Name(),
+				"model", model,
+			)
 			continue
 		}
 

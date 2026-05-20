@@ -52,6 +52,7 @@
     "updated": "Session updated",
     "updateFailed": "Failed to update session",
     "compacted": "Session compacted",
-    "compactFailed": "Failed to compact session"
+    "compactFailed": "Failed to compact session",
+    "compactSkipped": "Session too short to compact ({{count}} messages)"
   }
 }

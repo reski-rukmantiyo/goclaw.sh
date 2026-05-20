@@ -217,7 +217,7 @@ export function SessionDetailPage({
           }}>
             <RefreshCw className={"h-3.5 w-3.5" + (refreshing ? " animate-spin" : "")} />
           </Button>
-          {onCompact && (
+          {onCompact && session.messageCount >= 6 && (
             <Button variant="outline" size="sm" onClick={() => setConfirmCompact(true)} className="gap-1">
               <Minimize2 className="h-3.5 w-3.5" /> {t("detail.compact")}
             </Button>
@@ -293,15 +293,12 @@ export function SessionDetailPage({
           description={t("detail.compactDescription")}
           confirmLabel={t("detail.confirmCompact")}
           onConfirm={async () => {
-            console.log("[compact] start", session.key);
             try {
               await onCompact(session.key);
-              console.log("[compact] success", session.key);
-            } catch (err) {
-              console.error("[compact] failed", session.key, err);
+            } catch {
+              // error toast shown by use-sessions
             }
             setConfirmCompact(false);
-            console.log("[compact] reloading messages");
             loadMessages();
           }}
         />

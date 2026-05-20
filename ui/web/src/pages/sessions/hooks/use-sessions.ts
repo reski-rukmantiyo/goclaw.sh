@@ -93,9 +93,13 @@ export function useSessions(opts: UseSessionsOptions = {}) {
     async (key: string) => {
       if (!ws.isConnected) return;
       try {
-        await ws.call(Methods.SESSIONS_COMPACT, { key });
+        const res = await ws.call<{ ok: boolean; original?: number; kept?: number; message?: string }>(Methods.SESSIONS_COMPACT, { key });
         await invalidate();
-        toast.success(i18next.t("sessions:toast.compacted"));
+        if (res.ok && res.original != null && res.kept != null && res.original <= res.kept) {
+          toast.info(i18next.t("sessions:toast.compactSkipped", { count: res.original }));
+        } else {
+          toast.success(i18next.t("sessions:toast.compacted"));
+        }
       } catch (err) {
         toast.error(i18next.t("sessions:toast.compactFailed"), userFriendlyError(err));
         throw err;

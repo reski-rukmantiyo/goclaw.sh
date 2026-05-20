@@ -52,6 +52,7 @@
     "updated": "Session已更新",
     "updateFailed": "更新Session失败",
     "compacted": "Session已压缩",
-    "compactFailed": "压缩Session失败"
+    "compactFailed": "压缩Session失败",
+    "compactSkipped": "Session消息太少，无需压缩（{{count}} 条消息）"
   }
 }

@@ -52,6 +52,7 @@
     "updated": "Đã cập nhật session",
     "updateFailed": "Không thể cập nhật session",
     "compacted": "Đã nén session",
-    "compactFailed": "Không thể nén session"
+    "compactFailed": "Không thể nén session",
+    "compactSkipped": "Session quá ngắn để nén ({{count}} tin nhắn)"
   }
 }
