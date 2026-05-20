@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { History, RefreshCw, Settings, Loader2 } from "lucide-react";
@@ -39,6 +39,11 @@ export function SessionsPage() {
 
   const [draftThreshold, setDraftThreshold] = useState(threshold.toString());
   const [draftKeepLast, setDraftKeepLast] = useState(keepLast.toString());
+
+  useEffect(() => {
+    setDraftThreshold(threshold.toString());
+    setDraftKeepLast(keepLast.toString());
+  }, [threshold, keepLast]);
 
   const handleSaveSettings = () => {
     const t = parseFloat(draftThreshold);
