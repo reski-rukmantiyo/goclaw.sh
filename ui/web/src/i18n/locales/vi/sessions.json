@@ -20,7 +20,11 @@
   "settings": {
     "title": "Cài đặt",
     "autoCompactThreshold": "Ngưỡng tự động nén",
-    "autoCompactThresholdTip": "Các session vượt quá tỷ lệ này của context window sẽ được tự động nén khi không hoạt động."
+    "autoCompactThresholdTip": "Các session vượt quá tỷ lệ này của context window sẽ được tự động nén khi không hoạt động.",
+    "keepLastMessages": "Giữ lại tin nhắn gần đây",
+    "keepLastMessagesTip": "Số lượng tin nhắn gần đây được giữ lại sau khi nén.",
+    "save": "Lưu",
+    "saving": "Đang lưu..."
   },
   "detail": {
     "reset": "Đặt lại",

@@ -196,6 +196,8 @@ export function AiDefaultsSection({ data, onSave, saving }: Props) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label={t("agents.compaction.reserveTokensFloor")} tip={t("agents.compaction.reserveTokensFloorTip")} type="number" value={compaction.reserveTokensFloor} onChange={(v) => updateNested("compaction", { reserveTokensFloor: Number(v) })} placeholder="20000" />
             <Field label={t("agents.compaction.maxHistoryShare")} tip={t("agents.compaction.maxHistoryShareTip")} type="number" step="0.05" value={compaction.maxHistoryShare} onChange={(v) => updateNested("compaction", { maxHistoryShare: Number(v) })} placeholder="0.75" />
+            <Field label={t("agents.compaction.autoCompactThreshold")} tip={t("agents.compaction.autoCompactThresholdTip")} type="number" step="0.05" value={compaction.autoCompactThreshold} onChange={(v) => updateNested("compaction", { autoCompactThreshold: Number(v) })} placeholder="0.75" />
+            <Field label={t("agents.compaction.keepLastMessages")} tip={t("agents.compaction.keepLastMessagesTip")} type="number" value={compaction.keepLastMessages} onChange={(v) => updateNested("compaction", { keepLastMessages: Number(v) })} placeholder="4" />
           </div>
         </SubSection>
 

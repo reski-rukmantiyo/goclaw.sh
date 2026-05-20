@@ -35,6 +35,18 @@ export function SessionsPage() {
 
   const { config, patch: patchConfig, saving: configSaving } = useConfig();
   const threshold = (config?.agents as any)?.defaults?.compaction?.autoCompactThreshold ?? 0.75;
+  const keepLast = (config?.agents as any)?.defaults?.compaction?.keepLastMessages ?? 4;
+
+  const [draftThreshold, setDraftThreshold] = useState(threshold.toString());
+  const [draftKeepLast, setDraftKeepLast] = useState(keepLast.toString());
+
+  const handleSaveSettings = () => {
+    const t = parseFloat(draftThreshold);
+    const k = parseInt(draftKeepLast, 10);
+    if (!isNaN(t) && t >= 0 && t <= 1 && !isNaN(k) && k >= 1 && k <= 20) {
+      patchConfig({ agents: { defaults: { compaction: { autoCompactThreshold: t, keepLastMessages: k } } } });
+    }
+  };
 
   const { sessions, total, loading, fetching, refresh, preview, deleteSession, resetSession, compactSession, patchSession } = useSessions({
     limit: pageSize,
@@ -103,19 +115,40 @@ export function SessionsPage() {
                         min={0}
                         max={1}
                         step={0.05}
-                        defaultValue={threshold}
-                        onBlur={(e) => {
-                          const v = parseFloat(e.target.value);
-                          if (!isNaN(v) && v >= 0 && v <= 1) {
-                            patchConfig({ agents: { defaults: { compaction: { autoCompactThreshold: v } } } });
-                          }
-                        }}
+                        value={draftThreshold}
+                        onChange={(e) => setDraftThreshold(e.target.value)}
                         className="h-8 text-sm"
                       />
-                      {configSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
                     </div>
                     <p className="text-2xs text-muted-foreground">{t("settings.autoCompactThresholdTip")}</p>
                   </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">{t("settings.keepLastMessages")}</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={20}
+                        step={1}
+                        value={draftKeepLast}
+                        onChange={(e) => setDraftKeepLast(e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <p className="text-2xs text-muted-foreground">{t("settings.keepLastMessagesTip")}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    onClick={handleSaveSettings}
+                    disabled={configSaving}
+                  >
+                    {configSaving ? (
+                      <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> {t("settings.saving")}</>
+                    ) : (
+                      t("settings.save")
+                    )}
+                  </Button>
                 </div>
               </PopoverContent>
             </Popover>

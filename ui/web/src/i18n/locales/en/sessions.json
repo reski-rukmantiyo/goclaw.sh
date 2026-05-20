@@ -20,7 +20,11 @@
   "settings": {
     "title": "Settings",
     "autoCompactThreshold": "Auto-compact threshold",
-    "autoCompactThresholdTip": "Sessions exceeding this fraction of their context window will be auto-compacted when idle."
+    "autoCompactThresholdTip": "Sessions exceeding this fraction of their context window will be auto-compacted when idle.",
+    "keepLastMessages": "Keep last messages",
+    "keepLastMessagesTip": "Number of recent messages to preserve after compaction.",
+    "save": "Save",
+    "saving": "Saving..."
   },
   "detail": {
     "reset": "Reset",

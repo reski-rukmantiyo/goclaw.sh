@@ -20,7 +20,11 @@
   "settings": {
     "title": "设置",
     "autoCompactThreshold": "自动压缩阈值",
-    "autoCompactThresholdTip": "超过此上下文窗口比例的空闲会话将被自动压缩。"
+    "autoCompactThresholdTip": "超过此上下文窗口比例的空闲会话将被自动压缩。",
+    "keepLastMessages": "保留最近消息数",
+    "keepLastMessagesTip": "压缩后保留的最近消息数量。",
+    "save": "保存",
+    "saving": "保存中..."
   },
   "detail": {
     "reset": "重置",
