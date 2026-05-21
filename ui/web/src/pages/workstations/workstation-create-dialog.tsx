@@ -78,7 +78,7 @@ export function WorkstationCreateDialog({
         host: host.trim(),
         port: parseInt(port, 10) || 22,
         user: user.trim(),
-        ...(identityFile.trim() ? { identity_file: identityFile.trim() } : {}),
+        ...(identityFile.trim() ? { identityFile: identityFile.trim() } : {}),
       };
     } else {
       if (!container.trim()) {
@@ -94,7 +94,7 @@ export function WorkstationCreateDialog({
     setFieldError(null);
     setSubmitting(true);
     try {
-      await onCreate({ workstation_key: key.trim(), name: name.trim(), backend_type: backend, metadata });
+      await onCreate({ workstationKey: key.trim(), name: name.trim(), backendType: backend, metadata });
       resetForm();
       onOpenChange(false);
     } catch (err) {

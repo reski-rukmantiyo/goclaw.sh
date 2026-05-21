@@ -78,5 +78,24 @@
       "deny": "Denied"
     },
     "loadMore": "Load more"
+  },
+  "agents": {
+    "title": "Linked Agents",
+    "linkLabel": "Link Agent",
+    "selectAgent": "Select agent...",
+    "link": "Link",
+    "unlink": "Unlink",
+    "default": "Default",
+    "empty": "No agents linked to this workstation."
+  },
+  "permissions": {
+    "title": "Permissions",
+    "addLabel": "Allow Command",
+    "patternPlaceholder": "e.g. ls, cat, docker*",
+    "add": "Add",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "hint": "Exact match (ls) or prefix glob (docker*). Default-deny: no match → exec rejected.",
+    "empty": "No permissions configured. All exec commands will be denied."
   }
 }

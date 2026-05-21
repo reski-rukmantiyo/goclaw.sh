@@ -78,5 +78,24 @@
       "deny": "Từ chối"
     },
     "loadMore": "Tải thêm"
+  },
+  "agents": {
+    "title": "Agent đã liên kết",
+    "linkLabel": "Liên kết Agent",
+    "selectAgent": "Chọn agent...",
+    "link": "Liên kết",
+    "unlink": "Hủy liên kết",
+    "default": "Mặc định",
+    "empty": "Chưa có agent nào liên kết với workstation này."
+  },
+  "permissions": {
+    "title": "Quyền",
+    "addLabel": "Cho phép lệnh",
+    "patternPlaceholder": "vd: ls, cat, docker*",
+    "add": "Thêm",
+    "enabled": "Bật",
+    "disabled": "Tắt",
+    "hint": "Khớp chính xác (ls) hoặc tiền tố (docker*). Mặc định từ chối: không khớp → bị từ chối.",
+    "empty": "Chưa cấu hình quyền. Mọi lệnh exec sẽ bị từ chối."
   }
 }

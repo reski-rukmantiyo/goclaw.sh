@@ -205,6 +205,7 @@ const (
 	MethodWorkstationsUpdate      = "workstations.update"
 	MethodWorkstationsDelete      = "workstations.delete"
 	MethodWorkstationsTest        = "workstations.testConnection"
+	MethodWorkstationsToggle      = "workstations.toggle"
 	MethodWorkstationsLinkAgent   = "workstations.linkAgent"
 	MethodWorkstationsUnlinkAgent = "workstations.unlinkAgent"
 
@@ -216,6 +217,9 @@ const (
 
 	// Workstation activity audit log (Phase 7)
 	MethodWorkstationsListActivity = "workstations.activity.list"
+
+	// Workstation agent links
+	MethodWorkstationsListLinkedAgents = "workstations.listLinkedAgents"
 )
 
 // Agent hooks (Phase 3)

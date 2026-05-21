@@ -261,6 +261,7 @@ const (
 	MsgWorkstationCmdDenied      = "error.workstation_cmd_denied"      // "command denied by workstation policy: %s"
 	MsgWorkstationEnvDenied      = "error.workstation_env_denied"      // "env var denied by policy: %s"
 	MsgWorkstationInputInvalid   = "error.workstation_input_invalid"   // "command contains invalid characters: %s"
+	MsgWorkstationShellSyntax    = "error.workstation_shell_syntax"   // "shell syntax not supported in 'command': %s. Use binary name only and pass arguments in 'args'."
 	MsgWorkstationRateLimit      = "error.workstation_rate_limit"      // "workstation rate limit exceeded"
 	MsgWorkstationPermNotFound   = "error.workstation_perm_not_found"  // "permission entry not found: %s"
 

@@ -73,6 +73,33 @@ func (s *SQLiteWorkstationPermissionStore) Add(ctx context.Context, perm *store.
 	return nil
 }
 
+func (s *SQLiteWorkstationPermissionStore) GetByID(ctx context.Context, id uuid.UUID) (*store.WorkstationPermission, error) {
+	tid := store.TenantIDFromContext(ctx)
+	if tid == uuid.Nil {
+		return nil, sql.ErrNoRows
+	}
+	var p store.WorkstationPermission
+	var idStr, wsIDStr, tenantIDStr, createdAtStr string
+	var enabledInt int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT `+sqliteWPSelectCols+` FROM workstation_permissions WHERE id = ? AND tenant_id = ?`,
+		id.String(), tid.String()).Scan(&idStr, &wsIDStr, &tenantIDStr, &p.Pattern, &enabledInt, &p.CreatedBy, &createdAtStr)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, sql.ErrNoRows
+		}
+		return nil, fmt.Errorf("workstation_permissions get: %w", err)
+	}
+	p.ID, _ = uuid.Parse(idStr)
+	p.WorkstationID, _ = uuid.Parse(wsIDStr)
+	p.TenantID, _ = uuid.Parse(tenantIDStr)
+	p.Enabled = enabledInt != 0
+	if t, err := time.Parse("2006-01-02T15:04:05.000Z", createdAtStr); err == nil {
+		p.CreatedAt = t
+	}
+	return &p, nil
+}
+
 func (s *SQLiteWorkstationPermissionStore) Remove(ctx context.Context, id uuid.UUID) error {
 	tid := store.TenantIDFromContext(ctx)
 	if tid == uuid.Nil {

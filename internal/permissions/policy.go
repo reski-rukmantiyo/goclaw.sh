@@ -286,6 +286,8 @@ func isAdminMethod(method string) bool {
 		protocol.MethodWorkstationsCreate,
 		protocol.MethodWorkstationsUpdate,
 		protocol.MethodWorkstationsDelete,
+		protocol.MethodWorkstationsToggle,
+		protocol.MethodWorkstationsTest,
 		protocol.MethodWorkstationsLinkAgent,
 		protocol.MethodWorkstationsUnlinkAgent,
 		protocol.MethodWorkstationsPermAdd,
@@ -432,6 +434,13 @@ func isReadMethod(method string) bool {
 
 		// WhatsApp group listing
 		protocol.MethodWhatsAppGroupsRefresh,
+
+		// Workstations read-only
+		protocol.MethodWorkstationsList,
+		protocol.MethodWorkstationsGet,
+		protocol.MethodWorkstationsPermList,
+		protocol.MethodWorkstationsListActivity,
+		protocol.MethodWorkstationsListLinkedAgents,
 	}
 	return slices.Contains(readMethods, method)
 }

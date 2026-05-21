@@ -252,6 +252,7 @@ func init() {
 		MsgWorkstationRequired:     "agent chưa được gắn máy trạm; hãy truyền workstation_id",
 		MsgWorkstationAccessDenied: "agent %s không được phép truy cập máy trạm %s",
 		MsgBackendNotReady:         "backend máy trạm chưa sẵn sàng: %s",
+		MsgWorkstationShellSyntax:  "không hỗ trợ shell syntax trong 'command': %s. Chỉ dùng tên binary và truyền tham số qua 'args'.",
 
 		MsgHookInvalidMatcher:          "biểu thức regex matcher không hợp lệ: %s",
 		MsgHookCommandDisabledStandard: "hook loại command chỉ khả dụng trên phiên bản Lite",

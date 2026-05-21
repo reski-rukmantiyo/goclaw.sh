@@ -78,5 +78,24 @@
       "deny": "拒绝"
     },
     "loadMore": "加载更多"
+  },
+  "agents": {
+    "title": "已关联 Agent",
+    "linkLabel": "关联 Agent",
+    "selectAgent": "选择 agent...",
+    "link": "关联",
+    "unlink": "取消关联",
+    "default": "默认",
+    "empty": "没有 Agent 关联到此工作站。"
+  },
+  "permissions": {
+    "title": "权限",
+    "addLabel": "允许命令",
+    "patternPlaceholder": "例如：ls, cat, docker*",
+    "add": "添加",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "hint": "精确匹配（ls）或前缀通配（docker*）。默认拒绝：不匹配 → 执行被拒绝。",
+    "empty": "未配置权限。所有 exec 命令将被拒绝。"
   }
 }

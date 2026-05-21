@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/nextlevelbuilder/goclaw/internal/eventbus"
 	"github.com/nextlevelbuilder/goclaw/internal/gateway"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/permissions"
@@ -23,6 +25,7 @@ type WorkstationsMethods struct {
 	linkStore     store.AgentWorkstationLinkStore
 	permStore     store.WorkstationPermissionStore     // may be nil if Phase 6 not wired
 	activityStore store.WorkstationActivityStore       // may be nil if Phase 7 not wired
+	eventBus      eventbus.DomainEventBus              // may be nil; used to invalidate allowlist cache
 }
 
 // NewWorkstationsMethods creates WorkstationsMethods with the given stores.
@@ -40,6 +43,25 @@ func (m *WorkstationsMethods) SetActivityStore(as store.WorkstationActivityStore
 	m.activityStore = as
 }
 
+// SetEventBus wires the domain event bus for allowlist cache invalidation.
+func (m *WorkstationsMethods) SetEventBus(eb eventbus.DomainEventBus) {
+	m.eventBus = eb
+}
+
+func (m *WorkstationsMethods) emitPermChanged(workstationID uuid.UUID) {
+	if m.eventBus == nil {
+		return
+	}
+	m.eventBus.Publish(eventbus.DomainEvent{
+		ID:        uuid.New().String(),
+		Type:      eventbus.EventWorkstationPermChanged,
+		SourceID:  workstationID.String(),
+		TenantID:  "",
+		Timestamp: time.Now(),
+		Payload:   map[string]any{"workstation_id": workstationID.String()},
+	})
+}
+
 // Register wires the workstations.* methods onto the router.
 // MUST only be called when edition is Standard (caller enforces the gate).
 func (m *WorkstationsMethods) Register(router *gateway.MethodRouter) {
@@ -49,6 +71,7 @@ func (m *WorkstationsMethods) Register(router *gateway.MethodRouter) {
 	router.Register(protocol.MethodWorkstationsUpdate, m.adminOnly(m.handleUpdate))
 	router.Register(protocol.MethodWorkstationsDelete, m.adminOnly(m.handleDelete))
 	router.Register(protocol.MethodWorkstationsTest, m.adminOnly(m.handleTestConnection))
+	router.Register(protocol.MethodWorkstationsToggle, m.adminOnly(m.handleToggle))
 	router.Register(protocol.MethodWorkstationsLinkAgent, m.adminOnly(m.handleLinkAgent))
 	router.Register(protocol.MethodWorkstationsUnlinkAgent, m.adminOnly(m.handleUnlinkAgent))
 	// Phase 6: permission allowlist CRUD
@@ -58,6 +81,8 @@ func (m *WorkstationsMethods) Register(router *gateway.MethodRouter) {
 	router.Register(protocol.MethodWorkstationsPermToggle, m.adminOnly(m.handlePermToggle))
 	// Phase 7: activity audit log
 	router.Register(protocol.MethodWorkstationsListActivity, m.adminOnly(m.handleListActivity))
+	// Agent links
+	router.Register(protocol.MethodWorkstationsListLinkedAgents, m.adminOnly(m.handleListLinkedAgents))
 }
 
 // adminOnly is a middleware that requires at least RoleAdmin on the WS client.
@@ -263,6 +288,32 @@ func (m *WorkstationsMethods) handleDelete(ctx context.Context, client *gateway.
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id}))
 }
 
+func (m *WorkstationsMethods) handleToggle(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	var params struct {
+		ID     string `json:"id"`
+		Active bool   `json:"active"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, "invalid params"))
+			return
+		}
+	}
+	id, err := uuid.Parse(params.ID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation")))
+		return
+	}
+	if err := m.wsStore.SetActive(ctx, id, params.Active); err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToUpdate, "workstation", err.Error())))
+		return
+	}
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id, "active": params.Active}))
+}
+
 // handleTestConnection is a stub — real implementation in Phase 2/3.
 func (m *WorkstationsMethods) handleTestConnection(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
 	locale := store.LocaleFromContext(ctx)
@@ -442,6 +493,7 @@ func (m *WorkstationsMethods) handlePermAdd(ctx context.Context, client *gateway
 			i18n.T(locale, i18n.MsgFailedToCreate, "permission", err.Error())))
 		return
 	}
+	m.emitPermChanged(wsID)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"permission": perm}))
 }
 
@@ -465,6 +517,17 @@ func (m *WorkstationsMethods) handlePermRemove(ctx context.Context, client *gate
 			i18n.T(locale, i18n.MsgInvalidID, "permission")))
 		return
 	}
+	perm, err := m.permStore.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgWorkstationPermNotFound, params.ID)))
+			return
+		}
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToDelete, "permission", err.Error())))
+		return
+	}
 	if err := m.permStore.Remove(ctx, id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
@@ -475,6 +538,7 @@ func (m *WorkstationsMethods) handlePermRemove(ctx context.Context, client *gate
 			i18n.T(locale, i18n.MsgFailedToDelete, "permission", err.Error())))
 		return
 	}
+	m.emitPermChanged(perm.WorkstationID)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id}))
 }
 
@@ -499,11 +563,23 @@ func (m *WorkstationsMethods) handlePermToggle(ctx context.Context, client *gate
 			i18n.T(locale, i18n.MsgInvalidID, "permission")))
 		return
 	}
+	perm, err := m.permStore.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgWorkstationPermNotFound, params.ID)))
+			return
+		}
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToUpdate, "permission", err.Error())))
+		return
+	}
 	if err := m.permStore.SetEnabled(ctx, id, params.Enabled); err != nil {
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
 			i18n.T(locale, i18n.MsgFailedToUpdate, "permission", err.Error())))
 		return
 	}
+	m.emitPermChanged(perm.WorkstationID)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id, "enabled": params.Enabled}))
 }
 
@@ -566,4 +642,40 @@ func (m *WorkstationsMethods) handleListActivity(ctx context.Context, client *ga
 		resp["nextCursor"] = nextCursor.String()
 	}
 	client.SendResponse(protocol.NewOKResponse(req.ID, resp))
+}
+
+func (m *WorkstationsMethods) handleListLinkedAgents(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	var params struct {
+		WorkstationID string `json:"workstationId"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, "invalid params"))
+			return
+		}
+	}
+	wsID, err := uuid.Parse(params.WorkstationID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation")))
+		return
+	}
+	if _, err := m.wsStore.GetByID(ctx, wsID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgWorkstationNotFound, params.WorkstationID)))
+			return
+		}
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgInternalError, err.Error())))
+		return
+	}
+	links, err := m.linkStore.ListForWorkstation(ctx, wsID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToList, "agent links")))
+		return
+	}
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"links": links}))
 }

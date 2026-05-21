@@ -66,6 +66,24 @@ func (s *PGWorkstationPermissionStore) Add(ctx context.Context, perm *store.Work
 	return nil
 }
 
+func (s *PGWorkstationPermissionStore) GetByID(ctx context.Context, id uuid.UUID) (*store.WorkstationPermission, error) {
+	tid := store.TenantIDFromContext(ctx)
+	if tid == uuid.Nil {
+		return nil, sql.ErrNoRows
+	}
+	row := s.db.QueryRowContext(ctx,
+		`SELECT `+wpSelectCols+` FROM workstation_permissions WHERE id = $1 AND tenant_id = $2`,
+		id, tid)
+	p, err := scanPermRow(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, sql.ErrNoRows
+		}
+		return nil, fmt.Errorf("workstation_permissions get: %w", err)
+	}
+	return &p, nil
+}
+
 func (s *PGWorkstationPermissionStore) Remove(ctx context.Context, id uuid.UUID) error {
 	tid := store.TenantIDFromContext(ctx)
 	if tid == uuid.Nil {

@@ -96,7 +96,7 @@ func (t *WorkstationExecTool) Parameters() map[string]any {
 			},
 			"command": map[string]any{
 				"type":        "string",
-				"description": "Command to execute",
+				"description": "Binary name to execute (argv[0]). Pass arguments separately in 'args'. No shell syntax (&&, |, ;, $(), backticks). Example: 'ls' with args ['-la'], not 'ls -la'.",
 			},
 			"args": map[string]any{
 				"type":  "array",
@@ -135,6 +135,10 @@ func (t *WorkstationExecTool) Execute(ctx context.Context, args map[string]any) 
 	cmd, _ := args["command"].(string)
 	if cmd == "" {
 		return ErrorResult(i18n.T(locale, i18n.MsgRequired, "command"))
+	}
+	// Reject shell syntax early with a clear message so the LLM learns to use binary+args format.
+	if hasShellSyntax(cmd) {
+		return ErrorResult(i18n.T(locale, i18n.MsgWorkstationShellSyntax, cmd))
 	}
 	if strings.ContainsRune(cmd, '\x00') {
 		return ErrorResult("command contains invalid NUL byte")
@@ -180,7 +184,7 @@ func (t *WorkstationExecTool) Execute(ctx context.Context, args map[string]any) 
 			"agent_id", agentID,
 			"cmd_hash", fmt.Sprintf("%x", sha256.Sum256([]byte(cmd)))[:12],
 		)
-		return ErrorResult(i18n.T(locale, i18n.MsgWorkstationAccessDenied, agentID, ws.WorkstationKey))
+		return ErrorResult(permErr.Error())
 	}
 
 	// 3. Get backend from cache.
@@ -304,6 +308,19 @@ func (t *WorkstationExecTool) resolveWorkstation(ctx context.Context, args map[s
 		return nil, errors.New(i18n.T(locale, i18n.MsgWorkstationAccessDenied, agentUUID.String(), chosen.WorkstationID.String()))
 	}
 	return ws, nil
+}
+
+// hasShellSyntax detects common shell metacharacters that indicate the agent
+// passed a shell command string instead of a single binary name (argv[0]).
+// This is a safety + UX guard: the SSH backend uses execve(argv), not sh -c.
+func hasShellSyntax(cmd string) bool {
+	for _, r := range cmd {
+		switch r {
+		case '&', '|', ';', '$', '`', '<', '>', '*', '?', '[', ']':
+			return true
+		}
+	}
+	return false
 }
 
 // streamAndCollect reads stdout/stderr from stream, emits eventbus chunks, and waits for exit.

@@ -459,6 +459,9 @@ func runGateway() {
 		if pgStores.WorkstationActivity != nil {
 			wsMethods.SetActivityStore(pgStores.WorkstationActivity)
 		}
+		if domainBus != nil {
+			wsMethods.SetEventBus(domainBus)
+		}
 		wsMethods.Register(server.Router())
 		slog.Info("registered workstations RPC methods")
 	}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -114,6 +116,9 @@ type SSHMetadata struct {
 	User     string `json:"user"`
 	// PrivateKey holds inline PEM-encoded private key material (decrypted by store layer).
 	PrivateKey string `json:"privateKey,omitempty"`
+	// IdentityFile is a filesystem path to a private key. If set and PrivateKey is empty,
+	// the store layer reads the file and populates PrivateKey. Supports ~ expansion.
+	IdentityFile string `json:"identityFile,omitempty"`
 	// Password is optional; prefer key-based auth.
 	Password              string `json:"password,omitempty"`
 	// KnownHostsFingerprint is the expected SHA256 fingerprint (e.g. "SHA256:abc...").
@@ -132,6 +137,7 @@ type DockerMetadata struct {
 }
 
 // UnmarshalSSHMetadata parses and validates SSH metadata bytes.
+// If IdentityFile is set and PrivateKey is empty, reads the file and populates PrivateKey.
 func UnmarshalSSHMetadata(raw []byte) (*SSHMetadata, error) {
 	var m SSHMetadata
 	if err := json.Unmarshal(raw, &m); err != nil {
@@ -149,8 +155,25 @@ func UnmarshalSSHMetadata(raw []byte) (*SSHMetadata, error) {
 	if m.Port < 1 || m.Port > 65535 {
 		return nil, fmt.Errorf("port %d out of range", m.Port)
 	}
+	if m.IdentityFile != "" && m.PrivateKey == "" {
+		path := m.IdentityFile
+		if len(path) > 0 && path[0] == '~' {
+			if home, err := os.UserHomeDir(); err == nil {
+				if len(path) > 1 && path[1] == '/' {
+					path = filepath.Join(home, path[2:])
+				} else {
+					path = home
+				}
+			}
+		}
+		pem, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read identityFile %q: %w", m.IdentityFile, err)
+		}
+		m.PrivateKey = string(pem)
+	}
 	if m.PrivateKey == "" && m.Password == "" {
-		return nil, fmt.Errorf("privateKey or password is required")
+		return nil, fmt.Errorf("privateKey, identityFile, or password is required")
 	}
 	return &m, nil
 }

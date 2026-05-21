@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MonitorCog, Plus, RefreshCw, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { MonitorCog, Plus, RefreshCw, Trash2, Power, PowerOff, ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,10 +14,12 @@ import { formatDate } from "@/lib/format";
 import { useWorkstations, type Workstation } from "./hooks/use-workstations";
 import { WorkstationCreateDialog } from "./workstation-create-dialog";
 import { WorkstationActivityTab } from "./workstation-activity-tab";
+import { WorkstationAgentsTab } from "./workstation-agents-tab";
+import { WorkstationPermissionsTab } from "./workstation-permissions-tab";
 
 export function WorkstationsPage() {
   const { t } = useTranslation("workstations");
-  const { workstations, loading, refresh, createWorkstation, deleteWorkstation } = useWorkstations();
+  const { workstations, loading, refresh, createWorkstation, deleteWorkstation, toggleWorkstation } = useWorkstations();
 
   const spinning = useMinLoading(loading);
   const isEmpty = workstations.length === 0;
@@ -91,9 +93,9 @@ export function WorkstationsPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 font-medium">{ws.name}</td>
-                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{ws.workstation_key}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{ws.workstationKey}</td>
                         <td className="px-4 py-3">
-                          <Badge variant="outline">{t(`backend.${ws.backend_type}`)}</Badge>
+                          <Badge variant="outline">{t(`backend.${ws.backendType}`)}</Badge>
                         </td>
                         <td className="px-4 py-3">
                           <Badge variant={ws.active ? "default" : "secondary"}>
@@ -101,9 +103,27 @@ export function WorkstationsPage() {
                           </Badge>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
-                          {formatDate(new Date(ws.created_at))}
+                          {formatDate(new Date(ws.createdAt))}
                         </td>
                         <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleWorkstation(ws.id, !ws.active)}
+                            className="gap-1"
+                          >
+                            {ws.active ? (
+                              <>
+                                <PowerOff className="h-3.5 w-3.5" />
+                                {t("actions.deactivate")}
+                              </>
+                            ) : (
+                              <>
+                                <Power className="h-3.5 w-3.5" />
+                                {t("actions.activate")}
+                              </>
+                            )}
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -121,9 +141,17 @@ export function WorkstationsPage() {
                             <Tabs defaultValue="activity">
                               <TabsList className="mb-3">
                                 <TabsTrigger value="activity">{t("activity.title")}</TabsTrigger>
+                                <TabsTrigger value="agents">{t("agents.title", "Linked Agents")}</TabsTrigger>
+                                <TabsTrigger value="permissions">{t("permissions.title", "Permissions")}</TabsTrigger>
                               </TabsList>
                               <TabsContent value="activity">
                                 <WorkstationActivityTab workstationId={ws.id} />
+                              </TabsContent>
+                              <TabsContent value="agents">
+                                <WorkstationAgentsTab workstationId={ws.id} />
+                              </TabsContent>
+                              <TabsContent value="permissions">
+                                <WorkstationPermissionsTab workstationId={ws.id} />
                               </TabsContent>
                             </Tabs>
                           </td>
