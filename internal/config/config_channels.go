@@ -244,17 +244,6 @@ type ProvidersConfig struct {
 	Vertex         VertexConfig    `json:"vertex"`          // Google Cloud Vertex AI (OAuth2 service account + ADC)
 }
 
-// VertexConfig configures Google Cloud Vertex AI.
-// Credentials precedence: APIKey (inline JSON) > CredentialsFile (path) > ADC (both empty).
-// ProjectID and Region are required; Model optional (defaults to google/gemini-2.0-flash-001).
-type VertexConfig struct {
-	APIKey          string `json:"api_key,omitempty"`          // service account JSON inline (secret — never persist in config.json)
-	CredentialsFile string `json:"credentials_file,omitempty"` // path to service account JSON file
-	ProjectID       string `json:"project_id,omitempty"`
-	Region          string `json:"region,omitempty"`
-	Model           string `json:"model,omitempty"`
-}
-
 // OllamaConfig configures a local (or self-hosted) Ollama instance.
 // No API key is required — Ollama accepts any Bearer token value.
 type OllamaConfig struct {
@@ -278,6 +267,17 @@ type ACPConfig struct {
 	WorkDir  string   `json:"work_dir"`  // base workspace dir
 	IdleTTL  string   `json:"idle_ttl"`  // process idle TTL (e.g. "5m")
 	PermMode string   `json:"perm_mode"` // "approve-all" (default), "approve-reads", "deny-all"
+}
+
+// VertexConfig configures Google Cloud Vertex AI.
+// Credentials precedence: APIKey (inline JSON) > CredentialsFile (path) > ADC (both empty).
+// ProjectID and Region are required; Model optional (defaults to google/gemini-2.0-flash-001).
+type VertexConfig struct {
+	APIKey          string `json:"api_key,omitempty"`          // service account JSON inline (secret — never persist in config.json)
+	CredentialsFile string `json:"credentials_file,omitempty"` // path to service account JSON file
+	ProjectID       string `json:"project_id,omitempty"`
+	Region          string `json:"region,omitempty"`
+	Model           string `json:"model,omitempty"`
 }
 
 type ProviderConfig struct {
@@ -328,7 +328,6 @@ func (p *ProvidersConfig) APIBaseForType(providerType string) string {
 	case "byteplus_coding":
 		return p.BytePlusCoding.APIBase
 	case "vertex":
-		// Computed from project+region at registration time; no config-level static base.
 		return ""
 	default:
 		return ""
@@ -401,6 +400,7 @@ type ContextGuardConfig struct {
 	Rules            []ContextGuardRule `json:"rules,omitempty"`
 	NotifyOwner      bool               `json:"notify_owner,omitempty"`
 	MaxHistoryTurns  int                `json:"max_history_turns,omitempty"` // recent messages to include (default 5)
+	DefaultAction    string             `json:"default_action,omitempty"`    // "allow" (default) or "block" when no rule matches
 }
 
 // GatewayConfig controls the gateway server.
@@ -417,10 +417,11 @@ type GatewayConfig struct {
 	Quota             *QuotaConfig `json:"quota,omitempty"`               // per-user/group request quotas
 	BlockReply              *bool        `json:"block_reply,omitempty"`                // deliver intermediate text during tool iterations (default false)
 	ToolStatus              *bool        `json:"tool_status,omitempty"`                // show tool name in streaming preview during tool execution (default true)
-	TaskRecoveryIntervalSec       int    `json:"task_recovery_interval_sec,omitempty"`        // team task recovery ticker interval in seconds (default 300 = 5min)
+	TaskRecoveryIntervalSec int          `json:"task_recovery_interval_sec,omitempty"` // team task recovery ticker interval in seconds (default 300 = 5min)
+	BackgroundProvider      string       `json:"background_provider,omitempty"`        // LLM provider for background workers (vault enrichment, consolidation)
+	BackgroundModel             string       `json:"background_model,omitempty"`               // LLM model for background workers
 	SessionAutoCompactIntervalSec int    `json:"session_auto_compact_interval_sec,omitempty"` // session auto-compaction ticker interval in seconds (default 300 = 5min, 0 = disabled)
-	BackgroundProvider            string `json:"background_provider,omitempty"`               // LLM provider for background workers (vault enrichment, consolidation)
-	BackgroundModel               string `json:"background_model,omitempty"`                  // LLM model for background workers
+	ContextGuard            *ContextGuardConfig `json:"context_guard,omitempty"`         // context-aware guardrail configuration
 }
 
 // ToolsConfig controls tool availability, policy, and web search.

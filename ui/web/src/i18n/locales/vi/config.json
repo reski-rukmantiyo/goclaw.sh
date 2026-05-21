@@ -174,6 +174,8 @@
   "behavior.contextGuardRefusalHint": "Tin nhắn hiển thị cho ngườii dùng khi bị chặn. Dùng %s làm chỗ giữ chỗ cho phạm vi agent.",
   "behavior.contextGuardMaxHistory": "Số lượt lịch sử",
   "behavior.contextGuardMaxHistoryHint": "Bao nhiêu tin nhắn gần nhất để đưa vào ngữ cảnh đánh giá.",
+  "behavior.contextGuardDefaultAction": "Hành động mặc định",
+  "behavior.contextGuardDefaultActionHint": "Hành động khi không có quy tắc nào khớp và bộ đánh giá không đưa ra quyết định rõ ràng.",
   "behavior.contextGuardNotifyOwner": "Thông báo chủ sở hữu khi chặn",
   "behavior.contextGuardNotifyOwnerHint": "Phát sự kiện bảo mật khi tin nhắn bị chặn để chủ sở hữu nhận được thông báo.",
   "behavior.contextGuardRules": "Quy tắc",

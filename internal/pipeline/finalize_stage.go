@@ -38,21 +38,6 @@ func (s *FinalizeStage) Execute(ctx context.Context, state *RunState) error {
 		state.Observe.FinalContent = s.deps.SkillPostscript(ctx, state.Observe.FinalContent, state.Tool.TotalToolCalls)
 	}
 
-	// 1c. Topic guard after-check: verify LLM response is on-topic.
-	if state.Observe.FinalContent != "" && s.deps.CheckTopicGuardResponse != nil {
-		allowed, rejectionMsg := s.deps.CheckTopicGuardResponse(ctx, state.Observe.FinalContent)
-		if !allowed {
-			slog.Warn("topic_guard.response_blocked",
-				"session", state.Input.SessionKey,
-				"content_len", len(state.Observe.FinalContent),
-			)
-			if rejectionMsg == "" {
-				rejectionMsg = "Response blocked by topic guard."
-			}
-			state.Observe.FinalContent = rejectionMsg
-		}
-	}
-
 	// 2. NO_REPLY detection: save to session for context but mark as silent.
 	// Must run BEFORE session flush so the agent message is persisted even if suppressed.
 	isSilent := s.deps.IsSilentReply != nil && s.deps.IsSilentReply(state.Observe.FinalContent)

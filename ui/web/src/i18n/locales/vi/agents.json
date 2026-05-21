@@ -196,6 +196,8 @@
       "refusalHint": "Tin nhắn hiển thị cho ngườii dùng khi bị chặn. Dùng %s làm chỗ giữ chỗ cho phạm vi agent.",
       "maxHistory": "Số lượt lịch sử",
       "maxHistoryHint": "Số tin nhắn gần nhất đưa vào ngữ cảnh đánh giá.",
+      "defaultAction": "Hành động mặc định",
+      "defaultActionHint": "Hành động khi không có quy tắc nào khớp và bộ đánh giá không đưa ra quyết định rõ ràng.",
       "notifyOwner": "Thông báo chủ sở hữu khi chặn",
       "notifyOwnerHint": "Phát sự kiện bảo mật khi tin nhắn bị chặn.",
       "rules": "Quy tắc",
@@ -206,7 +208,9 @@
       "allow": "Cho phép",
       "deny": "Từ chối",
       "block": "Chặn",
-      "warn": "Cảnh báo"
+      "warn": "Cảnh báo",
+      "allowHint": "Tin nhắn khớp quy tắc này được phép. Khi không có quy tắc nào khớp, hành động mặc định sẽ được sử dụng.",
+      "denyHint": "Tin nhắn khớp quy tắc này sẽ bị từ chối theo hành động đã chọn."
     },
     "evolution": {
       "title": "Tiến hóa",

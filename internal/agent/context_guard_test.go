@@ -128,7 +128,7 @@ func TestContextGuard_DenyWarn(t *testing.T) {
 				{Name: "politics", Type: "deny", Action: "warn"},
 			},
 		},
-		&mockGuardProvider{denyRules: []string{"politics"}, decision: "block", reason: "political topic"},
+		&mockGuardProvider{denyRules: []string{"politics"}, decision: "allow", reason: "political topic"},
 		"",
 	)
 	res, _, _, err := g.Evaluate(context.Background(), "elections?", nil, "")
@@ -143,7 +143,7 @@ func TestContextGuard_DenyWarn(t *testing.T) {
 	}
 }
 
-func TestContextGuard_AllowlistFailClosed(t *testing.T) {
+func TestContextGuard_TrustLLM_AllowNoMatch(t *testing.T) {
 	g := NewContextGuard(
 		&config.ContextGuardConfig{
 			Enabled: true,
@@ -151,7 +151,28 @@ func TestContextGuard_AllowlistFailClosed(t *testing.T) {
 				{Name: "coding", Type: "allow"},
 			},
 		},
-		&mockGuardProvider{allowRules: []string{}, decision: "allow", reason: ""},
+		&mockGuardProvider{allowRules: []string{}, decision: "allow", reason: "trusted llm"},
+		"",
+	)
+	res, _, _, err := g.Evaluate(context.Background(), "cooking recipes", nil, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Blocked {
+		t.Fatalf("expected allowed because LLM decision is allow")
+	}
+}
+
+func TestContextGuard_DefaultAction_Block(t *testing.T) {
+	g := NewContextGuard(
+		&config.ContextGuardConfig{
+			Enabled:       true,
+			DefaultAction: "block",
+			Rules: []config.ContextGuardRule{
+				{Name: "coding", Type: "allow"},
+			},
+		},
+		&mockGuardProvider{allowRules: []string{}, decision: "", reason: ""},
 		"",
 	)
 	res, _, _, err := g.Evaluate(context.Background(), "cooking recipes", nil, "")
@@ -159,7 +180,27 @@ func TestContextGuard_AllowlistFailClosed(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !res.Blocked {
-		t.Fatalf("expected blocked when no allow rule matched")
+		t.Fatalf("expected blocked when default_action is block and no decision from LLM")
+	}
+}
+
+func TestContextGuard_DefaultAction_Allow(t *testing.T) {
+	g := NewContextGuard(
+		&config.ContextGuardConfig{
+			Enabled: true,
+			Rules: []config.ContextGuardRule{
+				{Name: "coding", Type: "allow"},
+			},
+		},
+		&mockGuardProvider{allowRules: []string{}, decision: "", reason: ""},
+		"",
+	)
+	res, _, _, err := g.Evaluate(context.Background(), "cooking recipes", nil, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Blocked {
+		t.Fatalf("expected allowed when default_action is empty (defaults to allow)")
 	}
 }
 
@@ -213,7 +254,7 @@ func TestContextGuard_Both_DenyWarnWithAllow(t *testing.T) {
 				{Name: "politics", Type: "deny", Action: "warn"},
 			},
 		},
-		&mockGuardProvider{allowRules: []string{"coding"}, denyRules: []string{"politics"}, decision: "block", reason: "politics"},
+		&mockGuardProvider{allowRules: []string{"coding"}, denyRules: []string{"politics"}, decision: "allow", reason: "politics"},
 		"",
 	)
 	res, _, _, err := g.Evaluate(context.Background(), "mixed", nil, "")

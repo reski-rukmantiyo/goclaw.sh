@@ -35,6 +35,7 @@ export interface ContextGuardValues {
   rules?: ContextGuardRule[];
   notify_owner?: boolean;
   max_history_turns?: number;
+  default_action?: "allow" | "block";
 }
 
 interface Props {
@@ -147,6 +148,24 @@ export function BehaviorContextGuardCard({ value, onChange }: Props) {
                 className="text-sm w-24"
               />
               <p className="text-xs text-muted-foreground">{t("behavior.contextGuardMaxHistoryHint")}</p>
+            </div>
+
+            {/* Default action */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">{t("behavior.contextGuardDefaultAction")}</Label>
+              <Select
+                value={value.default_action ?? "allow"}
+                onValueChange={(v) => onChange({ ...value, default_action: v as "allow" | "block" })}
+              >
+                <SelectTrigger className="w-32 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="allow">{t("behavior.contextGuardAllow")}</SelectItem>
+                  <SelectItem value="block">{t("behavior.contextGuardBlock")}</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">{t("behavior.contextGuardDefaultActionHint")}</p>
             </div>
 
             {/* Notify owner */}

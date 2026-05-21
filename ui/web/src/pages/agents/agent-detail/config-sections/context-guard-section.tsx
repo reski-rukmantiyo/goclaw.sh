@@ -30,6 +30,7 @@ export interface ContextGuardConfig {
   rules?: ContextGuardRule[];
   notify_owner?: boolean;
   max_history_turns?: number;
+  default_action?: "allow" | "block";
 }
 
 interface Props {
@@ -136,6 +137,24 @@ export function ContextGuardSection({ value, onChange }: Props) {
             <p className="text-xs text-muted-foreground">{t("detail.contextGuard.maxHistoryHint")}</p>
           </div>
 
+          {/* Default action */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">{t("detail.contextGuard.defaultAction")}</Label>
+            <Select
+              value={value.default_action ?? "allow"}
+              onValueChange={(v) => onChange({ ...value, default_action: v as "allow" | "block" })}
+            >
+              <SelectTrigger className="w-32 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="allow">{t("detail.contextGuard.allow")}</SelectItem>
+                <SelectItem value="block">{t("detail.contextGuard.block")}</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{t("detail.contextGuard.defaultActionHint")}</p>
+          </div>
+
           {/* Notify owner */}
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-0.5">
@@ -186,18 +205,20 @@ export function ContextGuardSection({ value, onChange }: Props) {
                         <SelectItem value="deny">{t("detail.contextGuard.deny")}</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Select
-                      value={rule.action}
-                      onValueChange={(v) => changeRule(idx, { action: v as "block" | "warn" })}
-                    >
-                      <SelectTrigger className="w-24 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="block">{t("detail.contextGuard.block")}</SelectItem>
-                        <SelectItem value="warn">{t("detail.contextGuard.warn")}</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    {rule.type === "deny" && (
+                      <Select
+                        value={rule.action}
+                        onValueChange={(v) => changeRule(idx, { action: v as "block" | "warn" })}
+                      >
+                        <SelectTrigger className="w-24 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="block">{t("detail.contextGuard.block")}</SelectItem>
+                          <SelectItem value="warn">{t("detail.contextGuard.warn")}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
                     <Button
                       size="icon"
                       variant="ghost"
@@ -207,6 +228,17 @@ export function ContextGuardSection({ value, onChange }: Props) {
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
+                  <Textarea
+                    value={rule.description}
+                    onChange={(e) => changeRule(idx, { description: e.target.value })}
+                    placeholder={t("detail.contextGuard.ruleDescription", "Describe what topics this rule covers")}
+                    className="text-sm min-h-[48px]"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {rule.type === "allow"
+                      ? t("detail.contextGuard.allowHint", "Messages matching this rule are permitted. Messages NOT matching any allow rule are blocked.")
+                      : t("detail.contextGuard.denyHint", "Messages matching this rule are rejected with the selected action.")}
+                  </p>
                 </div>
               ))}
             </div>

@@ -33,7 +33,7 @@ export function SkillsPage() {
   const { t } = useTranslation("skills");
   const {
     skills, loading, refresh, getSkill, uploadSkill, updateSkill, deleteSkill,
-    getSkillVersions, getSkillFiles, getSkillFileContent, rescanDeps, installSingleDep, toggleSkill,
+    getSkillVersions, getSkillFiles, getSkillFileContent, rescanDeps, installDeps, installSingleDep, toggleSkill,
     setTenantConfig, deleteTenantConfig,
   } = useSkills();
   const [params, setParams] = useSearchParams();

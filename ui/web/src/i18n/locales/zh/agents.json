@@ -196,6 +196,8 @@
       "refusalHint": "请求被阻止时向用户显示的消息。使用 %s 作为代理范围的占位符。",
       "maxHistory": "历史轮数",
       "maxHistoryHint": "评估上下文中包含的最近消息数量。",
+      "defaultAction": "默认操作",
+      "defaultActionHint": "当没有规则匹配且评估器未返回明确决定时采取的操作。",
       "notifyOwner": "拦截时通知所有者",
       "notifyOwnerHint": "消息被拦截时发出安全事件。",
       "rules": "规则",
@@ -206,7 +208,9 @@
       "allow": "允许",
       "deny": "拒绝",
       "block": "拦截",
-      "warn": "警告"
+      "warn": "警告",
+      "allowHint": "匹配此规则的消息被允许。当没有规则匹配时，使用默认操作。",
+      "denyHint": "匹配此规则的消息将根据所选动作被拒绝。"
     },
     "evolution": {
       "title": "进化",

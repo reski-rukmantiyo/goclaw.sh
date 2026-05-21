@@ -174,6 +174,8 @@
   "behavior.contextGuardRefusalHint": "Message shown to users when a request is blocked. Use %s as a placeholder for the agent scope.",
   "behavior.contextGuardMaxHistory": "History Turns",
   "behavior.contextGuardMaxHistoryHint": "How many recent messages to include in the evaluation context.",
+  "behavior.contextGuardDefaultAction": "Default Action",
+  "behavior.contextGuardDefaultActionHint": "Action when no rule matches and the evaluator returns no clear decision.",
   "behavior.contextGuardNotifyOwner": "Notify Owner on Block",
   "behavior.contextGuardNotifyOwnerHint": "Emit a security event when a message is blocked so the owner can be notified.",
   "behavior.contextGuardRules": "Rules",

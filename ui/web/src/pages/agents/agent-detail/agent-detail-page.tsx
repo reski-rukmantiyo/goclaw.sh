@@ -91,8 +91,6 @@ export function AgentDetailPage({ agentId, onBack }: AgentDetailPageProps) {
                 key={agent.id + "-" + agent.updated_at}
                 agent={agent}
                 onUpdate={updateAgent}
-                getFile={getFile}
-                setFile={setFile}
                 heartbeat={hb}
                 onManageCodexPool={() => navigate(`/agents/${agent.id}/codex-pool`)}
                 onViewHooks={() => setActiveTab("hooks")}

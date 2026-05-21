@@ -261,6 +261,8 @@
       "refusalHint": "Message shown to users when a request is blocked. Use %s as a placeholder for the agent scope.",
       "maxHistory": "History Turns",
       "maxHistoryHint": "Recent messages to include in evaluation context.",
+      "defaultAction": "Default Action",
+      "defaultActionHint": "Action when no rule matches and the evaluator returns no clear decision.",
       "notifyOwner": "Notify Owner on Block",
       "notifyOwnerHint": "Emit security event when a message is blocked.",
       "rules": "Rules",
@@ -271,7 +273,9 @@
       "allow": "Allow",
       "deny": "Deny",
       "block": "Block",
-      "warn": "Warn"
+      "warn": "Warn",
+      "allowHint": "Messages matching this rule are permitted. When no rule matches, the default action is used.",
+      "denyHint": "Messages matching this rule are rejected with the selected action."
     },
     "evolution": {
       "title": "Evolution",

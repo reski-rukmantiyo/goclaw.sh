@@ -13,7 +13,6 @@ import (
 
 	"github.com/nextlevelbuilder/goclaw/internal/bootstrap"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
-	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/internal/tools"
 	"github.com/nextlevelbuilder/goclaw/internal/workspace"
@@ -319,24 +318,56 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 		}
 	}
 
-	// Topic guardrail: check if message is within agent's defined scope.
-	if l.topicGuard != nil && l.topicGuard.ShouldCheckBefore() {
-		result := l.topicGuard.Check(ctx, req.Message)
-		if !result.Allowed {
-			slog.Warn("topic_guard.blocked",
-				"agent", l.id, "user", req.UserID,
-				"reason", result.Reason, "message_len", len(req.Message),
-			)
-			msg := result.RejectionMsg
-			if msg == "" {
-				msg = i18n.T(store.LocaleFromContext(ctx), i18n.MsgTopicGuardBlocked, "")
-			}
-			return contextSetupResult{}, fmt.Errorf("topic guard: %s", msg)
+	// Security: context-aware guardrail evaluation (conversation history + agent scope).
+	if l.contextGuard != nil {
+		history := l.sessions.GetHistory(ctx, req.SessionKey)
+		scope := l.contextGuard.config.ScopeDescription
+		if scope == "" {
+			scope = l.displayName
 		}
-		slog.Debug("topic_guard.allowed",
-			"agent", l.id, "user", req.UserID,
-			"reason", result.Reason,
-		)
+		cgStart := time.Now().UTC()
+		result, sysPrompt, inputPreview, err := l.contextGuard.Evaluate(ctx, req.Message, history, scope)
+		providerName := ""
+		if l.contextGuard.provider != nil {
+			providerName = l.contextGuard.provider.Name()
+		}
+		emitContextGuardSpan(ctx, cgStart, req.Message, l.contextGuard.config, providerName, l.contextGuard.model, result, sysPrompt, inputPreview, err)
+		if err != nil {
+			slog.Warn("security.context_guard_error",
+				"agent", l.id, "user", req.UserID,
+				"err", err,
+			)
+			return contextSetupResult{}, fmt.Errorf("context guard evaluation failed: %w", err)
+		}
+		if result.Blocked {
+			slog.Warn("security.context_guard_blocked",
+				"agent", l.id, "user", req.UserID,
+				"reason", result.Reason,
+				"matched_rules", result.MatchedRules,
+			)
+			if l.contextGuard.config.NotifyOwner && l.onEvent != nil {
+				l.onEvent(AgentEvent{
+					Type:       "security.guard.blocked",
+					AgentID:    l.id,
+					SessionKey: req.SessionKey,
+					UserID:     req.UserID,
+					Channel:    req.Channel,
+					Payload: map[string]any{
+						"reason":          result.Reason,
+						"matched_rules":   result.MatchedRules,
+						"message_preview": previewMessage(req.Message, 200),
+					},
+				})
+			}
+			return contextSetupResult{}, GuardBlockedError(result.Reason, scope)
+		}
+		if result.Warning {
+			slog.Warn("security.context_guard_warned",
+				"agent", l.id, "user", req.UserID,
+				"reason", result.Reason,
+				"matched_rules", result.MatchedRules,
+			)
+		}
 	}
 
 	// Inject agent key into context for tool-level resolution (multiple agents share tool registry)

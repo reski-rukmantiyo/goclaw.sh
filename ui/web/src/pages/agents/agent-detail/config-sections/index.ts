@@ -9,4 +9,4 @@ export { ThinkingSection } from "./thinking-section";
 export { WorkspaceSharingSection } from "./workspace-sharing-section";
 export { ChatGPTOAuthRoutingSection } from "./chatgpt-oauth-routing-section";
 export { BoundChannelsSection } from "./bound-channels-section";
-export { TopicGuardSection } from "./topic-guard-section";
+export { ContextGuardSection } from "./context-guard-section";
