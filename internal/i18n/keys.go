@@ -26,11 +26,13 @@ const (
 	MsgCannotDeleteDefault = "error.cannot_delete_default" // "cannot delete the default agent"
 	MsgUserCtxRequired     = "error.user_ctx_required"     // "user context required"
 
-	// --- Chat ---
+	// --- Chat / Guard ---
 	MsgRateLimitExceeded = "error.rate_limit"       // "rate limit exceeded — please wait"
 	MsgNoUserMessage     = "error.no_user_message"  // "no user message found"
 	MsgUserIDRequired    = "error.user_id_required" // "user_id is required"
 	MsgMsgRequired       = "error.message_required" // "message is required"
+	MsgContextGuardBlocked = "error.context_guard_blocked" // "message blocked: %s"
+	MsgContextGuardRefusal = "error.context_guard_refusal" // "I'm designed to help with %s. I can't assist with requests outside that scope."
 
 	// --- Abort ---
 	MsgAbortStopped         = "abort.stopped"          // "run stopped"

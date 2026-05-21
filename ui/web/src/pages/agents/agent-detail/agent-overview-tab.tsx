@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type {
   AgentData, MemoryConfig, SubagentsConfig, ToolPolicyConfig, TopicGuardConfig,
 } from "@/types/agent";
+import type { ContextGuardConfig } from "./config-sections/context-guard-section";
 import { StickySaveBar } from "@/components/shared/sticky-save-bar";
 import { PersonalitySection } from "./overview-sections/personality-section";
 import { ModelBudgetSection } from "./overview-sections/model-budget-section";
@@ -116,6 +117,15 @@ export function AgentOverviewTab({ agent, onUpdate, getFile, setFile, heartbeat,
         skill_evolve: skillEvolve,
         skill_nudge_interval: skillEvolve ? skillNudgeInterval : 15,
       };
+      // Merge other_config preserving existing bag values
+      const otherBag = { ...((agent.other_config ?? {}) as Record<string, unknown>) };
+      if (contextGuard.enabled) {
+        otherBag.context_guard = contextGuard;
+      } else {
+        delete otherBag.context_guard;
+      }
+      updates.other_config = otherBag;
+
       // When the provider changes, clear stale pool routing config so it
       // doesn't reference members from the previous provider's pool.
       if (provider !== agent.provider) {

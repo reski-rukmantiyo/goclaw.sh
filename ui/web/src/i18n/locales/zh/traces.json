@@ -61,6 +61,8 @@
       "unset": "unset"
     },
     "output": "输出：",
+    "request": "请求：",
+    "response": "响应：",
     "thinking": "思考",
     "tokens": "令牌："
   },

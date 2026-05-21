@@ -114,6 +114,12 @@ function SpanDetailPanel({ span }: { span: SpanData }) {
           {reasoning.supported_levels?.length ? <div className="mt-1">{t("span.supportedLevels")} {reasoning.supported_levels.join(", ")}</div> : null}
         </div>
       )}
+      {span.metadata?.request && (
+        <TracePreviewBlock label={t("span.request")} content={JSON.stringify(span.metadata.request, null, 2)} />
+      )}
+      {span.metadata?.response && (
+        <TracePreviewBlock label={t("span.response")} content={JSON.stringify(span.metadata.response, null, 2)} />
+      )}
       {span.input_preview && <TracePreviewBlock label={t("span.input")} content={span.input_preview} />}
       {span.system_prompt_preview && <TracePreviewBlock label={t("span.systemPrompt")} content={span.system_prompt_preview} />}
       {span.output_preview && <TracePreviewBlock label={t("span.output")} content={span.output_preview} />}

@@ -172,6 +172,7 @@ type Loop struct {
 	inputGuard      *InputGuard
 	injectionAction string // "log", "warn" (default), "block", "off"
 	maxMessageChars int    // 0 = use default (32000)
+	contextGuard    *ContextGuard
 
 	// Topic guardrail: keyword + optional LLM classification
 	topicGuard *TopicGuard
@@ -379,6 +380,8 @@ type LoopConfig struct {
 	InputGuard      *InputGuard // nil = auto-create when InjectionAction != "off"
 	InjectionAction string      // "log", "warn" (default), "block", "off"
 	MaxMessageChars int         // 0 = use default (32000)
+	ContextGuard    *config.ContextGuardConfig
+	GuardProvider   providers.Provider // evaluator provider for context guard; nil = use agent's provider
 
 	// Topic guardrail: per-agent keyword + optional LLM classification
 	TopicGuardCfg *config.TopicGuardConfig
@@ -505,6 +508,16 @@ func NewLoop(cfg LoopConfig) *Loop {
 	guard := cfg.InputGuard
 	if guard == nil && action != "off" {
 		guard = NewInputGuard()
+	}
+
+	// Create ContextGuard when configured
+	var cg *ContextGuard
+	if cfg.ContextGuard != nil && cfg.ContextGuard.Enabled {
+		guardProvider := cfg.GuardProvider
+		if guardProvider == nil {
+			guardProvider = cfg.Provider
+		}
+		cg = NewContextGuard(cfg.ContextGuard, guardProvider, cfg.Model)
 	}
 
 	return &Loop{

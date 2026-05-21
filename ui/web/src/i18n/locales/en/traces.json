@@ -68,6 +68,8 @@
     "input": "Input:",
     "systemPrompt": "System Prompt:",
     "output": "Output:",
+    "request": "Request:",
+    "response": "Response:",
     "copy": "Copy",
     "startTime": "Start:",
     "endTime": "End:",

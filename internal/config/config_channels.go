@@ -383,6 +383,26 @@ type QuotaConfig struct {
 	Groups    map[string]QuotaWindow `json:"groups,omitempty"`    // key = userID (e.g. "group:telegram:-100123")
 }
 
+// ContextGuardRule defines a single context-aware guardrail rule.
+type ContextGuardRule struct {
+	Name        string `json:"name"`        // human-readable rule name
+	Description string `json:"description"` // natural language description of what rule covers
+	Type        string `json:"type"`        // "allow" or "deny"
+	Action      string `json:"action"`      // "block" or "warn"
+}
+
+// ContextGuardConfig configures LLM-based context-aware guardrails.
+type ContextGuardConfig struct {
+	Enabled          bool               `json:"enabled,omitempty"`
+	Provider         string             `json:"provider,omitempty"`          // evaluator provider name; empty = use agent's provider
+	Model            string             `json:"model,omitempty"`             // evaluator model override (e.g. "haiku")
+	ScopeDescription string             `json:"scope_description,omitempty"` // agent purpose / domain description
+	RefusalMessage   string             `json:"refusal_message,omitempty"`   // custom refusal template; %s = scope
+	Rules            []ContextGuardRule `json:"rules,omitempty"`
+	NotifyOwner      bool               `json:"notify_owner,omitempty"`
+	MaxHistoryTurns  int                `json:"max_history_turns,omitempty"` // recent messages to include (default 5)
+}
+
 // GatewayConfig controls the gateway server.
 type GatewayConfig struct {
 	Host              string       `json:"host"`

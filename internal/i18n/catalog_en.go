@@ -26,10 +26,12 @@ func init() {
 		MsgUserCtxRequired:     "user context required",
 
 		// Chat
-		MsgRateLimitExceeded: "rate limit exceeded — please wait",
-		MsgNoUserMessage:     "no user message found",
-		MsgUserIDRequired:    "user_id is required",
-		MsgMsgRequired:       "message is required",
+		MsgRateLimitExceeded:   "rate limit exceeded — please wait",
+		MsgNoUserMessage:       "no user message found",
+		MsgUserIDRequired:      "user_id is required",
+		MsgMsgRequired:         "message is required",
+		MsgContextGuardBlocked: "message blocked: %s",
+		MsgContextGuardRefusal: "I'm designed to help with %s. I can't assist with requests outside that scope.",
 
 		// Abort
 		MsgAbortStopped:         "run stopped",

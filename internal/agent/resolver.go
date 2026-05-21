@@ -53,6 +53,7 @@ type ResolverDeps struct {
 	// Security
 	InjectionAction string // "log", "warn", "block", "off"
 	MaxMessageChars int
+	ContextGuard    *config.ContextGuardConfig
 
 	// Global defaults (from config.json) — per-agent DB overrides take priority
 	CompactionCfg          *config.CompactionConfig
@@ -473,6 +474,15 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 			evoMetricsStore = deps.EvolutionMetricsStore
 		}
 
+		// Resolve context-guard evaluator provider (may differ from agent's chat provider)
+		guardCfg := resolveContextGuard(deps.ContextGuard, ag.ParseContextGuardConfig())
+		var guardProvider providers.Provider
+		if guardCfg != nil && guardCfg.Provider != "" && deps.ProviderReg != nil {
+			if gp, _ := deps.ProviderReg.Get(ctx, guardCfg.Provider); gp != nil {
+				guardProvider = gp
+			}
+		}
+
 		restrictVal := true // always restrict agents to their workspace
 		loop := NewLoop(LoopConfig{
 			ID:                     ag.AgentKey,
@@ -625,6 +635,14 @@ func derefInt(p *int) int {
 		return 0
 	}
 	return *p
+}
+
+// resolveContextGuard returns the per-agent override if set, otherwise the global default.
+func resolveContextGuard(global, perAgent *config.ContextGuardConfig) *config.ContextGuardConfig {
+	if perAgent != nil {
+		return perAgent
+	}
+	return global
 }
 
 // resolveDefaultTimezone reads the current cron.default_timezone from the

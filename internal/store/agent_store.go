@@ -171,6 +171,26 @@ func (a *AgentData) ParseMemoryConfig() *config.MemoryConfig {
 	return &c
 }
 
+// ParseContextGuardConfig returns per-agent context guard config from other_config JSONB, or nil.
+func (a *AgentData) ParseContextGuardConfig() *config.ContextGuardConfig {
+	if len(a.OtherConfig) == 0 {
+		return nil
+	}
+	var bag map[string]json.RawMessage
+	if json.Unmarshal(a.OtherConfig, &bag) != nil {
+		return nil
+	}
+	raw, ok := bag["context_guard"]
+	if !ok {
+		return nil
+	}
+	var c config.ContextGuardConfig
+	if json.Unmarshal(raw, &c) != nil {
+		return nil
+	}
+	return &c
+}
+
 // ParseThinkingLevel extracts the normalized reasoning effort from other_config JSONB.
 // Missing config defaults to "off" to match the dashboard and docs.
 func (a *AgentData) ParseThinkingLevel() string {

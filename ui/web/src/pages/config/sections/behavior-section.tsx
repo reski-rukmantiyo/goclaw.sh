@@ -7,8 +7,7 @@ import { BehaviorRateCard } from "./behavior-rate-card";
 import { BehaviorSessionsCard } from "./behavior-sessions-card";
 import { BehaviorSecurityCard } from "./behavior-security-card";
 import { BehaviorPendingCompactionCard, type PendingCompactionValues } from "./behavior-pending-compaction-card";
-
- 
+import { BehaviorContextGuardCard, type ContextGuardValues } from "./behavior-context-guard-card";
 
 interface Props {
   config: Record<string, any>;
@@ -51,6 +50,9 @@ export function BehaviorSection({ config, onPatch, saving }: Props) {
     scrub_credentials: tl.scrub_credentials,
   });
 
+  // Context guard (from gateway)
+  const [contextGuard, setContextGuard] = useState<ContextGuardValues>(gw.context_guard ?? {});
+
   // Pending compaction (from channels.pending_compaction)
   const [pendingCompaction, setPendingCompaction] = useState<PendingCompactionValues>(
     ch.pending_compaction ?? {},
@@ -75,6 +77,7 @@ export function BehaviorSection({ config, onPatch, saving }: Props) {
       injection_action: gw.injection_action,
       scrub_credentials: tl.scrub_credentials,
     });
+    setContextGuard(gw.context_guard ?? {});
     setPendingCompaction(ch.pending_compaction ?? {});
     setDirty(false);
   }, [config]);  
@@ -96,6 +99,7 @@ export function BehaviorSection({ config, onPatch, saving }: Props) {
         rate_limit_rpm: rate.rate_limit_rpm,
         inbound_debounce_ms: rate.inbound_debounce_ms,
         injection_action: security.injection_action,
+        context_guard: contextGuard.enabled ? contextGuard : undefined,
       },
       agents: {
         ...config.agents,
@@ -113,6 +117,7 @@ export function BehaviorSection({ config, onPatch, saving }: Props) {
       <BehaviorRateCard value={rate} onChange={markDirty(setRate)} />
       <BehaviorSessionsCard value={sessions} onChange={markDirty(setSessions)} />
       <BehaviorSecurityCard value={security} onChange={markDirty(setSecurity)} />
+      <BehaviorContextGuardCard value={contextGuard} onChange={markDirty(setContextGuard)} />
       <BehaviorPendingCompactionCard value={pendingCompaction} onChange={markDirty(setPendingCompaction)} />
 
       {dirty && (
