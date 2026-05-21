@@ -215,6 +215,25 @@ Remote execution environments (SSH / Docker) for the `exec` tool. Standard editi
 - **Sanitized API responses**: `Workstation.SanitizedView()` strips `Metadata`/`DefaultEnv`; returns `MetadataSummary` (host/port/user/hasKey for SSH; image/containerName for Docker).
 - **Audit logging**: Every exec/deny logged to `workstation_activity` with `cmd_preview`, `exit_code`, `duration_ms`, `deny_reason`. Nightly prune (30 days).
 
+### Agent Linking
+
+- `POST /v1/workstations/{id}/agents` — link agent (optional `is_default`)
+- `DELETE /v1/workstations/{id}/agents/{agentId}` — unlink
+- `GET /v1/workstations/{id}/agents` — list linked agents
+- `workstation_exec` resolves default workstation from links when no explicit ID provided
+
+### Permission Cache Invalidation
+
+Add/remove/toggle permission emits `EventWorkstationPermChanged` via domain event bus. `workstation_exec` invalidates its allowlist cache on receipt.
+
+### Shell Syntax Guard
+
+`hasShellSyntax()` rejects shell metacharacters (`&|;$`<>*?[]`) in `cmd`. Enforces binary `argv[0]` + separate `args` array. SSH backend uses `execve`, not `sh -c`.
+
+### Toggle
+
+`POST /v1/workstations/{id}/toggle` with `{"active": bool}` disables/enables workstation. Inactive workstations skipped during exec resolution.
+
 ---
 
 ## Key Conventions

@@ -645,6 +645,27 @@ Remote execution environments for the `exec` tool — SSH hosts or Docker contai
 - **Sanitized responses**: API returns `MetadataSummary` (host/port/user/hasKey for SSH; image/containerName for Docker) — raw credentials never leave the server.
 - **Audit log**: Every exec and deny event appended to `workstation_activity` with `cmd_preview`, `exit_code`, `duration_ms`, `deny_reason`. Nightly prune removes rows older than 30 days.
 
+### Agent Linking
+
+Agents bind to workstations via `agent_workstation_links`:
+
+- `POST /v1/workstations/{id}/agents` — link agent with optional `is_default`
+- `DELETE /v1/workstations/{id}/agents/{agentId}` — unlink
+- `GET /v1/workstations/{id}/agents` — list linked agents
+- `workstation_exec` resolves the default linked workstation when no explicit `workstation_id` is provided
+
+### Permission Cache Invalidation
+
+Permission mutations (add, remove, toggle) publish `EventWorkstationPermChanged` on the domain event bus. `workstation_exec` invalidate its per-workstation allowlist cache on receipt, ensuring policy changes take effect immediately without process restart.
+
+### Shell Syntax Guard
+
+`workstation_exec` enforces binary-only command input. Shell metacharacters (`&`, `|`, `;`, `$`, `` ` ``, `<`, `>`, `*`, `?`, `[`, `]`) in `cmd` are rejected with a clear error so the LLM learns to pass binary name as `cmd` and arguments as `args` array. The SSH backend uses `execve(argv)`, not `sh -c`.
+
+### Workstation Toggle
+
+`POST /v1/workstations/{id}/toggle` with body `{"active": bool}` disables or re-enables a workstation. Inactive workstations are excluded from agent exec resolution.
+
 ---
 
 ## Cross-References

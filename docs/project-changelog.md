@@ -4,10 +4,15 @@ Significant changes, features, and fixes in reverse chronological order.
 
 ---
 
-## v3.11.6 — 2026-05-21
+## v3.12.0 — 2026-05-22
 
 ### Features
 
+- **Workstation Agent Linking** — Link agents to workstations with `is_default` flag. `POST /v1/workstations/{id}/agents` to link, `DELETE /v1/workstations/{id}/agents/{agentId}` to unlink, `GET /v1/workstations/{id}/agents` to list linked agents. Web UI adds Agents tab to workstation detail.
+- **Workstation Permission Management UI** — Full allowlist CRUD in web UI via Permissions tab. Add/remove/toggle permission patterns per workstation. Cache invalidation fires `EventWorkstationPermChanged` on every mutation so `workstation_exec` allowlist cache stays consistent.
+- **Workstation Toggle** — `POST /v1/workstations/{id}/toggle` with `{"active": bool}` enables or disables a workstation. Inactive workstations are skipped during agent exec resolution.
+- **Shell Syntax Validation** — `workstation_exec` tool rejects shell metacharacters (`&`, `|`, `;`, `$`, `` ` ``, `<`, `>`, `*`, `?`, `[`, `]`) in `cmd` input. Enforces binary-only `argv[0]` with separate `args` array. Prevents agents from passing shell pipelines to SSH backends that use `execve`, not `sh -c`.
+- **Workstation Read-Only Policy** — `workstations.list`, `workstations.get`, `workstations.permList`, `workstations.listActivity`, `workstations.listLinkedAgents` classified as read methods in RBAC policy. Non-admin users can view but not mutate.
 - **Workstation SQLite Support** — Full SQLite schema for remote workstations (v34 → v37): `workstations`, `agent_workstation_links`, `workstation_permissions`, `workstation_activity`. PG migrations renumbered to 000073–000075. Desktop/lite edition gets schema compatibility; router remains standard-edition gated.
 - **Skill Grant Management Privileges** — `skill_agent_grants.can_manage` boolean. When true, the granted agent can update, patch, and delete the skill. Cross-tenant scope verification (`verifySkillGrantScope`) ensures both skill and agent belong to the requesting tenant (system skills exempt).
 - **Skill Management Metadata** — Skill list/detail responses now include `creator_agent` (resolved from frontmatter) and `manager_agents` (agents with `can_manage=true`). UI skill detail dialog supports version-param deeplinks and direct file-tab routing.
@@ -18,7 +23,7 @@ Significant changes, features, and fixes in reverse chronological order.
 
 ---
 
-## v3.11.5 — 2026-05-19
+## v3.11.3E-rclaw — 2026-05-19
 
 ### Features
 
