@@ -541,7 +541,7 @@ Stored in `GUARDRAIL.json` agent context file.
 
 ### Provider Warnings
 
-If the configured LLM model does not match known small-model patterns (<7B params), a warning is logged: `topic_guard.large_model`.
+If the configured LLM model does not match known small-model patterns (<7B params), a warning is logged: `context_guard.large_model`.
 
 ---
 

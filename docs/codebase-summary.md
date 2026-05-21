@@ -162,7 +162,7 @@ External systems invoke agents or send channel messages via webhooks without gat
 | `internal/store/webhook_store.go` | `WebhookStore` interface + `WebhookCallStore` |
 | `internal/store/pg/webhook_store.go` | PostgreSQL implementation (tenant-scoped) |
 | `internal/store/sqlitestore/webhook_store.go` | SQLite implementation (Lite edition) |
-| `migrations/` | PG migrations 000056–000058 (webhooks + lease token + encrypted secret) |
+| `migrations/` | PG migrations 000070–000072 (webhooks + lease token + encrypted secret) |
 
 ### Auth Flow
 
@@ -188,7 +188,32 @@ Raw webhook secret encrypted at rest via AES-256-GCM using `GOCLAW_ENCRYPTION_KE
 
 All webhook calls logged with canonical `{"body_hash":"<sha256-hex>","meta":{...}}` shape in `webhook_calls.request_payload` (JSON).
 Used by idempotency checker to detect body mismatches on replay.
->>>>>>> a83f4090 (fix(webhooks): address post-review findings (K1-K10))
+
+---
+
+## Workstation Subsystem
+
+Remote execution environments (SSH / Docker) for the `exec` tool. Standard edition only.
+
+### Components
+
+| Path | Purpose |
+|------|---------|
+| `internal/store/workstation_store.go` | `WorkstationStore`, `WorkstationPermissionStore`, `WorkstationActivityStore` interfaces |
+| `internal/store/pg/workstations.go` | PostgreSQL implementation (AES-256-GCM encrypted metadata/env) |
+| `internal/store/sqlitestore/workstations.go` | SQLite implementation (Lite edition — schema only, no UI/router) |
+| `internal/http/workstations.go` | CRUD + link + permission + activity handlers |
+| `internal/http/workstations_test.go` | Handler tests |
+| `migrations/` | PG migrations 000073–000075 (workstations + permissions + activity) |
+| `internal/store/sqlitestore/schema.go` | SQLite v34–v37 (workstations, permissions, activity) |
+
+### Security Model
+
+- **Default-deny exec**: No matching enabled permission pattern → `exec` rejected.
+- **Permission patterns**: Match `argv[0]` only. Stored per-workstation in `workstation_permissions`.
+- **Encrypted at rest**: `metadata` (SSH keys, Docker creds) and `default_env` encrypted via AES-256-GCM using `GOCLAW_ENCRYPTION_KEY`.
+- **Sanitized API responses**: `Workstation.SanitizedView()` strips `Metadata`/`DefaultEnv`; returns `MetadataSummary` (host/port/user/hasKey for SSH; image/containerName for Docker).
+- **Audit logging**: Every exec/deny logged to `workstation_activity` with `cmd_preview`, `exit_code`, `duration_ms`, `deny_reason`. Nightly prune (30 days).
 
 ---
 

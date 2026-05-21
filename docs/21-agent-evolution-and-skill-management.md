@@ -392,6 +392,8 @@ stateDiagram-v2
 
 Grant/revoke operations require **ownership or admin role**.
 
+**Management privilege (`can_manage`)**: When `can_manage=true` is set on an agent grant, the granted agent can update, patch, and delete the skill. This is stored in `skill_agent_grants.can_manage` and enforced at the store layer via `verifySkillGrantScope` (cross-tenant scope verification).
+
 ---
 
 ## 4. Security Model

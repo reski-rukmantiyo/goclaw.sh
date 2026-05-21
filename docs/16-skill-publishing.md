@@ -260,7 +260,15 @@ skills/<skill-name>/
 | `skill_id` | UUID FK | References skills |
 | `agent_id` | UUID FK | References agents |
 | `pinned_version` | INT | Stored but not used — agent always uses latest |
+| `can_manage` | BOOLEAN | When true, granted agent can update/patch/delete the skill (management privilege) |
 | `granted_by` | VARCHAR | User who granted |
+
+### SkillInfo response fields
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `creator_agent` | `SkillAgentRef` | Agent that created the skill (resolved from `frontmatter.creator_agent`) |
+| `manager_agents` | `[]SkillAgentRef` | Agents with `can_manage=true` grants on this skill |
 
 ---
 
@@ -281,6 +289,8 @@ ListAccessible query includes:
 ```
 
 Revoking the last grant auto-demotes `internal` → `private` (atomic SQL).
+
+**Management privileges**: Grants with `can_manage=true` allow the granted agent to update, patch, and delete the skill. Only the skill owner or an admin can set `can_manage` when granting.
 
 ---
 

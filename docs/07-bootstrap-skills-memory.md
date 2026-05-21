@@ -347,7 +347,7 @@ flowchart TD
 
 | Table | Key | Extra |
 |-------|-----|-------|
-| `skill_agent_grants` | `(skill_id, agent_id)` | `pinned_version` for version pinning per agent, `granted_by` audit |
+| `skill_agent_grants` | `(skill_id, agent_id)` | `pinned_version` for version pinning per agent, `can_manage` management privilege, `granted_by` audit |
 | `skill_user_grants` | `(skill_id, user_id)` | `granted_by` audit, ON CONFLICT DO NOTHING for idempotency |
 
 **Resolution**: `ListAccessible(agentID, userID)` performs a DISTINCT join across `skills`, `skill_agent_grants`, and `skill_user_grants` with the visibility filter, returning only active skills the caller can access.

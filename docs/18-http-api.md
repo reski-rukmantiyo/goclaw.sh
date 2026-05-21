@@ -305,6 +305,8 @@ Use `direct_selection_count` plus the `selected_provider` sequence to verify rea
 | `POST` | `/v1/skills/{id}/grants/user` | Grant skill to user |
 | `DELETE` | `/v1/skills/{id}/grants/user/{userID}` | Revoke from user |
 
+**Grant metadata**: Skill list/detail responses include `creator_agent` and `manager_agents` (agents with `can_manage=true` grants). Cross-tenant scope verification is enforced at the store layer — agents and skills must belong to the requesting tenant (system skills exempt).
+
 ### Agent Skills
 
 | Method | Path | Description |
@@ -318,8 +320,8 @@ Use `direct_selection_count` plus the `selected_provider` sequence to verify rea
 | `GET` | `/v1/skills/{id}/versions` | List available versions |
 | `GET` | `/v1/skills/{id}/files` | List files in skill |
 | `GET` | `/v1/skills/{id}/files/{path...}` | Read file content |
-| `POST` | `/v1/skills/rescan-deps` | Rescan runtime dependencies |
-| `POST` | `/v1/skills/install-deps` | Install all missing deps |
+| `POST` | `/v1/skills/rescan-deps` | Rescan runtime dependencies (master tenant; cross-tenant scope) |
+| `POST` | `/v1/skills/install-deps` | Install all missing deps (master tenant; cross-tenant scope) |
 | `POST` | `/v1/skills/install-dep` | Install single dependency |
 | `GET` | `/v1/skills/runtimes` | Check runtime availability |
 

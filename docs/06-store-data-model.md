@@ -569,6 +569,12 @@ flowchart TD
     subgraph "Custom Tools"
         CT["custom_tools"]
     end
+
+    subgraph Workstations
+        WS["workstations"] --> WSL["agent_workstation_links"]
+        WS --> WSP["workstation_permissions"]
+        WS --> WSA["workstation_activity"]
+    end
 ```
 
 ### Key Tables
@@ -599,6 +605,10 @@ flowchart TD
 | `usage_snapshots` | Hourly usage aggregations | `bucket_hour`, `agent_id`, `model`, `provider`, `tokens_in`, `tokens_out`, `cost`, `request_count`, `memory_docs`, `memory_chunks`, `embedded_chunks`, `kg_entities`, `kg_relations` |
 | `raw_message_chunks` | Chunked+embedded raw messages | `agent_id`, `graph_id`, `chat_id`, `chat_name`, `sender`, `sender_id`, `msg_time_from`, `msg_time_to`, `chunk_index`, `text`, `content_hash`, `embedding` (vector(768)), `tsv` (GIN), `source_msg_ids` (UUID[]), `tenant_id` |
 | `listen_raw_messages` | Raw message capture + extraction pipeline | `agent_id`, `group_jid`, `sender_jid`, `text`, `processed_at`, `embedded_at`, `extraction_status`, `extraction_error`, `extraction_attempts`, `last_attempted_at`, `tenant_id` |
+| `workstations` | Remote execution environments (SSH / Docker) | `workstation_key`, `tenant_id`, `name`, `backend_type`, `metadata` (encrypted), `default_cwd`, `default_env` (encrypted), `active`, `created_by` |
+| `agent_workstation_links` | Agent ↔ workstation bindings | PK(agent_id, workstation_id), `tenant_id`, `is_default` |
+| `workstation_permissions` | Per-workstation exec allowlist | `workstation_id`, `tenant_id`, `pattern`, `enabled`, `created_by` — default-deny: no match → exec rejected |
+| `workstation_activity` | Exec/deny audit log | `workstation_id`, `tenant_id`, `agent_id`, `action`, `cmd_hash`, `cmd_preview`, `exit_code`, `duration_ms`, `deny_reason` — pruned nightly (30 days) |
 
 ### Migrations
 
@@ -614,6 +624,13 @@ flowchart TD
 | `000066_raw_msg_chunks_text_columns` | Additional text columns on `raw_message_chunks` |
 | `000067_embedded_chunks` | `embedded_chunks` field on `usage_snapshots` |
 | `000068_add_openrouter_routing` | `openrouter_routing` key support in provider settings JSONB |
+| `000069_agent_grants_env_override` | Agent grant environment override fields |
+| `000070_webhooks` | `webhooks` table (tenant-scoped, encrypted secrets) |
+| `000071_webhook_calls_lease_token` | `lease_token` column on `webhook_calls` (CAS worker ownership) |
+| `000072_webhooks_encrypted_secret` | `encrypted_secret` column on `webhooks` (AES-256-GCM at rest) |
+| `000073_workstations` | `workstations` and `agent_workstation_links` tables |
+| `000074_workstation_permissions` | `workstation_permissions` table (default-deny exec allowlist) |
+| `000075_workstation_activity` | `workstation_activity` table (rolling audit log, 30-day prune) |
 
 ### Required PostgreSQL Extensions
 

@@ -4,11 +4,26 @@ Significant changes, features, and fixes in reverse chronological order.
 
 ---
 
+## v3.11.6 — 2026-05-21
+
+### Features
+
+- **Workstation SQLite Support** — Full SQLite schema for remote workstations (v34 → v37): `workstations`, `agent_workstation_links`, `workstation_permissions`, `workstation_activity`. PG migrations renumbered to 000073–000075. Desktop/lite edition gets schema compatibility; router remains standard-edition gated.
+- **Skill Grant Management Privileges** — `skill_agent_grants.can_manage` boolean. When true, the granted agent can update, patch, and delete the skill. Cross-tenant scope verification (`verifySkillGrantScope`) ensures both skill and agent belong to the requesting tenant (system skills exempt).
+- **Skill Management Metadata** — Skill list/detail responses now include `creator_agent` (resolved from frontmatter) and `manager_agents` (agents with `can_manage=true`). UI skill detail dialog supports version-param deeplinks and direct file-tab routing.
+
+### Refactors
+
+- **Topic Guard Removal** — `topic_guard.go` and all UI/i18n references removed. `ContextGuard` (keyword + optional LLM fallback) remains as the unified content filter. `topic_guard.large_model` warning renamed to `context_guard.large_model`.
+
+---
+
 ## v3.11.5 — 2026-05-19
 
 ### Features
 
 - **Context Guardrails** — New per-agent content filter (`ContextGuard`) with keyword allow/block lists using word-boundary regex matching. Optional LLM classification fallback (`keyword_and_llm` mode) for unmatched messages. Configurable intercept timing: `before` (pre-LLM), `after` (post-LLM), or `both`. Block keywords take priority. Small-model warning (<7B params) for classification LLM. UI config sections in web and desktop dashboards.
+- **Skill Dependency Rescan (Cross-Tenant)** — `POST /v1/skills/rescan-deps` and `POST /v1/skills/install-deps` now operate across all enabled skills (not only system skills) using cross-tenant store scope. Individual skill context resolved per-skill during update.
 
 ### Fixes
 
