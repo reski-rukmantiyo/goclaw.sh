@@ -32,6 +32,7 @@ import {
   FileText,
   Webhook,
   Layers,
+  MonitorCog,
 
 } from "lucide-react";
 import { useTranslation } from "react-i18next";

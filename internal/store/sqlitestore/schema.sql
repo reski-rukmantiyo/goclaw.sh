@@ -1795,7 +1795,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_webhook_calls_idempotency
     WHERE idempotency_key IS NOT NULL;
 
 -- ============================================================
--- Table: workstations (migration 000062)
+-- Table: workstations (migration 000073)
 -- metadata and default_env stored as BLOB (AES-256-GCM encrypted).
 -- backend_type constrained to 'ssh' | 'docker'.
 -- ============================================================
@@ -1829,7 +1829,7 @@ CREATE TABLE IF NOT EXISTS agent_workstation_links (
 CREATE INDEX IF NOT EXISTS idx_agent_workstation_tenant ON agent_workstation_links(tenant_id);
 
 -- ============================================================
--- Table: workstation_permissions (migration 000063)
+-- Table: workstation_permissions (migration 000074)
 -- Per-workstation binary allowlist. Default-deny: no matching
 -- enabled pattern → exec rejected. Pattern matches argv[0] only.
 -- ============================================================
@@ -1848,7 +1848,7 @@ CREATE INDEX IF NOT EXISTS idx_workstation_perms_ws ON workstation_permissions(w
 CREATE INDEX IF NOT EXISTS idx_workstation_perms_tenant ON workstation_permissions(tenant_id);
 
 -- ============================================================
--- Table: workstation_activity (migration 000064)
+-- Table: workstation_activity (migration 000075)
 -- Rolling audit log for exec and deny events. Append-only;
 -- pruned nightly (rows older than 30 days) via Prune().
 -- cmd_preview: first 200 chars, secrets redacted.

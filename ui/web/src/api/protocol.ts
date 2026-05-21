@@ -185,6 +185,21 @@ export const Methods = {
   // WhatsApp
   WHATSAPP_GROUPS_REFRESH: "whatsapp.groups.refresh",
 
+  // Workstations
+  WORKSTATIONS_LIST: "workstations.list",
+  WORKSTATIONS_GET: "workstations.get",
+  WORKSTATIONS_CREATE: "workstations.create",
+  WORKSTATIONS_UPDATE: "workstations.update",
+  WORKSTATIONS_DELETE: "workstations.delete",
+  WORKSTATIONS_TEST: "workstations.testConnection",
+  WORKSTATIONS_LINK_AGENT: "workstations.linkAgent",
+  WORKSTATIONS_UNLINK_AGENT: "workstations.unlinkAgent",
+  WORKSTATIONS_PERM_LIST: "workstations.permissions.list",
+  WORKSTATIONS_PERM_ADD: "workstations.permissions.add",
+  WORKSTATIONS_PERM_REMOVE: "workstations.permissions.remove",
+  WORKSTATIONS_PERM_TOGGLE: "workstations.permissions.toggle",
+  WORKSTATIONS_LIST_ACTIVITY: "workstations.activity.list",
+
   // Phase 3+ - NICE TO HAVE
   LOGS_TAIL: "logs.tail",
 } as const;
