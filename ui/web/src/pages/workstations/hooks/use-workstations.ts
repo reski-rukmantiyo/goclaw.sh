@@ -84,6 +84,65 @@ export function useWorkstations() {
     [ws, load],
   );
 
+  const listLinkedAgents = useCallback(
+    async (workstationId: string): Promise<{ agentId: string; isDefault: boolean }[]> => {
+      const res = await ws.call<{ links: { agentId: string; isDefault: boolean }[] }>(
+        Methods.WORKSTATIONS_LIST_LINKED_AGENTS,
+        { workstationId }
+      );
+      return res.links ?? [];
+    },
+    [ws],
+  );
+
+  const linkAgent = useCallback(
+    async (workstationId: string, agentId: string, isDefault = false): Promise<void> => {
+      await ws.call(Methods.WORKSTATIONS_LINK_AGENT, { workstationId, agentId, isDefault });
+      await load();
+    },
+    [ws, load],
+  );
+
+  const unlinkAgent = useCallback(
+    async (workstationId: string, agentId: string): Promise<void> => {
+      await ws.call(Methods.WORKSTATIONS_UNLINK_AGENT, { workstationId, agentId });
+      await load();
+    },
+    [ws, load],
+  );
+
+  const listPermissions = useCallback(
+    async (workstationId: string): Promise<{ id: string; pattern: string; enabled: boolean }[]> => {
+      const res = await ws.call<{ permissions: { id: string; pattern: string; enabled: boolean }[] }>(
+        Methods.WORKSTATIONS_PERM_LIST,
+        { workstationId }
+      );
+      return res.permissions ?? [];
+    },
+    [ws],
+  );
+
+  const addPermission = useCallback(
+    async (workstationId: string, pattern: string): Promise<void> => {
+      await ws.call(Methods.WORKSTATIONS_PERM_ADD, { workstationId, pattern, enabled: true });
+    },
+    [ws],
+  );
+
+  const removePermission = useCallback(
+    async (_workstationId: string, id: string): Promise<void> => {
+      await ws.call(Methods.WORKSTATIONS_PERM_REMOVE, { id });
+    },
+    [ws],
+  );
+
+  const togglePermission = useCallback(
+    async (id: string, enabled: boolean): Promise<void> => {
+      await ws.call(Methods.WORKSTATIONS_PERM_TOGGLE, { id, enabled });
+    },
+    [ws],
+  );
+
   return {
     workstations,
     loading,
@@ -93,5 +152,12 @@ export function useWorkstations() {
     updateWorkstation,
     deleteWorkstation,
     toggleWorkstation,
+    listLinkedAgents,
+    linkAgent,
+    unlinkAgent,
+    listPermissions,
+    addPermission,
+    removePermission,
+    togglePermission,
   };
 }

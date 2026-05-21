@@ -59,6 +59,8 @@ func (m *WorkstationsMethods) Register(router *gateway.MethodRouter) {
 	router.Register(protocol.MethodWorkstationsPermToggle, m.adminOnly(m.handlePermToggle))
 	// Phase 7: activity audit log
 	router.Register(protocol.MethodWorkstationsListActivity, m.adminOnly(m.handleListActivity))
+	// Agent links
+	router.Register(protocol.MethodWorkstationsListLinkedAgents, m.adminOnly(m.handleListLinkedAgents))
 }
 
 // adminOnly is a middleware that requires at least RoleAdmin on the WS client.
@@ -593,4 +595,40 @@ func (m *WorkstationsMethods) handleListActivity(ctx context.Context, client *ga
 		resp["nextCursor"] = nextCursor.String()
 	}
 	client.SendResponse(protocol.NewOKResponse(req.ID, resp))
+}
+
+func (m *WorkstationsMethods) handleListLinkedAgents(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	var params struct {
+		WorkstationID string `json:"workstationId"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, "invalid params"))
+			return
+		}
+	}
+	wsID, err := uuid.Parse(params.WorkstationID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation")))
+		return
+	}
+	if _, err := m.wsStore.GetByID(ctx, wsID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgWorkstationNotFound, params.WorkstationID)))
+			return
+		}
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgInternalError, err.Error())))
+		return
+	}
+	links, err := m.linkStore.ListForWorkstation(ctx, wsID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToList, "agent links")))
+		return
+	}
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"links": links}))
 }

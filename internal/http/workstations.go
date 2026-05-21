@@ -55,6 +55,10 @@ func (h *WorkstationsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/workstations/{id}/toggle", h.auth(h.handleToggle))
 	mux.HandleFunc("DELETE /v1/workstations/{id}", h.auth(h.handleDelete))
 	mux.HandleFunc("POST /v1/workstations/{id}/test", h.auth(h.handleTest))
+	// Agent links
+	mux.HandleFunc("GET /v1/workstations/{id}/agents", h.auth(h.handleListLinkedAgents))
+	mux.HandleFunc("POST /v1/workstations/{id}/agents", h.auth(h.handleLinkAgent))
+	mux.HandleFunc("DELETE /v1/workstations/{id}/agents/{agentId}", h.auth(h.handleUnlinkAgent))
 	// Phase 6: permission allowlist CRUD
 	mux.HandleFunc("GET /v1/workstations/{id}/permissions", h.auth(h.handlePermList))
 	mux.HandleFunc("POST /v1/workstations/{id}/permissions", h.auth(h.handlePermAdd))
@@ -291,6 +295,95 @@ func (h *WorkstationsHandler) handleTest(w http.ResponseWriter, r *http.Request)
 	}
 	writeError(w, http.StatusNotImplemented, protocol.ErrNotImplemented,
 		i18n.T(locale, i18n.MsgNotImplemented, "workstations.testConnection"))
+}
+
+func (h *WorkstationsHandler) handleListLinkedAgents(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	locale := store.LocaleFromContext(ctx)
+	if !requireTenantAdmin(w, r, h.tenantStore) {
+		return
+	}
+	idStr := r.PathValue("id")
+	wsID, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation"))
+		return
+	}
+	links, err := h.linkStore.ListForWorkstation(ctx, wsID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToList, "agent links"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"links": links})
+}
+
+func (h *WorkstationsHandler) handleLinkAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	locale := store.LocaleFromContext(ctx)
+	if !requireTenantAdmin(w, r, h.tenantStore) {
+		return
+	}
+	idStr := r.PathValue("id")
+	wsID, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation"))
+		return
+	}
+	var body struct {
+		AgentID   string `json:"agent_id"`
+		IsDefault bool   `json:"is_default"`
+	}
+	if !bindJSON(w, r, locale, &body) {
+		return
+	}
+	agentID, err := uuid.Parse(body.AgentID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "agent"))
+		return
+	}
+	link := &store.AgentWorkstationLink{
+		AgentID:       agentID,
+		WorkstationID: wsID,
+		IsDefault:     body.IsDefault,
+	}
+	if err := h.linkStore.Link(ctx, link); err != nil {
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToCreate, "agent_workstation_link", err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"linked": true})
+}
+
+func (h *WorkstationsHandler) handleUnlinkAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	locale := store.LocaleFromContext(ctx)
+	if !requireTenantAdmin(w, r, h.tenantStore) {
+		return
+	}
+	wsIDStr := r.PathValue("id")
+	wsID, err := uuid.Parse(wsIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation"))
+		return
+	}
+	agentIDStr := r.PathValue("agentId")
+	agentID, err := uuid.Parse(agentIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "agent"))
+		return
+	}
+	if err := h.linkStore.Unlink(ctx, agentID, wsID); err != nil {
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToDelete, "agent_workstation_link", err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"unlinked": true})
 }
 
 // --- Phase 6: workstation permission allowlist CRUD ---

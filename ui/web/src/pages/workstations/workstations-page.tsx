@@ -14,6 +14,8 @@ import { formatDate } from "@/lib/format";
 import { useWorkstations, type Workstation } from "./hooks/use-workstations";
 import { WorkstationCreateDialog } from "./workstation-create-dialog";
 import { WorkstationActivityTab } from "./workstation-activity-tab";
+import { WorkstationAgentsTab } from "./workstation-agents-tab";
+import { WorkstationPermissionsTab } from "./workstation-permissions-tab";
 
 export function WorkstationsPage() {
   const { t } = useTranslation("workstations");
@@ -139,9 +141,17 @@ export function WorkstationsPage() {
                             <Tabs defaultValue="activity">
                               <TabsList className="mb-3">
                                 <TabsTrigger value="activity">{t("activity.title")}</TabsTrigger>
+                                <TabsTrigger value="agents">{t("agents.title", "Linked Agents")}</TabsTrigger>
+                                <TabsTrigger value="permissions">{t("permissions.title", "Permissions")}</TabsTrigger>
                               </TabsList>
                               <TabsContent value="activity">
                                 <WorkstationActivityTab workstationId={ws.id} />
+                              </TabsContent>
+                              <TabsContent value="agents">
+                                <WorkstationAgentsTab workstationId={ws.id} />
+                              </TabsContent>
+                              <TabsContent value="permissions">
+                                <WorkstationPermissionsTab workstationId={ws.id} />
                               </TabsContent>
                             </Tabs>
                           </td>

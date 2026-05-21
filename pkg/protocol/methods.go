@@ -217,6 +217,9 @@ const (
 
 	// Workstation activity audit log (Phase 7)
 	MethodWorkstationsListActivity = "workstations.activity.list"
+
+	// Workstation agent links
+	MethodWorkstationsListLinkedAgents = "workstations.listLinkedAgents"
 )
 
 // Agent hooks (Phase 3)

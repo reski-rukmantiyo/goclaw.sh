@@ -200,6 +200,7 @@ export const Methods = {
   WORKSTATIONS_PERM_REMOVE: "workstations.permissions.remove",
   WORKSTATIONS_PERM_TOGGLE: "workstations.permissions.toggle",
   WORKSTATIONS_LIST_ACTIVITY: "workstations.activity.list",
+  WORKSTATIONS_LIST_LINKED_AGENTS: "workstations.listLinkedAgents",
 
   // Phase 3+ - NICE TO HAVE
   LOGS_TAIL: "logs.tail",
