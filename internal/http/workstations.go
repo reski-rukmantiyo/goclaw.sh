@@ -6,9 +6,11 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/nextlevelbuilder/goclaw/internal/eventbus"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/permissions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
@@ -24,6 +26,7 @@ type WorkstationsHandler struct {
 	tenantStore   store.TenantStore
 	permStore     store.WorkstationPermissionStore     // Phase 6; may be nil
 	activityStore store.WorkstationActivityStore       // Phase 7; may be nil
+	eventBus      eventbus.DomainEventBus              // may be nil; used for allowlist cache invalidation
 }
 
 // NewWorkstationsHandler creates a WorkstationsHandler.
@@ -43,6 +46,25 @@ func (h *WorkstationsHandler) SetPermStore(ps store.WorkstationPermissionStore) 
 // SetActivityStore wires the activity store for audit log endpoints (Phase 7).
 func (h *WorkstationsHandler) SetActivityStore(as store.WorkstationActivityStore) {
 	h.activityStore = as
+}
+
+// SetEventBus wires the domain event bus for allowlist cache invalidation.
+func (h *WorkstationsHandler) SetEventBus(eb eventbus.DomainEventBus) {
+	h.eventBus = eb
+}
+
+func (h *WorkstationsHandler) emitPermChanged(workstationID uuid.UUID) {
+	if h.eventBus == nil {
+		return
+	}
+	h.eventBus.Publish(eventbus.DomainEvent{
+		ID:        uuid.New().String(),
+		Type:      eventbus.EventWorkstationPermChanged,
+		SourceID:  workstationID.String(),
+		TenantID:  "",
+		Timestamp: time.Now(),
+		Payload:   map[string]any{"workstation_id": workstationID.String()},
+	})
 }
 
 // RegisterRoutes registers all workstation endpoints onto mux.
@@ -478,6 +500,7 @@ func (h *WorkstationsHandler) handlePermAdd(w http.ResponseWriter, r *http.Reque
 			i18n.T(locale, i18n.MsgFailedToCreate, "permission", err.Error()))
 		return
 	}
+	h.emitPermChanged(wsID)
 	writeJSON(w, http.StatusCreated, map[string]any{"permission": perm})
 }
 
@@ -493,6 +516,17 @@ func (h *WorkstationsHandler) handlePermRemove(w http.ResponseWriter, r *http.Re
 			i18n.T(locale, i18n.MsgInvalidID, "permission"))
 		return
 	}
+	perm, err := h.permStore.GetByID(ctx, permID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgWorkstationPermNotFound, permID.String()))
+			return
+		}
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToDelete, "permission", err.Error()))
+		return
+	}
 	if err := h.permStore.Remove(ctx, permID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, protocol.ErrNotFound,
@@ -503,6 +537,7 @@ func (h *WorkstationsHandler) handlePermRemove(w http.ResponseWriter, r *http.Re
 			i18n.T(locale, i18n.MsgFailedToDelete, "permission", err.Error()))
 		return
 	}
+	h.emitPermChanged(perm.WorkstationID)
 	writeJSON(w, http.StatusOK, map[string]any{"id": permID})
 }
 
@@ -518,6 +553,17 @@ func (h *WorkstationsHandler) handlePermToggle(w http.ResponseWriter, r *http.Re
 			i18n.T(locale, i18n.MsgInvalidID, "permission"))
 		return
 	}
+	perm, err := h.permStore.GetByID(ctx, permID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgWorkstationPermNotFound, permID.String()))
+			return
+		}
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToUpdate, "permission", err.Error()))
+		return
+	}
 	var body struct {
 		Enabled bool `json:"enabled"`
 	}
@@ -529,6 +575,7 @@ func (h *WorkstationsHandler) handlePermToggle(w http.ResponseWriter, r *http.Re
 			i18n.T(locale, i18n.MsgFailedToUpdate, "permission", err.Error()))
 		return
 	}
+	h.emitPermChanged(perm.WorkstationID)
 	writeJSON(w, http.StatusOK, map[string]any{"id": permID, "enabled": body.Enabled})
 }
 

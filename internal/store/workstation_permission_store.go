@@ -33,6 +33,9 @@ type WorkstationPermissionStore interface {
 	// Add inserts a new allowlist entry. Idempotent on (workstation_id, pattern).
 	Add(ctx context.Context, perm *WorkstationPermission) error
 
+	// GetByID returns a single permission by ID (tenant-scoped).
+	GetByID(ctx context.Context, id uuid.UUID) (*WorkstationPermission, error)
+
 	// Remove deletes an allowlist entry by ID (tenant-scoped).
 	Remove(ctx context.Context, id uuid.UUID) error
 
