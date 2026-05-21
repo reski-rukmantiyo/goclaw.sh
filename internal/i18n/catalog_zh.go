@@ -252,6 +252,7 @@ func init() {
 		MsgWorkstationRequired:     "Agent 未绑定工作站，请提供 workstation_id",
 		MsgWorkstationAccessDenied: "Agent %s 无权访问工作站 %s",
 		MsgBackendNotReady:         "工作站后端未就绪：%s",
+		MsgWorkstationShellSyntax:  "'command' 不支持 shell 语法：%s。请仅使用二进制名称，并通过 'args' 传递参数。",
 
 		MsgHookInvalidMatcher:          "无效的匹配器正则表达式: %s",
 		MsgHookCommandDisabledStandard: "命令类型钩子仅在 Lite 版本可用",

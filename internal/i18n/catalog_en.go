@@ -227,6 +227,7 @@ func init() {
 		MsgWorkstationRequired:     "no workstation bound to agent; pass workstation_id",
 		MsgWorkstationAccessDenied: "agent %s not authorized for workstation %s",
 		MsgBackendNotReady:         "workstation backend not ready: %s",
+		MsgWorkstationShellSyntax:  "shell syntax not supported in 'command': %s. Use binary name only and pass arguments in 'args'.",
 
 		// Webhooks
 		MsgWebhookAuthFailed:              "webhook authentication failed",
