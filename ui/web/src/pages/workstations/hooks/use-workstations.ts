@@ -5,18 +5,18 @@ import { Methods } from "@/api/protocol";
 
 export interface Workstation {
   id: string;
-  workstation_key: string;
+  workstationKey: string;
   name: string;
-  backend_type: "ssh" | "docker";
+  backendType: "ssh" | "docker";
   active: boolean;
-  created_at: string;
-  updated_at: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CreateWorkstationParams {
-  workstation_key: string;
+  workstationKey: string;
   name: string;
-  backend_type: "ssh" | "docker";
+  backendType: "ssh" | "docker";
   metadata?: Record<string, unknown>;
 }
 
