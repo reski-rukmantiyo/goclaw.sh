@@ -52,6 +52,7 @@ func (h *WorkstationsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/workstations", h.auth(h.handleCreate))
 	mux.HandleFunc("GET /v1/workstations/{id}", h.auth(h.handleGet))
 	mux.HandleFunc("PUT /v1/workstations/{id}", h.auth(h.handleUpdate))
+	mux.HandleFunc("POST /v1/workstations/{id}/toggle", h.auth(h.handleToggle))
 	mux.HandleFunc("DELETE /v1/workstations/{id}", h.auth(h.handleDelete))
 	mux.HandleFunc("POST /v1/workstations/{id}/test", h.auth(h.handleTest))
 	// Phase 6: permission allowlist CRUD
@@ -252,6 +253,33 @@ func (h *WorkstationsHandler) handleDelete(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+}
+
+func (h *WorkstationsHandler) handleToggle(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	locale := store.LocaleFromContext(ctx)
+	if !requireTenantAdmin(w, r, h.tenantStore) {
+		return
+	}
+	idStr := r.PathValue("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation"))
+		return
+	}
+	var body struct {
+		Active bool `json:"active"`
+	}
+	if !bindJSON(w, r, locale, &body) {
+		return
+	}
+	if err := h.wsStore.SetActive(ctx, id, body.Active); err != nil {
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToUpdate, "workstation", err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "active": body.Active})
 }
 
 // handleTest is a stub — real implementation in Phase 2/3.

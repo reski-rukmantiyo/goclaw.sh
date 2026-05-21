@@ -192,6 +192,7 @@ export const Methods = {
   WORKSTATIONS_UPDATE: "workstations.update",
   WORKSTATIONS_DELETE: "workstations.delete",
   WORKSTATIONS_TEST: "workstations.testConnection",
+  WORKSTATIONS_TOGGLE: "workstations.toggle",
   WORKSTATIONS_LINK_AGENT: "workstations.linkAgent",
   WORKSTATIONS_UNLINK_AGENT: "workstations.unlinkAgent",
   WORKSTATIONS_PERM_LIST: "workstations.permissions.list",

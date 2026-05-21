@@ -49,6 +49,7 @@ func (m *WorkstationsMethods) Register(router *gateway.MethodRouter) {
 	router.Register(protocol.MethodWorkstationsUpdate, m.adminOnly(m.handleUpdate))
 	router.Register(protocol.MethodWorkstationsDelete, m.adminOnly(m.handleDelete))
 	router.Register(protocol.MethodWorkstationsTest, m.adminOnly(m.handleTestConnection))
+	router.Register(protocol.MethodWorkstationsToggle, m.adminOnly(m.handleToggle))
 	router.Register(protocol.MethodWorkstationsLinkAgent, m.adminOnly(m.handleLinkAgent))
 	router.Register(protocol.MethodWorkstationsUnlinkAgent, m.adminOnly(m.handleUnlinkAgent))
 	// Phase 6: permission allowlist CRUD
@@ -261,6 +262,32 @@ func (m *WorkstationsMethods) handleDelete(ctx context.Context, client *gateway.
 		return
 	}
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id}))
+}
+
+func (m *WorkstationsMethods) handleToggle(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	var params struct {
+		ID     string `json:"id"`
+		Active bool   `json:"active"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, "invalid params"))
+			return
+		}
+	}
+	id, err := uuid.Parse(params.ID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation")))
+		return
+	}
+	if err := m.wsStore.SetActive(ctx, id, params.Active); err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToUpdate, "workstation", err.Error())))
+		return
+	}
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id, "active": params.Active}))
 }
 
 // handleTestConnection is a stub — real implementation in Phase 2/3.

@@ -286,6 +286,7 @@ func isAdminMethod(method string) bool {
 		protocol.MethodWorkstationsCreate,
 		protocol.MethodWorkstationsUpdate,
 		protocol.MethodWorkstationsDelete,
+		protocol.MethodWorkstationsToggle,
 		protocol.MethodWorkstationsTest,
 		protocol.MethodWorkstationsLinkAgent,
 		protocol.MethodWorkstationsUnlinkAgent,

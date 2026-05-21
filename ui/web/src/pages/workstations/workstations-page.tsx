@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MonitorCog, Plus, RefreshCw, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { MonitorCog, Plus, RefreshCw, Trash2, Power, PowerOff, ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,7 @@ import { WorkstationActivityTab } from "./workstation-activity-tab";
 
 export function WorkstationsPage() {
   const { t } = useTranslation("workstations");
-  const { workstations, loading, refresh, createWorkstation, deleteWorkstation } = useWorkstations();
+  const { workstations, loading, refresh, createWorkstation, deleteWorkstation, toggleWorkstation } = useWorkstations();
 
   const spinning = useMinLoading(loading);
   const isEmpty = workstations.length === 0;
@@ -104,6 +104,24 @@ export function WorkstationsPage() {
                           {formatDate(new Date(ws.createdAt))}
                         </td>
                         <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleWorkstation(ws.id, !ws.active)}
+                            className="gap-1"
+                          >
+                            {ws.active ? (
+                              <>
+                                <PowerOff className="h-3.5 w-3.5" />
+                                {t("actions.deactivate")}
+                              </>
+                            ) : (
+                              <>
+                                <Power className="h-3.5 w-3.5" />
+                                {t("actions.activate")}
+                              </>
+                            )}
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"

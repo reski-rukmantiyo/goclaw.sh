@@ -205,6 +205,7 @@ const (
 	MethodWorkstationsUpdate      = "workstations.update"
 	MethodWorkstationsDelete      = "workstations.delete"
 	MethodWorkstationsTest        = "workstations.testConnection"
+	MethodWorkstationsToggle      = "workstations.toggle"
 	MethodWorkstationsLinkAgent   = "workstations.linkAgent"
 	MethodWorkstationsUnlinkAgent = "workstations.unlinkAgent"
 

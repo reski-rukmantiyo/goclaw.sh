@@ -76,6 +76,14 @@ export function useWorkstations() {
     [ws, load],
   );
 
+  const toggleWorkstation = useCallback(
+    async (id: string, active: boolean): Promise<void> => {
+      await ws.call(Methods.WORKSTATIONS_TOGGLE, { id, active });
+      await load();
+    },
+    [ws, load],
+  );
+
   return {
     workstations,
     loading,
@@ -84,5 +92,6 @@ export function useWorkstations() {
     createWorkstation,
     updateWorkstation,
     deleteWorkstation,
+    toggleWorkstation,
   };
 }
