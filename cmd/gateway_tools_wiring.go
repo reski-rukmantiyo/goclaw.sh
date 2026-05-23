@@ -197,6 +197,12 @@ func wireWorkstationTools(
 	// Phase 6: wire real permission checker (AllowlistChecker + rate limiter).
 	if pgStores.WorkstationPermissions != nil {
 		allowlistChecker := security.NewAllowlistChecker(pgStores.WorkstationPermissions, 30*time.Second)
+		if pgStores.WorkstationGroupPermissions != nil {
+			allowlistChecker.SetGroupPermStore(pgStores.WorkstationGroupPermissions)
+		}
+		if pgStores.WorkstationCommandGroups != nil {
+			allowlistChecker.SetGroupStore(pgStores.WorkstationCommandGroups)
+		}
 		rateLimiter := security.NewWorkstationRateLimiter()
 
 		workstationExecTool.SetPermCheck(func(ctx context.Context, ws *store.Workstation, cmd string, args []string, env map[string]string) error {

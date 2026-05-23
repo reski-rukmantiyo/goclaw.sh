@@ -61,7 +61,7 @@ export function WorkstationActivityTab({ workstationId }: WorkstationActivityTab
   const { rows, loading, error, hasMore, load, loadMore } = useWorkstationActivity();
 
   useEffect(() => {
-    load(workstationId);
+    load({ workstationId });
   }, [workstationId, load]);
 
   if (loading && rows.length === 0) {
@@ -78,7 +78,7 @@ export function WorkstationActivityTab({ workstationId }: WorkstationActivityTab
     return (
       <div className="flex flex-col items-center gap-2 p-8 text-center">
         <p className="text-sm text-destructive">{error}</p>
-        <Button variant="outline" size="sm" onClick={() => load(workstationId)}>
+        <Button variant="outline" size="sm" onClick={() => load({ workstationId })}>
           {t("common:retry", "Retry")}
         </Button>
       </div>
@@ -102,7 +102,7 @@ export function WorkstationActivityTab({ workstationId }: WorkstationActivityTab
           variant="ghost"
           size="sm"
           className="h-7 gap-1 text-xs"
-          onClick={() => load(workstationId)}
+          onClick={() => load({ workstationId })}
           disabled={loading}
         >
           <RefreshCw className={"h-3 w-3" + (loading ? " animate-spin" : "")} />

@@ -75,6 +75,7 @@
     "emptyDescription": "Exec events will appear here once agents run commands.",
     "columns": {
       "action": "Action",
+      "workstation": "Workstation",
       "cmdPreview": "Command",
       "exitCode": "Exit Code",
       "duration": "Duration",
@@ -84,6 +85,12 @@
     "actions": {
       "exec": "Exec",
       "deny": "Denied"
+    },
+    "filters": {
+      "allWorkstations": "All Workstations",
+      "allAgents": "All Agents",
+      "workstation": "Workstation",
+      "agent": "Agent"
     },
     "loadMore": "Load more"
   },
@@ -104,6 +111,53 @@
     "enabled": "Enabled",
     "disabled": "Disabled",
     "hint": "Exact match (ls) or prefix glob (docker*). Default-deny: no match → exec rejected.",
-    "empty": "No permissions configured. All exec commands will be denied."
+    "empty": "No permissions configured. All exec commands will be denied.",
+    "applyFromGroup": "Apply from Group"
+  },
+  "tabs": {
+    "workstations": "Workstations",
+    "commandGroups": "Command Groups",
+    "activity": "Activity"
+  },
+  "commandGroups": {
+    "title": "Command Groups",
+    "description": "Manage reusable collections of allowed commands for workstations.",
+    "addGroup": "Add Group",
+    "emptyTitle": "No command groups",
+    "emptyDescription": "Create a command group to quickly allow sets of related commands on workstations.",
+    "columns": {
+      "name": "Name",
+      "patterns": "Commands",
+      "scope": "Scope"
+    },
+    "scope": {
+      "builtin": "Built-in",
+      "custom": "Custom"
+    },
+    "actions": {
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "dialog": {
+      "createTitle": "Add Command Group",
+      "editTitle": "Edit Command Group",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g. Linux Monitoring",
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Optional description",
+      "patternsLabel": "Commands",
+      "patternsHint": "One command per line. Supports exact match or prefix glob (docker*).",
+      "cancel": "Cancel",
+      "save": "Save"
+    },
+    "deleteDialog": {
+      "title": "Delete Command Group",
+      "description": "Are you sure you want to delete \"{{name}}\"? This cannot be undone.",
+      "confirmLabel": "Delete"
+    },
+    "apply": {
+      "label": "Apply to Workstation",
+      "success": "Group applied successfully"
+    }
   }
 }

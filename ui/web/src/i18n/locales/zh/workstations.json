@@ -75,6 +75,7 @@
     "emptyDescription": "Agent 执行命令后将在此显示。",
     "columns": {
       "action": "操作",
+      "workstation": "工作站",
       "cmdPreview": "命令",
       "exitCode": "退出码",
       "duration": "耗时",
@@ -84,6 +85,12 @@
     "actions": {
       "exec": "执行",
       "deny": "拒绝"
+    },
+    "filters": {
+      "allWorkstations": "全部工作站",
+      "allAgents": "全部 Agent",
+      "workstation": "工作站",
+      "agent": "Agent"
     },
     "loadMore": "加载更多"
   },
@@ -104,6 +111,53 @@
     "enabled": "已启用",
     "disabled": "已禁用",
     "hint": "精确匹配（ls）或前缀通配（docker*）。默认拒绝：不匹配 → 执行被拒绝。",
-    "empty": "未配置权限。所有 exec 命令将被拒绝。"
+    "empty": "未配置权限。所有 exec 命令将被拒绝。",
+    "applyFromGroup": "从分组应用"
+  },
+  "tabs": {
+    "workstations": "工作站",
+    "commandGroups": "命令分组",
+    "activity": "活动"
+  },
+  "commandGroups": {
+    "title": "命令分组",
+    "description": "管理可复用的工作站允许命令集合。",
+    "addGroup": "添加分组",
+    "emptyTitle": "暂无命令分组",
+    "emptyDescription": "创建命令分组以快速在工作站上允许相关命令集合。",
+    "columns": {
+      "name": "名称",
+      "patterns": "命令",
+      "scope": "范围"
+    },
+    "scope": {
+      "builtin": "内置",
+      "custom": "自定义"
+    },
+    "actions": {
+      "edit": "编辑",
+      "delete": "删除"
+    },
+    "dialog": {
+      "createTitle": "添加命令分组",
+      "editTitle": "编辑命令分组",
+      "nameLabel": "名称",
+      "namePlaceholder": "例如：Linux 监控",
+      "descriptionLabel": "描述",
+      "descriptionPlaceholder": "可选描述",
+      "patternsLabel": "命令",
+      "patternsHint": "每行一个命令。支持精确匹配或前缀通配（docker*）。",
+      "cancel": "取消",
+      "save": "保存"
+    },
+    "deleteDialog": {
+      "title": "删除命令分组",
+      "description": "确定要删除「{{name}}」吗？此操作无法撤销。",
+      "confirmLabel": "删除"
+    },
+    "apply": {
+      "label": "应用到工作站",
+      "success": "分组应用成功"
+    }
   }
 }

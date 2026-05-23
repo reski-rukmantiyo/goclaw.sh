@@ -63,10 +63,12 @@ func NewPGStores(cfg store.StoreConfig) (*store.Stores, error) {
 		Hooks:                 NewPGHookStore(db),
 		Webhooks:               NewPGWebhookStore(db),
 		WebhookCalls:           NewPGWebhookCallStore(db),
-		Workstations:           NewPGWorkstationStore(db, cfg.EncryptionKey),
-		WorkstationLinks:       NewPGAgentWorkstationLinkStore(db),
-		WorkstationPermissions: NewPGWorkstationPermissionStore(db),
-		WorkstationActivity:    NewPGWorkstationActivityStore(db),
+		Workstations:                 NewPGWorkstationStore(db, cfg.EncryptionKey),
+		WorkstationLinks:             NewPGAgentWorkstationLinkStore(db),
+		WorkstationPermissions:       NewPGWorkstationPermissionStore(db),
+		WorkstationActivity:          NewPGWorkstationActivityStore(db),
+		WorkstationCommandGroups:     NewPGWorkstationCommandGroupStore(db),
+		WorkstationGroupPermissions:  NewPGWorkstationGroupPermissionStore(db),
 	}
 	// Wire permStore into WorkstationStore so Create seeds allowlist atomically (H5 fix).
 	// Must happen after both stores are constructed.

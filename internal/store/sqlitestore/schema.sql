@@ -1871,3 +1871,50 @@ CREATE TABLE IF NOT EXISTS workstation_activity (
 CREATE INDEX IF NOT EXISTS idx_ws_activity_ws_time     ON workstation_activity(workstation_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ws_activity_tenant_time ON workstation_activity(tenant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ws_activity_retention   ON workstation_activity(created_at);
+CREATE INDEX IF NOT EXISTS idx_ws_activity_agent_time  ON workstation_activity(agent_id, created_at DESC);
+
+-- ============================================================
+-- Table: workstation_command_groups (migration 000076)
+-- Named collections of command patterns that can be linked to
+-- workstations. tenant_id IS NULL = global built-in; scoped
+-- = tenant-created custom group.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS workstation_command_groups (
+    id          TEXT PRIMARY KEY,
+    tenant_id   TEXT REFERENCES tenants(id) ON DELETE CASCADE,
+    name        VARCHAR(100) NOT NULL,
+    description TEXT,
+    patterns    TEXT NOT NULL DEFAULT '[]',
+    is_builtin  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    created_by  VARCHAR(100)
+);
+CREATE INDEX IF NOT EXISTS idx_workstation_cmd_groups_tenant ON workstation_command_groups(tenant_id);
+
+-- ============================================================
+-- Table: workstation_group_permissions
+-- Junction linking command groups to workstations.
+-- Enables/disables a group link independently.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS workstation_group_permissions (
+    id             TEXT PRIMARY KEY,
+    workstation_id TEXT NOT NULL REFERENCES workstations(id) ON DELETE CASCADE,
+    group_id       TEXT NOT NULL REFERENCES workstation_command_groups(id) ON DELETE CASCADE,
+    tenant_id      TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    enabled        INTEGER NOT NULL DEFAULT 1,
+    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE (workstation_id, group_id)
+);
+CREATE INDEX IF NOT EXISTS idx_workstation_group_perms_ws    ON workstation_group_permissions(workstation_id);
+CREATE INDEX IF NOT EXISTS idx_workstation_group_perms_group ON workstation_group_permissions(group_id);
+
+-- Seed built-in command groups (global, tenant_id IS NULL)
+INSERT OR IGNORE INTO workstation_command_groups (id, tenant_id, name, description, patterns, is_builtin, created_by) VALUES
+  ('0193a5b0-7000-7000-8000-000000000100', NULL, 'Linux Monitoring', 'Common system monitoring commands', '["ps","top","free","df","htop","lsblk","vmstat","iostat","netstat","ss"]', 1, 'system'),
+  ('0193a5b0-7000-7000-8000-000000000101', NULL, 'Container Tools', 'Docker and Kubernetes utilities', '["docker","kubectl","k9s","helm","ctr","nerdctl"]', 1, 'system'),
+  ('0193a5b0-7000-7000-8000-000000000102', NULL, 'System Utilities', 'Service and log management', '["systemctl","journalctl","service","timedatectl","hostnamectl"]', 1, 'system'),
+  ('0193a5b0-7000-7000-8000-000000000103', NULL, 'Network Tools', 'Network diagnostics', '["ping","traceroute","curl","wget","nslookup","dig","ss","ip"]', 1, 'system'),
+  ('0193a5b0-7000-7000-8000-000000000104', NULL, 'Default Commands', 'Safe commands automatically allowed on all workstations', '["echo","pwd","ls","cat","git","env","whoami","hostname","date","uname","claude","cd","pushd","popd","dirs","printf","read","export","unset","declare","typeset","local","test","true","false","set","shift","exit","wait","source",".","type","help","history","times","builtin","command","shopt","ulimit","umask","mapfile","readarray","caller","enable","compgen","complete","compopt"]', 1, 'system');

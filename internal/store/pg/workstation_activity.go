@@ -3,6 +3,7 @@ package pg
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -79,6 +80,80 @@ func (s *PGWorkstationActivityStore) List(ctx context.Context, workstationID uui
 			 LIMIT $3`,
 			workstationID, *cursor, limit+1,
 		)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	var result []store.WorkstationActivity
+	for rows.Next() {
+		var a store.WorkstationActivity
+		if err := rows.Scan(
+			&a.ID, &a.TenantID, &a.WorkstationID, &a.AgentID, &a.Action,
+			&a.CmdHash, &a.CmdPreview, &a.ExitCode, &a.DurationMS, &a.DenyReason, &a.CreatedAt,
+		); err != nil {
+			return nil, nil, err
+		}
+		result = append(result, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	var nextCursor *uuid.UUID
+	if len(result) > limit {
+		last := result[limit-1].ID
+		nextCursor = &last
+		result = result[:limit]
+	}
+	return result, nextCursor, nil
+}
+
+// ListAll returns up to limit rows for the tenant, ordered by created_at DESC.
+// Optional workstationID and agentID filters. Pass cursor to page.
+func (s *PGWorkstationActivityStore) ListAll(ctx context.Context, workstationID *uuid.UUID, agentID *string, limit int, cursor *uuid.UUID) ([]store.WorkstationActivity, *uuid.UUID, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+
+	tenantID := store.TenantIDFromContext(ctx)
+	args := []any{tenantID}
+	paramIdx := 2
+
+	where := "WHERE tenant_id = $1"
+	if workstationID != nil {
+		where += fmt.Sprintf(" AND workstation_id = $%d", paramIdx)
+		args = append(args, *workstationID)
+		paramIdx++
+	}
+	if agentID != nil && *agentID != "" {
+		where += fmt.Sprintf(" AND agent_id = $%d", paramIdx)
+		args = append(args, *agentID)
+		paramIdx++
+	}
+
+	var rows *sql.Rows
+	var err error
+	if cursor == nil {
+		query := fmt.Sprintf(`SELECT id, tenant_id, workstation_id, agent_id, action, cmd_hash, cmd_preview,
+			        exit_code, duration_ms, deny_reason, created_at
+			 FROM workstation_activity
+			 %s
+			 ORDER BY created_at DESC
+			 LIMIT $%d`, where, paramIdx)
+		args = append(args, limit+1)
+		rows, err = s.db.QueryContext(ctx, query, args...)
+	} else {
+		query := fmt.Sprintf(`SELECT id, tenant_id, workstation_id, agent_id, action, cmd_hash, cmd_preview,
+			        exit_code, duration_ms, deny_reason, created_at
+			 FROM workstation_activity
+			 %s
+			   AND created_at < (SELECT created_at FROM workstation_activity WHERE id = $%d)
+			 ORDER BY created_at DESC
+			 LIMIT $%d`, where, paramIdx, paramIdx+1)
+		args = append(args, *cursor, limit+1)
+		rows, err = s.db.QueryContext(ctx, query, args...)
 	}
 	if err != nil {
 		return nil, nil, err

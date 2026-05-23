@@ -75,15 +75,22 @@
     "emptyDescription": "Các lệnh thực thi sẽ xuất hiện ở đây.",
     "columns": {
       "action": "Hành động",
+      "workstation": "Workstation",
       "cmdPreview": "Lệnh",
       "exitCode": "Mã thoát",
-      "duration": "Thời gian",
+      "duration": "Thờởan",
       "agent": "Agent",
-      "timestamp": "Thời điểm"
+      "timestamp": "Thờởiểm"
     },
     "actions": {
       "exec": "Thực thi",
       "deny": "Từ chối"
+    },
+    "filters": {
+      "allWorkstations": "Tất cả Workstation",
+      "allAgents": "Tất cả Agent",
+      "workstation": "Workstation",
+      "agent": "Agent"
     },
     "loadMore": "Tải thêm"
   },
@@ -104,6 +111,53 @@
     "enabled": "Bật",
     "disabled": "Tắt",
     "hint": "Khớp chính xác (ls) hoặc tiền tố (docker*). Mặc định từ chối: không khớp → bị từ chối.",
-    "empty": "Chưa cấu hình quyền. Mọi lệnh exec sẽ bị từ chối."
+    "empty": "Chưa cấu hình quyền. Mọi lệnh exec sẽ bị từ chối.",
+    "applyFromGroup": "Áp dụng từ nhóm"
+  },
+  "tabs": {
+    "workstations": "Workstations",
+    "commandGroups": "Nhóm lệnh",
+    "activity": "Hoạt động"
+  },
+  "commandGroups": {
+    "title": "Nhóm lệnh",
+    "description": "Quản lý bộ lệnh cho phép tái sử dụng trên workstation.",
+    "addGroup": "Thêm nhóm",
+    "emptyTitle": "Chưa có nhóm lệnh",
+    "emptyDescription": "Tạo nhóm lệnh để nhanh chóng cho phép bộ lệnh liên quan trên workstation.",
+    "columns": {
+      "name": "Tên",
+      "patterns": "Lệnh",
+      "scope": "Phạm vi"
+    },
+    "scope": {
+      "builtin": "Mặc định",
+      "custom": "Tùy chỉnh"
+    },
+    "actions": {
+      "edit": "Sửa",
+      "delete": "Xóa"
+    },
+    "dialog": {
+      "createTitle": "Thêm nhóm lệnh",
+      "editTitle": "Sửa nhóm lệnh",
+      "nameLabel": "Tên",
+      "namePlaceholder": "vd: Giám sát Linux",
+      "descriptionLabel": "Mô tả",
+      "descriptionPlaceholder": "Mô tả tùy chọn",
+      "patternsLabel": "Lệnh",
+      "patternsHint": "Một lệnh trên mỗi dòng. Hỗ trợ khớp chính xác hoặc tiền tố (docker*).",
+      "cancel": "Hủy",
+      "save": "Lưu"
+    },
+    "deleteDialog": {
+      "title": "Xóa nhóm lệnh",
+      "description": "Bạn có chắc muốn xóa \"{{name}}\"? Thao tác này không thể hoàn tác.",
+      "confirmLabel": "Xóa"
+    },
+    "apply": {
+      "label": "Áp dụng cho workstation",
+      "success": "Đã áp dụng nhóm thành công"
+    }
   }
 }

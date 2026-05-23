@@ -53,6 +53,7 @@ export function WorkstationCreateDialog({
   const [user, setUser] = useState("");
   const [identityFile, setIdentityFile] = useState("");
   const [password, setPassword] = useState("");
+  const [hasExistingKey, setHasExistingKey] = useState(false);
   // Docker fields
   const [container, setContainer] = useState("");
   const [dockerHost, setDockerHost] = useState("");
@@ -70,6 +71,7 @@ export function WorkstationCreateDialog({
     setUser("");
     setIdentityFile("");
     setPassword("");
+    setHasExistingKey(false);
     setContainer("");
     setDockerHost("");
     setFieldError(null);
@@ -91,6 +93,7 @@ export function WorkstationCreateDialog({
       if (typeof meta.host === "string") setHost(meta.host);
       if (typeof meta.port === "number") setPort(String(meta.port));
       if (typeof meta.user === "string") setUser(meta.user);
+      if (typeof meta.hasKey === "boolean") setHasExistingKey(meta.hasKey);
     }
 
     // For SSH auth fields, we never get them from API (security).
@@ -267,6 +270,9 @@ export function WorkstationCreateDialog({
                     placeholder={t("createDialog.identityFilePlaceholder")}
                     className="text-base md:text-sm"
                   />
+                  {isEdit && hasExistingKey && !identityFile && (
+                    <p className="text-xs text-amber-600">Key configured — leave empty to keep existing.</p>
+                  )}
                   {isEdit && (
                     <p className="text-xs text-muted-foreground">{t("editDialog.authHint")}</p>
                   )}

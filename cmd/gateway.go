@@ -459,6 +459,12 @@ func runGateway() {
 		if pgStores.WorkstationActivity != nil {
 			wsMethods.SetActivityStore(pgStores.WorkstationActivity)
 		}
+		if pgStores.WorkstationCommandGroups != nil {
+			wsMethods.SetGroupStore(pgStores.WorkstationCommandGroups)
+		}
+		if pgStores.WorkstationGroupPermissions != nil {
+			wsMethods.SetGroupPermStore(pgStores.WorkstationGroupPermissions)
+		}
 		if domainBus != nil {
 			wsMethods.SetEventBus(domainBus)
 		}

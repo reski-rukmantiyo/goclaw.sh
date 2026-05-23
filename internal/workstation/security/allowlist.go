@@ -42,8 +42,10 @@ type allowlistEntry struct {
 //   - Cache: allowlist loaded from DB with configurable TTL (default 30s).
 //     Event-driven invalidation via Invalidate() called on permission changes.
 type AllowlistChecker struct {
-	permStore store.WorkstationPermissionStore
-	cacheTTL  time.Duration
+	permStore     store.WorkstationPermissionStore
+	groupPermStore store.WorkstationGroupPermissionStore // may be nil
+	groupStore    store.WorkstationCommandGroupStore    // may be nil
+	cacheTTL      time.Duration
 
 	mu    sync.Mutex
 	cache map[uuid.UUID]*allowlistEntry // keyed by workstation ID
@@ -57,6 +59,16 @@ func NewAllowlistChecker(permStore store.WorkstationPermissionStore, cacheTTL ti
 		cacheTTL:  cacheTTL,
 		cache:     make(map[uuid.UUID]*allowlistEntry),
 	}
+}
+
+// SetGroupPermStore wires the group-permission store for loading linked command groups.
+func (c *AllowlistChecker) SetGroupPermStore(gps store.WorkstationGroupPermissionStore) {
+	c.groupPermStore = gps
+}
+
+// SetGroupStore wires the command group store for resolving group patterns.
+func (c *AllowlistChecker) SetGroupStore(gs store.WorkstationCommandGroupStore) {
+	c.groupStore = gs
 }
 
 // Invalidate evicts the cached allowlist for workstationID.
@@ -204,11 +216,35 @@ func (c *AllowlistChecker) loadAllowlist(ctx context.Context, workstationID uuid
 		return nil, err
 	}
 
-	var patterns []string
+	patternSet := make(map[string]struct{})
 	for _, p := range perms {
 		if p.Enabled {
-			patterns = append(patterns, p.Pattern)
+			patternSet[p.Pattern] = struct{}{}
 		}
+	}
+
+	// Load patterns from linked command groups.
+	if c.groupPermStore != nil && c.groupStore != nil {
+		groupLinks, err := c.groupPermStore.ListForWorkstation(ctx, workstationID)
+		if err == nil {
+			for _, link := range groupLinks {
+				if !link.Enabled {
+					continue
+				}
+				group, err := c.groupStore.GetByID(ctx, link.GroupID)
+				if err != nil {
+					continue
+				}
+				for _, pat := range group.Patterns {
+					patternSet[pat] = struct{}{}
+				}
+			}
+		}
+	}
+
+	patterns := make([]string, 0, len(patternSet))
+	for p := range patternSet {
+		patterns = append(patterns, p)
 	}
 
 	c.mu.Lock()
