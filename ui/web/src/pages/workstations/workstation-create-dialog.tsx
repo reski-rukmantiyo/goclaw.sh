@@ -43,6 +43,7 @@ export function WorkstationCreateDialog({
   const [port, setPort] = useState("22");
   const [user, setUser] = useState("");
   const [identityFile, setIdentityFile] = useState("");
+  const [password, setPassword] = useState("");
   // Docker fields
   const [container, setContainer] = useState("");
   const [dockerHost, setDockerHost] = useState("");
@@ -58,6 +59,7 @@ export function WorkstationCreateDialog({
     setPort("22");
     setUser("");
     setIdentityFile("");
+    setPassword("");
     setContainer("");
     setDockerHost("");
     setFieldError(null);
@@ -74,11 +76,16 @@ export function WorkstationCreateDialog({
         setFieldError("Host and SSH user are required for SSH backend.");
         return;
       }
+      if (!identityFile.trim() && !password.trim()) {
+        setFieldError("SSH authentication required: provide identity file or password.");
+        return;
+      }
       metadata = {
         host: host.trim(),
         port: parseInt(port, 10) || 22,
         user: user.trim(),
         ...(identityFile.trim() ? { identityFile: identityFile.trim() } : {}),
+        ...(password.trim() ? { password: password.trim() } : {}),
       };
     } else {
       if (!container.trim()) {
@@ -195,6 +202,17 @@ export function WorkstationCreateDialog({
                     value={identityFile}
                     onChange={(e) => setIdentityFile(e.target.value)}
                     placeholder={t("createDialog.identityFilePlaceholder")}
+                    className="text-base md:text-sm"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ws-password">{t("createDialog.passwordLabel")}</Label>
+                  <Input
+                    id="ws-password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={t("createDialog.passwordPlaceholder")}
                     className="text-base md:text-sm"
                   />
                 </div>
