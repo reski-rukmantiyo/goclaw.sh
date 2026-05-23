@@ -2,33 +2,32 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Terminal } from "lucide-react";
+import { Pencil, Trash2, Terminal } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useCommandGroups, type CommandGroup } from "./hooks/use-command-groups";
-import { CommandGroupDialog } from "./command-group-dialog";
 
-export function CommandGroupsTab() {
+interface CommandGroupsTabProps {
+  dialogOpen: boolean;
+  onDialogOpenChange: (open: boolean) => void;
+  editTarget: CommandGroup | null;
+  onEditTargetChange: (group: CommandGroup | null) => void;
+}
+
+export function CommandGroupsTab({
+  onDialogOpenChange,
+  onEditTargetChange,
+}: CommandGroupsTabProps) {
   const { t } = useTranslation("workstations");
-  const { groups, loading, createGroup, updateGroup, deleteGroup } = useCommandGroups();
+  const { groups, loading, deleteGroup } = useCommandGroups();
 
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editGroup, setEditGroup] = useState<CommandGroup | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CommandGroup | null>(null);
 
   const isEmpty = groups.length === 0;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{t("commandGroups.description")}</p>
-        <Button size="sm" onClick={() => { setEditGroup(null); setDialogOpen(true); }} className="gap-1">
-          <Plus className="h-3.5 w-3.5" />
-          {t("commandGroups.addGroup")}
-        </Button>
-      </div>
-
       {loading && isEmpty ? (
         <TableSkeleton rows={3} />
       ) : isEmpty ? (
@@ -78,7 +77,7 @@ export function CommandGroupsTab() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => { setEditGroup(g); setDialogOpen(true); }}
+                          onClick={() => { onEditTargetChange(g); onDialogOpenChange(true); }}
                           className="gap-1"
                         >
                           <Pencil className="h-3.5 w-3.5" />
@@ -102,19 +101,6 @@ export function CommandGroupsTab() {
           </table>
         </div>
       )}
-
-      <CommandGroupDialog
-        open={dialogOpen}
-        onOpenChange={(v) => { if (!v) setEditGroup(null); setDialogOpen(v); }}
-        onSubmit={async (params) => {
-          if (editGroup) {
-            await updateGroup(editGroup.id, params);
-          } else {
-            await createGroup(params);
-          }
-        }}
-        group={editGroup}
-      />
 
       {deleteTarget && (
         <ConfirmDialog

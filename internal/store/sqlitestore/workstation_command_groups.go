@@ -259,7 +259,7 @@ func scanCGRowsSQLite(rows *sql.Rows) ([]store.WorkstationCommandGroup, error) {
 
 func scanCGRowSQLite(s interface{ Scan(...any) error }) (store.WorkstationCommandGroup, error) {
 	var g store.WorkstationCommandGroup
-	var tenantIDStr *string
+	var tenantIDStr sql.NullString
 	var patternsRaw []byte
 	var isBuiltinInt int
 	var createdAtStr, updatedAtStr string
@@ -267,8 +267,8 @@ func scanCGRowSQLite(s interface{ Scan(...any) error }) (store.WorkstationComman
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return g, fmt.Errorf("scan workstation_command_group: %w", err)
 	}
-	if tenantIDStr != nil {
-		if tid, err := uuid.Parse(*tenantIDStr); err == nil {
+	if tenantIDStr.Valid {
+		if tid, err := uuid.Parse(tenantIDStr.String); err == nil {
 			g.TenantID = &tid
 		}
 	}

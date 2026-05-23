@@ -257,13 +257,17 @@ func scanCGRows(rows *sql.Rows) ([]store.WorkstationCommandGroup, error) {
 
 func scanCGRow(s interface{ Scan(...any) error }) (store.WorkstationCommandGroup, error) {
 	var g store.WorkstationCommandGroup
-	var tenantID *uuid.UUID
+	var tenantIDStr *string
 	var patternsRaw []byte
-	err := s.Scan(&g.ID, &tenantID, &g.Name, &g.Description, &patternsRaw, &g.IsBuiltin, &g.CreatedAt, &g.UpdatedAt, &g.CreatedBy)
+	err := s.Scan(&g.ID, &tenantIDStr, &g.Name, &g.Description, &patternsRaw, &g.IsBuiltin, &g.CreatedAt, &g.UpdatedAt, &g.CreatedBy)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return g, fmt.Errorf("scan workstation_command_group: %w", err)
 	}
-	g.TenantID = tenantID
+	if tenantIDStr != nil {
+		if tid, err := uuid.Parse(*tenantIDStr); err == nil {
+			g.TenantID = &tid
+		}
+	}
 	if len(patternsRaw) > 0 {
 		_ = json.Unmarshal(patternsRaw, &g.Patterns)
 	}

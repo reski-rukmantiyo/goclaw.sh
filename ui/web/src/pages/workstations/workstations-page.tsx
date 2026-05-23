@@ -17,19 +17,27 @@ import { WorkstationActivityTab } from "./workstation-activity-tab";
 import { WorkstationAgentsTab } from "./workstation-agents-tab";
 import { WorkstationPermissionsTab } from "./workstation-permissions-tab";
 import { CommandGroupsTab } from "./command-groups-tab";
+import { CommandGroupDialog } from "./command-group-dialog";
+import { useCommandGroups, type CommandGroup } from "./hooks/use-command-groups";
 
 export function WorkstationsPage() {
   const { t } = useTranslation("workstations");
   const { workstations, loading, refresh, getWorkstation, createWorkstation, updateWorkstation, deleteWorkstation, toggleWorkstation } = useWorkstations();
+  const { createGroup, updateGroup } = useCommandGroups();
 
   const spinning = useMinLoading(loading);
   const isEmpty = workstations.length === 0;
   const showSkeleton = useDeferredLoading(loading && isEmpty);
 
+  const [activeTab, setActiveTab] = useState("workstations");
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Workstation | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Workstation | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Command group dialog state (lifted to page level for tab-row button)
+  const [cgDialogOpen, setCgDialogOpen] = useState(false);
+  const [cgEditTarget, setCgEditTarget] = useState<CommandGroup | null>(null);
 
   function toggleExpand(id: string) {
     setExpandedId((prev) => (prev === id ? null : id));
@@ -42,14 +50,14 @@ export function WorkstationsPage() {
         description={t("description")}
       />
 
-      <Tabs defaultValue="workstations" className="mt-4">
-        <TabsList className="mb-4">
-          <TabsTrigger value="workstations">{t("tabs.workstations")}</TabsTrigger>
-          <TabsTrigger value="commandGroups">{t("tabs.commandGroups")}</TabsTrigger>
-        </TabsList>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
+        <div className="flex items-center justify-between mb-4">
+          <TabsList>
+            <TabsTrigger value="workstations">{t("tabs.workstations")}</TabsTrigger>
+            <TabsTrigger value="commandGroups">{t("tabs.commandGroups")}</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="workstations" className="space-y-4">
-          <div className="flex items-center justify-between">
+          {activeTab === "workstations" && (
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={refresh} disabled={spinning} className="gap-1">
                 <RefreshCw className={"h-3.5 w-3.5" + (spinning ? " animate-spin" : "")} />
@@ -60,8 +68,16 @@ export function WorkstationsPage() {
                 {t("addWorkstation")}
               </Button>
             </div>
-          </div>
+          )}
+          {activeTab === "commandGroups" && (
+            <Button size="sm" onClick={() => { setCgEditTarget(null); setCgDialogOpen(true); }} className="gap-1">
+              <Plus className="h-3.5 w-3.5" />
+              {t("commandGroups.addGroup")}
+            </Button>
+          )}
+        </div>
 
+        <TabsContent value="workstations" className="space-y-4">
           {showSkeleton ? (
             <TableSkeleton rows={4} />
           ) : isEmpty ? (
@@ -220,9 +236,27 @@ export function WorkstationsPage() {
         </TabsContent>
 
         <TabsContent value="commandGroups">
-          <CommandGroupsTab />
+          <CommandGroupsTab
+            dialogOpen={cgDialogOpen}
+            onDialogOpenChange={setCgDialogOpen}
+            editTarget={cgEditTarget}
+            onEditTargetChange={setCgEditTarget}
+          />
         </TabsContent>
       </Tabs>
+
+      <CommandGroupDialog
+        open={cgDialogOpen}
+        onOpenChange={(v) => { if (!v) setCgEditTarget(null); setCgDialogOpen(v); }}
+        onSubmit={async (params) => {
+          if (cgEditTarget) {
+            await updateGroup(cgEditTarget.id, params);
+          } else {
+            await createGroup(params);
+          }
+        }}
+        group={cgEditTarget}
+      />
     </div>
   );
 }
