@@ -109,6 +109,15 @@ func buildAuthMethods(meta *store.SSHMetadata, keyMaterial []byte) ([]ssh.AuthMe
 			return answers, nil
 		}))
 	}
+
+	slog.Debug("workstation.ssh_auth_methods",
+		"has_key_material", len(keyMaterial) > 0,
+		"key_material_len", len(keyMaterial),
+		"has_password", meta.Password != "",
+		"password_len", len(meta.Password),
+		"method_count", len(methods),
+	)
+
 	if len(methods) == 0 {
 		return nil, errors.New("no auth method available: provide privateKey or password")
 	}

@@ -3,6 +3,7 @@ package backends
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -32,6 +33,13 @@ func newSSHBackend(ws *store.Workstation) (workstation.Backend, error) {
 	}
 
 	km := []byte(meta.PrivateKey) // plaintext PEM; already decrypted by store layer
+
+	slog.Debug("workstation.ssh_backend_created",
+		"workstation_key", ws.WorkstationKey,
+		"has_password", meta.Password != "",
+		"password_len", len(meta.Password),
+		"key_material_len", len(km),
+	)
 
 	return &SSHBackend{
 		ws:          ws,

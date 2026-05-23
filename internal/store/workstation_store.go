@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -249,6 +250,11 @@ func MergeSSHMetadata(current []byte, updates map[string]any) ([]byte, error) {
 	if _, ok := updates["password"]; ok {
 		old.Password = new.Password
 	}
+	slog.Debug("workstation.merge_metadata",
+		"has_password_key", func() bool { _, ok := updates["password"]; return ok }(),
+		"new_password_len", len(new.Password),
+		"merged_password_len", len(old.Password),
+	)
 	if _, ok := updates["knownHostsFingerprint"]; ok {
 		old.KnownHostsFingerprint = new.KnownHostsFingerprint
 	}
