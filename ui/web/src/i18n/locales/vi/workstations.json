@@ -43,14 +43,22 @@
     "portLabel": "Cổng",
     "userLabel": "SSH User",
     "userPlaceholder": "ubuntu",
-    "identityFileLabel": "File khóa (tùy chọn)",
+    "identityFileLabel": "File khóa",
     "identityFilePlaceholder": "~/.ssh/id_rsa",
+    "passwordLabel": "Mật khẩu (tùy chọn)",
+    "passwordPlaceholder": "Nhập mật khẩu SSH",
     "containerLabel": "Tên / ID container",
     "containerPlaceholder": "my-container",
     "dockerHostLabel": "Docker Host (tùy chọn)",
     "dockerHostPlaceholder": "unix:///var/run/docker.sock",
     "cancel": "Hủy",
     "create": "Tạo"
+  },
+  "editDialog": {
+    "title": "Chỉnh sửa Workstation",
+    "description": "Cập nhật cài đặt kết nối workstation.",
+    "save": "Lưu",
+    "authHint": "Để trống trường xác thực để giữ nguyên thông tin đăng nhập hiện tại."
   },
   "deleteDialog": {
     "title": "Xóa Workstation",

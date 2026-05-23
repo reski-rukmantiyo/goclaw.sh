@@ -11,6 +11,7 @@ export interface Workstation {
   active: boolean;
   createdAt: string;
   updatedAt: string;
+  metadataSummary?: Record<string, unknown>;
 }
 
 export interface CreateWorkstationParams {
@@ -51,6 +52,17 @@ export function useWorkstations() {
     load();
   }, [load]);
 
+  const getWorkstation = useCallback(
+    async (id: string): Promise<Workstation & { metadataSummary?: Record<string, unknown> }> => {
+      const res = await ws.call<{ workstation: Workstation & { metadataSummary?: Record<string, unknown> } }>(
+        Methods.WORKSTATIONS_GET,
+        { id },
+      );
+      return res.workstation;
+    },
+    [ws],
+  );
+
   const createWorkstation = useCallback(
     async (params: CreateWorkstationParams): Promise<Workstation> => {
       const res = await ws.call<{ workstation: Workstation }>(Methods.WORKSTATIONS_CREATE, params as unknown as Record<string, unknown>);
@@ -62,7 +74,7 @@ export function useWorkstations() {
 
   const updateWorkstation = useCallback(
     async (id: string, params: UpdateWorkstationParams): Promise<void> => {
-      await ws.call(Methods.WORKSTATIONS_UPDATE, { id, ...params });
+      await ws.call(Methods.WORKSTATIONS_UPDATE, { id, updates: params });
       await load();
     },
     [ws, load],
@@ -148,6 +160,7 @@ export function useWorkstations() {
     loading,
     error,
     refresh: load,
+    getWorkstation,
     createWorkstation,
     updateWorkstation,
     deleteWorkstation,

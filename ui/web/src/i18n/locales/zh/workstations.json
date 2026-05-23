@@ -43,14 +43,22 @@
     "portLabel": "端口",
     "userLabel": "SSH 用户",
     "userPlaceholder": "ubuntu",
-    "identityFileLabel": "密钥文件（可选）",
+    "identityFileLabel": "密钥文件",
     "identityFilePlaceholder": "~/.ssh/id_rsa",
+    "passwordLabel": "密码（可选）",
+    "passwordPlaceholder": "输入 SSH 密码",
     "containerLabel": "容器名称 / ID",
     "containerPlaceholder": "my-container",
     "dockerHostLabel": "Docker Host（可选）",
     "dockerHostPlaceholder": "unix:///var/run/docker.sock",
     "cancel": "取消",
     "create": "创建"
+  },
+  "editDialog": {
+    "title": "编辑工作站",
+    "description": "更新工作站连接设置。",
+    "save": "保存",
+    "authHint": "留空认证字段以保留当前凭据。"
   },
   "deleteDialog": {
     "title": "删除工作站",

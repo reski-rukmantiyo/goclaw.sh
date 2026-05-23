@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MonitorCog, Plus, RefreshCw, Trash2, Power, PowerOff, ChevronDown, ChevronRight } from "lucide-react";
+import { MonitorCog, Plus, RefreshCw, Trash2, Power, PowerOff, ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,13 +19,14 @@ import { WorkstationPermissionsTab } from "./workstation-permissions-tab";
 
 export function WorkstationsPage() {
   const { t } = useTranslation("workstations");
-  const { workstations, loading, refresh, createWorkstation, deleteWorkstation, toggleWorkstation } = useWorkstations();
+  const { workstations, loading, refresh, getWorkstation, createWorkstation, updateWorkstation, deleteWorkstation, toggleWorkstation } = useWorkstations();
 
   const spinning = useMinLoading(loading);
   const isEmpty = workstations.length === 0;
   const showSkeleton = useDeferredLoading(loading && isEmpty);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Workstation | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Workstation | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -127,6 +128,15 @@ export function WorkstationsPage() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            onClick={() => setEditTarget(ws)}
+                            className="gap-1"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            {t("actions.edit")}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => setDeleteTarget(ws)}
                             className="gap-1"
                           >
@@ -167,11 +177,23 @@ export function WorkstationsPage() {
       </div>
 
       <WorkstationCreateDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
+        open={createOpen || !!editTarget}
+        onOpenChange={(v) => {
+          if (!v) {
+            setCreateOpen(false);
+            setEditTarget(null);
+          } else {
+            setCreateOpen(v);
+          }
+        }}
         onCreate={async (params) => {
           await createWorkstation(params);
         }}
+        onUpdate={async (id, params) => {
+          await updateWorkstation(id, params);
+        }}
+        getWorkstation={getWorkstation}
+        editWorkstation={editTarget}
       />
 
       {deleteTarget && (

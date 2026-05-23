@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -206,6 +207,62 @@ func ValidateMetadata(backend WorkstationBackend, raw []byte) error {
 	default:
 		return fmt.Errorf("unknown backend: %s", backend)
 	}
+}
+
+// MergeSSHMetadata overlays selective updates onto existing SSH metadata.
+// Structural fields (host, port, user) are always overwritten when non-empty/non-zero.
+// Auth fields (identityFile, password, knownHostsFingerprint, connectTimeoutSec)
+// are only overwritten when their key is explicitly present in the updates map.
+// This allows callers to change host/port/user without re-supplying credentials.
+func MergeSSHMetadata(current []byte, updates map[string]any) ([]byte, error) {
+	var old SSHMetadata
+	if len(current) > 0 {
+		if err := json.Unmarshal(current, &old); err != nil {
+			return nil, fmt.Errorf("unmarshal current: %w", err)
+		}
+	}
+
+	updBytes, err := json.Marshal(updates)
+	if err != nil {
+		return nil, fmt.Errorf("marshal updates: %w", err)
+	}
+	var new SSHMetadata
+	if err := json.Unmarshal(updBytes, &new); err != nil {
+		return nil, fmt.Errorf("unmarshal updates: %w", err)
+	}
+
+	if new.Host != "" {
+		old.Host = new.Host
+	}
+	if new.Port != 0 {
+		old.Port = new.Port
+	}
+	if new.User != "" {
+		old.User = new.User
+	}
+
+	if _, ok := updates["privateKey"]; ok {
+		old.PrivateKey = new.PrivateKey
+	}
+	if _, ok := updates["identityFile"]; ok {
+		old.IdentityFile = new.IdentityFile
+	}
+	if _, ok := updates["password"]; ok {
+		old.Password = new.Password
+	}
+	slog.Debug("workstation.merge_metadata",
+		"has_password_key", func() bool { _, ok := updates["password"]; return ok }(),
+		"new_password_len", len(new.Password),
+		"merged_password_len", len(old.Password),
+	)
+	if _, ok := updates["knownHostsFingerprint"]; ok {
+		old.KnownHostsFingerprint = new.KnownHostsFingerprint
+	}
+	if _, ok := updates["connectTimeoutSec"]; ok {
+		old.ConnectTimeoutSec = new.ConnectTimeoutSec
+	}
+
+	return json.Marshal(old)
 }
 
 // WorkstationStore defines CRUD operations for workstations (tenant-scoped).

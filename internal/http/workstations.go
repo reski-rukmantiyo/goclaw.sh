@@ -67,6 +67,34 @@ func (h *WorkstationsHandler) emitPermChanged(workstationID uuid.UUID) {
 	})
 }
 
+func (h *WorkstationsHandler) emitUpdated(workstationID uuid.UUID) {
+	if h.eventBus == nil {
+		return
+	}
+	h.eventBus.Publish(eventbus.DomainEvent{
+		ID:        uuid.New().String(),
+		Type:      eventbus.EventWorkstationUpdated,
+		SourceID:  workstationID.String(),
+		TenantID:  "",
+		Timestamp: time.Now(),
+		Payload:   map[string]any{"workstation_id": workstationID.String()},
+	})
+}
+
+func (h *WorkstationsHandler) emitDeleted(workstationID uuid.UUID) {
+	if h.eventBus == nil {
+		return
+	}
+	h.eventBus.Publish(eventbus.DomainEvent{
+		ID:        uuid.New().String(),
+		Type:      eventbus.EventWorkstationDeleted,
+		SourceID:  workstationID.String(),
+		TenantID:  "",
+		Timestamp: time.Now(),
+		Payload:   map[string]any{"workstation_id": workstationID.String()},
+	})
+}
+
 // RegisterRoutes registers all workstation endpoints onto mux.
 // MUST only be called after edition gate check — never in Lite builds.
 func (h *WorkstationsHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -251,12 +279,25 @@ func (h *WorkstationsHandler) handleUpdate(w http.ResponseWriter, r *http.Reques
 				i18n.T(locale, i18n.MsgInvalidMetadataShape, string(current.BackendType), err.Error()))
 			return
 		}
+		// Merge metadata to preserve auth fields not explicitly changed.
+		if current.BackendType == store.BackendSSH {
+			if metaMap, ok := updates["metadata"].(map[string]any); ok {
+				merged, err := store.MergeSSHMetadata(current.Metadata, metaMap)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+						i18n.T(locale, i18n.MsgInternalError, err.Error()))
+					return
+				}
+				updates["metadata"] = merged
+			}
+		}
 	}
 	if err := h.wsStore.Update(ctx, id, updates); err != nil {
 		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
 			i18n.T(locale, i18n.MsgFailedToUpdate, "workstation", err.Error()))
 		return
 	}
+	h.emitUpdated(id)
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
 }
 
@@ -278,6 +319,7 @@ func (h *WorkstationsHandler) handleDelete(w http.ResponseWriter, r *http.Reques
 			i18n.T(locale, i18n.MsgFailedToDelete, "workstation", err.Error()))
 		return
 	}
+	h.emitDeleted(id)
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
 }
 
@@ -305,6 +347,7 @@ func (h *WorkstationsHandler) handleToggle(w http.ResponseWriter, r *http.Reques
 			i18n.T(locale, i18n.MsgFailedToUpdate, "workstation", err.Error()))
 		return
 	}
+	h.emitUpdated(id)
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "active": body.Active})
 }
 

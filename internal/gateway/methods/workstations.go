@@ -62,6 +62,34 @@ func (m *WorkstationsMethods) emitPermChanged(workstationID uuid.UUID) {
 	})
 }
 
+func (m *WorkstationsMethods) emitUpdated(workstationID uuid.UUID) {
+	if m.eventBus == nil {
+		return
+	}
+	m.eventBus.Publish(eventbus.DomainEvent{
+		ID:        uuid.New().String(),
+		Type:      eventbus.EventWorkstationUpdated,
+		SourceID:  workstationID.String(),
+		TenantID:  "",
+		Timestamp: time.Now(),
+		Payload:   map[string]any{"workstation_id": workstationID.String()},
+	})
+}
+
+func (m *WorkstationsMethods) emitDeleted(workstationID uuid.UUID) {
+	if m.eventBus == nil {
+		return
+	}
+	m.eventBus.Publish(eventbus.DomainEvent{
+		ID:        uuid.New().String(),
+		Type:      eventbus.EventWorkstationDeleted,
+		SourceID:  workstationID.String(),
+		TenantID:  "",
+		Timestamp: time.Now(),
+		Payload:   map[string]any{"workstation_id": workstationID.String()},
+	})
+}
+
 // Register wires the workstations.* methods onto the router.
 // MUST only be called when edition is Standard (caller enforces the gate).
 func (m *WorkstationsMethods) Register(router *gateway.MethodRouter) {
@@ -254,12 +282,25 @@ func (m *WorkstationsMethods) handleUpdate(ctx context.Context, client *gateway.
 				i18n.T(locale, i18n.MsgInvalidMetadataShape, string(current.BackendType), err.Error())))
 			return
 		}
+		// Merge metadata to preserve auth fields not explicitly changed.
+		if current.BackendType == store.BackendSSH {
+			if metaMap, ok := params.Updates["metadata"].(map[string]any); ok {
+				merged, err := store.MergeSSHMetadata(current.Metadata, metaMap)
+				if err != nil {
+					client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+						i18n.T(locale, i18n.MsgInternalError, err.Error())))
+					return
+				}
+				params.Updates["metadata"] = merged
+			}
+		}
 	}
 	if err := m.wsStore.Update(ctx, id, params.Updates); err != nil {
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
 			i18n.T(locale, i18n.MsgFailedToUpdate, "workstation", err.Error())))
 		return
 	}
+	m.emitUpdated(id)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id}))
 }
 
@@ -285,6 +326,7 @@ func (m *WorkstationsMethods) handleDelete(ctx context.Context, client *gateway.
 			i18n.T(locale, i18n.MsgFailedToDelete, "workstation", err.Error())))
 		return
 	}
+	m.emitDeleted(id)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id}))
 }
 
@@ -311,6 +353,7 @@ func (m *WorkstationsMethods) handleToggle(ctx context.Context, client *gateway.
 			i18n.T(locale, i18n.MsgFailedToUpdate, "workstation", err.Error())))
 		return
 	}
+	m.emitUpdated(id)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id, "active": params.Active}))
 }
 
