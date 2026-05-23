@@ -21,11 +21,13 @@ import (
 // WorkstationsMethods handles workstations.* RPC methods over WebSocket.
 // Routes are only registered when !edition.IsLite() — callers must gate at registration.
 type WorkstationsMethods struct {
-	wsStore       store.WorkstationStore
-	linkStore     store.AgentWorkstationLinkStore
-	permStore     store.WorkstationPermissionStore     // may be nil if Phase 6 not wired
-	activityStore store.WorkstationActivityStore       // may be nil if Phase 7 not wired
-	eventBus      eventbus.DomainEventBus              // may be nil; used to invalidate allowlist cache
+	wsStore        store.WorkstationStore
+	linkStore      store.AgentWorkstationLinkStore
+	permStore      store.WorkstationPermissionStore      // may be nil if Phase 6 not wired
+	activityStore  store.WorkstationActivityStore        // may be nil if Phase 7 not wired
+	groupStore     store.WorkstationCommandGroupStore    // may be nil if Phase 8 not wired
+	groupPermStore store.WorkstationGroupPermissionStore // may be nil if Phase 8 not wired
+	eventBus       eventbus.DomainEventBus               // may be nil; used to invalidate allowlist cache
 }
 
 // NewWorkstationsMethods creates WorkstationsMethods with the given stores.
@@ -41,6 +43,16 @@ func (m *WorkstationsMethods) SetPermStore(ps store.WorkstationPermissionStore) 
 // SetActivityStore wires the activity store for audit log methods (Phase 7).
 func (m *WorkstationsMethods) SetActivityStore(as store.WorkstationActivityStore) {
 	m.activityStore = as
+}
+
+// SetGroupStore wires the command group store for group CRUD methods (Phase 8).
+func (m *WorkstationsMethods) SetGroupStore(gs store.WorkstationCommandGroupStore) {
+	m.groupStore = gs
+}
+
+// SetGroupPermStore wires the group permission store for applying groups (Phase 8).
+func (m *WorkstationsMethods) SetGroupPermStore(gps store.WorkstationGroupPermissionStore) {
+	m.groupPermStore = gps
 }
 
 // SetEventBus wires the domain event bus for allowlist cache invalidation.
@@ -111,6 +123,16 @@ func (m *WorkstationsMethods) Register(router *gateway.MethodRouter) {
 	router.Register(protocol.MethodWorkstationsListActivity, m.adminOnly(m.handleListActivity))
 	// Agent links
 	router.Register(protocol.MethodWorkstationsListLinkedAgents, m.adminOnly(m.handleListLinkedAgents))
+	// Phase 8: command groups
+	router.Register(protocol.MethodWorkstationsCommandGroupsList, m.adminOnly(m.handleCGList))
+	router.Register(protocol.MethodWorkstationsCommandGroupsCreate, m.adminOnly(m.handleCGCreate))
+	router.Register(protocol.MethodWorkstationsCommandGroupsGet, m.adminOnly(m.handleCGGet))
+	router.Register(protocol.MethodWorkstationsCommandGroupsUpdate, m.adminOnly(m.handleCGUpdate))
+	router.Register(protocol.MethodWorkstationsCommandGroupsDelete, m.adminOnly(m.handleCGDelete))
+	router.Register(protocol.MethodWorkstationsCommandGroupsApply, m.adminOnly(m.handleCGApply))
+	router.Register(protocol.MethodWorkstationsCommandGroupsRemove, m.adminOnly(m.handleCGRemove))
+	router.Register(protocol.MethodWorkstationsCommandGroupsToggle, m.adminOnly(m.handleCGToggle))
+	router.Register(protocol.MethodWorkstationsCommandGroupsListForWorkstation, m.adminOnly(m.handleCGListForWorkstation))
 }
 
 // adminOnly is a middleware that requires at least RoleAdmin on the WS client.
@@ -721,4 +743,389 @@ func (m *WorkstationsMethods) handleListLinkedAgents(ctx context.Context, client
 		return
 	}
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"links": links}))
+}
+
+// --- Phase 8: command group CRUD ---
+
+func (m *WorkstationsMethods) requireGroupStore(locale string, client *gateway.Client, req *protocol.RequestFrame) bool {
+	if m.groupStore == nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotImplemented,
+			i18n.T(locale, i18n.MsgNotImplemented, "workstations.commandGroups")))
+		return false
+	}
+	return true
+}
+
+func (m *WorkstationsMethods) requireGroupPermStore(locale string, client *gateway.Client, req *protocol.RequestFrame) bool {
+	if m.groupPermStore == nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotImplemented,
+			i18n.T(locale, i18n.MsgNotImplemented, "workstations.commandGroups")))
+		return false
+	}
+	return true
+}
+
+func (m *WorkstationsMethods) handleCGList(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	if !m.requireGroupStore(locale, client, req) {
+		return
+	}
+	groups, err := m.groupStore.List(ctx)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToList, "command groups")))
+		return
+	}
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"groups": groups}))
+}
+
+func (m *WorkstationsMethods) handleCGGet(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	if !m.requireGroupStore(locale, client, req) {
+		return
+	}
+	var params struct {
+		ID string `json:"id"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, "invalid params"))
+			return
+		}
+	}
+	id, err := uuid.Parse(params.ID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "command group")))
+		return
+	}
+	group, err := m.groupStore.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgNotFound, "command group")))
+			return
+		}
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgInternalError, err.Error())))
+		return
+	}
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"group": group}))
+}
+
+func (m *WorkstationsMethods) handleCGCreate(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	if !m.requireGroupStore(locale, client, req) {
+		return
+	}
+	var params struct {
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		Patterns    []string `json:"patterns"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, "invalid params"))
+			return
+		}
+	}
+	if params.Name == "" {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgRequired, "name")))
+		return
+	}
+	group := &store.WorkstationCommandGroup{
+		Name:        params.Name,
+		Description: params.Description,
+		Patterns:    params.Patterns,
+		CreatedBy:   client.UserID(),
+	}
+	if err := m.groupStore.Create(ctx, group); err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToCreate, "command group", err.Error())))
+		return
+	}
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"group": group}))
+}
+
+func (m *WorkstationsMethods) handleCGUpdate(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	if !m.requireGroupStore(locale, client, req) {
+		return
+	}
+	var params struct {
+		ID      string         `json:"id"`
+		Updates map[string]any `json:"updates"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, "invalid params"))
+			return
+		}
+	}
+	id, err := uuid.Parse(params.ID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "command group")))
+		return
+	}
+	if len(params.Updates) == 0 {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgNoUpdatesProvided)))
+		return
+	}
+	if err := m.groupStore.Update(ctx, id, params.Updates); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgNotFound, "command group")))
+			return
+		}
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToUpdate, "command group", err.Error())))
+		return
+	}
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id}))
+}
+
+func (m *WorkstationsMethods) handleCGDelete(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	if !m.requireGroupStore(locale, client, req) {
+		return
+	}
+	var params struct {
+		ID string `json:"id"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, "invalid params"))
+			return
+		}
+	}
+	id, err := uuid.Parse(params.ID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "command group")))
+		return
+	}
+	if err := m.groupStore.Delete(ctx, id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgNotFound, "command group")))
+			return
+		}
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToDelete, "command group", err.Error())))
+		return
+	}
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id}))
+}
+
+func (m *WorkstationsMethods) handleCGListForWorkstation(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	if !m.requireGroupPermStore(locale, client, req) {
+		return
+	}
+	var params struct {
+		WorkstationID string `json:"workstationId"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, "invalid params"))
+			return
+		}
+	}
+	wsID, err := uuid.Parse(params.WorkstationID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation")))
+		return
+	}
+	if _, err := m.wsStore.GetByID(ctx, wsID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgWorkstationNotFound, params.WorkstationID)))
+			return
+		}
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgInternalError, err.Error())))
+		return
+	}
+	links, err := m.groupPermStore.ListForWorkstation(ctx, wsID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToList, "group permissions")))
+		return
+	}
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"links": links}))
+}
+
+func (m *WorkstationsMethods) handleCGApply(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	if !m.requireGroupPermStore(locale, client, req) || !m.requireGroupStore(locale, client, req) {
+		return
+	}
+	var params struct {
+		WorkstationID string `json:"workstationId"`
+		GroupID       string `json:"groupId"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, "invalid params"))
+			return
+		}
+	}
+	wsID, err := uuid.Parse(params.WorkstationID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation")))
+		return
+	}
+	groupID, err := uuid.Parse(params.GroupID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "command group")))
+		return
+	}
+	if _, err := m.wsStore.GetByID(ctx, wsID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgWorkstationNotFound, params.WorkstationID)))
+			return
+		}
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgInternalError, err.Error())))
+		return
+	}
+	group, err := m.groupStore.GetByID(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgNotFound, "command group")))
+			return
+		}
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgInternalError, err.Error())))
+		return
+	}
+	link := &store.WorkstationGroupPermission{
+		WorkstationID: wsID,
+		GroupID:       groupID,
+		Enabled:       true,
+	}
+	if err := m.groupPermStore.Add(ctx, link); err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToCreate, "group permission", err.Error())))
+		return
+	}
+	m.emitPermChanged(wsID)
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"linked": true, "group": group}))
+}
+
+func (m *WorkstationsMethods) handleCGRemove(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	if !m.requireGroupPermStore(locale, client, req) {
+		return
+	}
+	var params struct {
+		WorkstationID string `json:"workstationId"`
+		GroupID       string `json:"groupId"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, "invalid params"))
+			return
+		}
+	}
+	wsID, err := uuid.Parse(params.WorkstationID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation")))
+		return
+	}
+	groupID, err := uuid.Parse(params.GroupID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "command group")))
+		return
+	}
+	links, err := m.groupPermStore.ListForWorkstation(ctx, wsID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToList, "group permissions")))
+		return
+	}
+	var linkID uuid.UUID
+	for _, l := range links {
+		if l.GroupID == groupID {
+			linkID = l.ID
+			break
+		}
+	}
+	if linkID == uuid.Nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+			i18n.T(locale, i18n.MsgNotFound, "group permission")))
+		return
+	}
+	if err := m.groupPermStore.Remove(ctx, linkID); err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToDelete, "group permission", err.Error())))
+		return
+	}
+	m.emitPermChanged(wsID)
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": linkID}))
+}
+
+func (m *WorkstationsMethods) handleCGToggle(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	if !m.requireGroupPermStore(locale, client, req) {
+		return
+	}
+	var params struct {
+		WorkstationID string `json:"workstationId"`
+		GroupID       string `json:"groupId"`
+		Enabled       bool   `json:"enabled"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, "invalid params"))
+			return
+		}
+	}
+	wsID, err := uuid.Parse(params.WorkstationID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation")))
+		return
+	}
+	groupID, err := uuid.Parse(params.GroupID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "command group")))
+		return
+	}
+	links, err := m.groupPermStore.ListForWorkstation(ctx, wsID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToList, "group permissions")))
+		return
+	}
+	var linkID uuid.UUID
+	for _, l := range links {
+		if l.GroupID == groupID {
+			linkID = l.ID
+			break
+		}
+	}
+	if linkID == uuid.Nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+			i18n.T(locale, i18n.MsgNotFound, "group permission")))
+		return
+	}
+	if err := m.groupPermStore.SetEnabled(ctx, linkID, params.Enabled); err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToUpdate, "group permission", err.Error())))
+		return
+	}
+	m.emitPermChanged(wsID)
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": linkID, "enabled": params.Enabled}))
 }

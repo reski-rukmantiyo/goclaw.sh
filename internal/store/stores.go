@@ -53,4 +53,6 @@ type Stores struct {
 	WorkstationLinks       AgentWorkstationLinkStore
 	WorkstationPermissions WorkstationPermissionStore
 	WorkstationActivity    WorkstationActivityStore
+	WorkstationCommandGroups     WorkstationCommandGroupStore
+	WorkstationGroupPermissions  WorkstationGroupPermissionStore
 }

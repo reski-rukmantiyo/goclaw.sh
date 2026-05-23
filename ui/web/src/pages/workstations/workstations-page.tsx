@@ -16,6 +16,7 @@ import { WorkstationCreateDialog } from "./workstation-create-dialog";
 import { WorkstationActivityTab } from "./workstation-activity-tab";
 import { WorkstationAgentsTab } from "./workstation-agents-tab";
 import { WorkstationPermissionsTab } from "./workstation-permissions-tab";
+import { CommandGroupsTab } from "./command-groups-tab";
 
 export function WorkstationsPage() {
   const { t } = useTranslation("workstations");
@@ -39,177 +40,189 @@ export function WorkstationsPage() {
       <PageHeader
         title={t("title")}
         description={t("description")}
-        actions={
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={refresh} disabled={spinning} className="gap-1">
-              <RefreshCw className={"h-3.5 w-3.5" + (spinning ? " animate-spin" : "")} />
-              {t("common:refresh", "Refresh")}
-            </Button>
-            <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-1">
-              <Plus className="h-3.5 w-3.5" />
-              {t("addWorkstation")}
-            </Button>
-          </div>
-        }
       />
 
-      <div className="mt-4">
-        {showSkeleton ? (
-          <TableSkeleton rows={4} />
-        ) : isEmpty ? (
-          <EmptyState
-            icon={MonitorCog}
-            title={t("emptyTitle")}
-            description={t("emptyDescription")}
-          />
-        ) : (
-          <div className="rounded-md border overflow-x-auto">
-            <table className="w-full min-w-[600px] text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium w-8"></th>
-                  <th className="px-4 py-3 text-left font-medium">{t("columns.name")}</th>
-                  <th className="px-4 py-3 text-left font-medium">{t("columns.key")}</th>
-                  <th className="px-4 py-3 text-left font-medium">{t("columns.backend")}</th>
-                  <th className="px-4 py-3 text-left font-medium">{t("columns.status")}</th>
-                  <th className="px-4 py-3 text-left font-medium">{t("columns.created")}</th>
-                  <th className="px-4 py-3 text-right font-medium">{t("columns.actions")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {workstations.map((ws) => {
-                  const isExpanded = expandedId === ws.id;
-                  return (
-                    <>
-                      <tr
-                        key={ws.id}
-                        className="border-b last:border-0 hover:bg-muted/30 cursor-pointer"
-                        onClick={() => toggleExpand(ws.id)}
-                      >
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {isExpanded ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                        </td>
-                        <td className="px-4 py-3 font-medium">{ws.name}</td>
-                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{ws.workstationKey}</td>
-                        <td className="px-4 py-3">
-                          <Badge variant="outline">{t(`backend.${ws.backendType}`)}</Badge>
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge variant={ws.active ? "default" : "secondary"}>
-                            {ws.active ? t("status.active") : t("status.inactive")}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {formatDate(new Date(ws.createdAt))}
-                        </td>
-                        <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => toggleWorkstation(ws.id, !ws.active)}
-                            className="gap-1"
-                          >
-                            {ws.active ? (
-                              <>
-                                <PowerOff className="h-3.5 w-3.5" />
-                                {t("actions.deactivate")}
-                              </>
+      <Tabs defaultValue="workstations" className="mt-4">
+        <TabsList className="mb-4">
+          <TabsTrigger value="workstations">{t("tabs.workstations")}</TabsTrigger>
+          <TabsTrigger value="commandGroups">{t("tabs.commandGroups")}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="workstations" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={refresh} disabled={spinning} className="gap-1">
+                <RefreshCw className={"h-3.5 w-3.5" + (spinning ? " animate-spin" : "")} />
+                {t("common:refresh", "Refresh")}
+              </Button>
+              <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-1">
+                <Plus className="h-3.5 w-3.5" />
+                {t("addWorkstation")}
+              </Button>
+            </div>
+          </div>
+
+          {showSkeleton ? (
+            <TableSkeleton rows={4} />
+          ) : isEmpty ? (
+            <EmptyState
+              icon={MonitorCog}
+              title={t("emptyTitle")}
+              description={t("emptyDescription")}
+            />
+          ) : (
+            <div className="rounded-md border overflow-x-auto">
+              <table className="w-full min-w-[600px] text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="px-4 py-3 text-left font-medium w-8"></th>
+                    <th className="px-4 py-3 text-left font-medium">{t("columns.name")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("columns.key")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("columns.backend")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("columns.status")}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t("columns.created")}</th>
+                    <th className="px-4 py-3 text-right font-medium">{t("columns.actions")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {workstations.map((ws) => {
+                    const isExpanded = expandedId === ws.id;
+                    return (
+                      <>
+                        <tr
+                          key={ws.id}
+                          className="border-b last:border-0 hover:bg-muted/30 cursor-pointer"
+                          onClick={() => toggleExpand(ws.id)}
+                        >
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4" />
                             ) : (
-                              <>
-                                <Power className="h-3.5 w-3.5" />
-                                {t("actions.activate")}
-                              </>
+                              <ChevronRight className="h-4 w-4" />
                             )}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setEditTarget(ws)}
-                            className="gap-1"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                            {t("actions.edit")}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDeleteTarget(ws)}
-                            className="gap-1"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            {t("actions.delete")}
-                          </Button>
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr key={`${ws.id}-detail`} className="bg-muted/10">
-                          <td colSpan={7} className="px-4 py-4">
-                            <Tabs defaultValue="activity">
-                              <TabsList className="mb-3">
-                                <TabsTrigger value="activity">{t("activity.title")}</TabsTrigger>
-                                <TabsTrigger value="agents">{t("agents.title", "Linked Agents")}</TabsTrigger>
-                                <TabsTrigger value="permissions">{t("permissions.title", "Permissions")}</TabsTrigger>
-                              </TabsList>
-                              <TabsContent value="activity">
-                                <WorkstationActivityTab workstationId={ws.id} />
-                              </TabsContent>
-                              <TabsContent value="agents">
-                                <WorkstationAgentsTab workstationId={ws.id} />
-                              </TabsContent>
-                              <TabsContent value="permissions">
-                                <WorkstationPermissionsTab workstationId={ws.id} />
-                              </TabsContent>
-                            </Tabs>
+                          </td>
+                          <td className="px-4 py-3 font-medium">{ws.name}</td>
+                          <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{ws.workstationKey}</td>
+                          <td className="px-4 py-3">
+                            <Badge variant="outline">{t(`backend.${ws.backendType}`)}</Badge>
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge variant={ws.active ? "default" : "secondary"}>
+                              {ws.active ? t("status.active") : t("status.inactive")}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {formatDate(new Date(ws.createdAt))}
+                          </td>
+                          <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => toggleWorkstation(ws.id, !ws.active)}
+                              className="gap-1"
+                            >
+                              {ws.active ? (
+                                <>
+                                  <PowerOff className="h-3.5 w-3.5" />
+                                  {t("actions.deactivate")}
+                                </>
+                              ) : (
+                                <>
+                                  <Power className="h-3.5 w-3.5" />
+                                  {t("actions.activate")}
+                                </>
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditTarget(ws)}
+                              className="gap-1"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              {t("actions.edit")}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setDeleteTarget(ws)}
+                              className="gap-1"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              {t("actions.delete")}
+                            </Button>
                           </td>
                         </tr>
-                      )}
-                    </>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                        {isExpanded && (
+                          <tr key={`${ws.id}-detail`} className="bg-muted/10">
+                            <td colSpan={7} className="px-4 py-4">
+                              <Tabs defaultValue="activity">
+                                <TabsList className="mb-3">
+                                  <TabsTrigger value="activity">{t("activity.title")}</TabsTrigger>
+                                  <TabsTrigger value="agents">{t("agents.title", "Linked Agents")}</TabsTrigger>
+                                  <TabsTrigger value="permissions">{t("permissions.title", "Permissions")}</TabsTrigger>
+                                </TabsList>
+                                <TabsContent value="activity">
+                                  <WorkstationActivityTab workstationId={ws.id} />
+                                </TabsContent>
+                                <TabsContent value="agents">
+                                  <WorkstationAgentsTab workstationId={ws.id} />
+                                </TabsContent>
+                                <TabsContent value="permissions">
+                                  <WorkstationPermissionsTab workstationId={ws.id} />
+                                </TabsContent>
+                              </Tabs>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-      <WorkstationCreateDialog
-        open={createOpen || !!editTarget}
-        onOpenChange={(v) => {
-          if (!v) {
-            setCreateOpen(false);
-            setEditTarget(null);
-          } else {
-            setCreateOpen(v);
-          }
-        }}
-        onCreate={async (params) => {
-          await createWorkstation(params);
-        }}
-        onUpdate={async (id, params) => {
-          await updateWorkstation(id, params);
-        }}
-        getWorkstation={getWorkstation}
-        editWorkstation={editTarget}
-      />
+          <WorkstationCreateDialog
+            open={createOpen || !!editTarget}
+            onOpenChange={(v) => {
+              if (!v) {
+                setCreateOpen(false);
+                setEditTarget(null);
+              } else {
+                setCreateOpen(v);
+              }
+            }}
+            onCreate={async (params) => {
+              await createWorkstation(params);
+            }}
+            onUpdate={async (id, params) => {
+              await updateWorkstation(id, params);
+            }}
+            getWorkstation={getWorkstation}
+            editWorkstation={editTarget}
+          />
 
-      {deleteTarget && (
-        <ConfirmDialog
-          open
-          onOpenChange={() => setDeleteTarget(null)}
-          title={t("deleteDialog.title")}
-          description={t("deleteDialog.description", { name: deleteTarget.name })}
-          confirmLabel={t("deleteDialog.confirmLabel")}
-          variant="destructive"
-          onConfirm={async () => {
-            await deleteWorkstation(deleteTarget.id);
-            setDeleteTarget(null);
-          }}
-        />
-      )}
+          {deleteTarget && (
+            <ConfirmDialog
+              open
+              onOpenChange={() => setDeleteTarget(null)}
+              title={t("deleteDialog.title")}
+              description={t("deleteDialog.description", { name: deleteTarget.name })}
+              confirmLabel={t("deleteDialog.confirmLabel")}
+              variant="destructive"
+              onConfirm={async () => {
+                await deleteWorkstation(deleteTarget.id);
+                setDeleteTarget(null);
+              }}
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="commandGroups">
+          <CommandGroupsTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

@@ -4,8 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Shield, Trash2, Plus } from "lucide-react";
+import { Shield, Trash2, Plus, Layers } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useWorkstations } from "./hooks/use-workstations";
+import { useCommandGroups } from "./hooks/use-command-groups";
 
 interface WorkstationPermissionsTabProps {
   workstationId: string;
@@ -14,10 +22,13 @@ interface WorkstationPermissionsTabProps {
 export function WorkstationPermissionsTab({ workstationId }: WorkstationPermissionsTabProps) {
   const { t } = useTranslation("workstations");
   const { listPermissions, addPermission, removePermission, togglePermission } = useWorkstations();
+  const { groups, applyGroup } = useCommandGroups();
 
   const [permissions, setPermissions] = useState<{ id: string; pattern: string; enabled: boolean }[]>([]);
   const [loading, setLoading] = useState(false);
   const [newPattern, setNewPattern] = useState("");
+  const [selectedGroupId, setSelectedGroupId] = useState<string>("");
+  const [applying, setApplying] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,8 +63,53 @@ export function WorkstationPermissionsTab({ workstationId }: WorkstationPermissi
     await load();
   };
 
+  const handleApplyGroup = async () => {
+    if (!selectedGroupId) return;
+    setApplying(true);
+    try {
+      await applyGroup(workstationId, selectedGroupId);
+      setSelectedGroupId("");
+      await load();
+    } finally {
+      setApplying(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
+      {/* Apply from Group */}
+      {groups.length > 0 && (
+        <div className="flex items-end gap-2 rounded-md border bg-muted/20 px-3 py-3">
+          <div className="flex-1">
+            <label className="text-sm font-medium mb-1.5 block">
+              {t("permissions.applyFromGroup", "Apply from Group")}
+            </label>
+            <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
+              <SelectTrigger className="text-base md:text-sm">
+                <SelectValue placeholder={t("commandGroups.title")} />
+              </SelectTrigger>
+              <SelectContent>
+                {groups.map((g) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {g.name} ({g.patterns?.length || 0} commands)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            size="sm"
+            onClick={handleApplyGroup}
+            disabled={!selectedGroupId || applying}
+            className="gap-1"
+          >
+            <Layers className="h-3.5 w-3.5" />
+            {t("commandGroups.apply.label", "Apply")}
+          </Button>
+        </div>
+      )}
+
+      {/* Add individual permission */}
       <div className="flex items-end gap-2">
         <div className="flex-1">
           <label className="text-sm font-medium mb-1.5 block">

@@ -401,6 +401,12 @@ func (d *gatewayDeps) wireHTTPHandlersOnServer(
 			if d.pgStores.WorkstationActivity != nil {
 				wsH.SetActivityStore(d.pgStores.WorkstationActivity)
 			}
+			if d.pgStores.WorkstationCommandGroups != nil {
+				wsH.SetGroupStore(d.pgStores.WorkstationCommandGroups)
+			}
+			if d.pgStores.WorkstationGroupPermissions != nil {
+				wsH.SetGroupPermStore(d.pgStores.WorkstationGroupPermissions)
+			}
 			if d.domainBus != nil {
 				wsH.SetEventBus(d.domainBus)
 			}

@@ -202,6 +202,17 @@ export const Methods = {
   WORKSTATIONS_LIST_ACTIVITY: "workstations.activity.list",
   WORKSTATIONS_LIST_LINKED_AGENTS: "workstations.listLinkedAgents",
 
+  // Workstation command groups (Phase 8)
+  WORKSTATIONS_COMMAND_GROUPS_LIST: "workstations.commandGroups.list",
+  WORKSTATIONS_COMMAND_GROUPS_CREATE: "workstations.commandGroups.create",
+  WORKSTATIONS_COMMAND_GROUPS_GET: "workstations.commandGroups.get",
+  WORKSTATIONS_COMMAND_GROUPS_UPDATE: "workstations.commandGroups.update",
+  WORKSTATIONS_COMMAND_GROUPS_DELETE: "workstations.commandGroups.delete",
+  WORKSTATIONS_COMMAND_GROUPS_APPLY: "workstations.commandGroups.apply",
+  WORKSTATIONS_COMMAND_GROUPS_REMOVE: "workstations.commandGroups.remove",
+  WORKSTATIONS_COMMAND_GROUPS_TOGGLE: "workstations.commandGroups.toggle",
+  WORKSTATIONS_COMMAND_GROUPS_LIST_FOR_WORKSTATION: "workstations.commandGroups.listForWorkstation",
+
   // Phase 3+ - NICE TO HAVE
   LOGS_TAIL: "logs.tail",
 } as const;

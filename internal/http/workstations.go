@@ -26,6 +26,8 @@ type WorkstationsHandler struct {
 	tenantStore   store.TenantStore
 	permStore     store.WorkstationPermissionStore     // Phase 6; may be nil
 	activityStore store.WorkstationActivityStore       // Phase 7; may be nil
+	groupStore    store.WorkstationCommandGroupStore   // Phase 8; may be nil
+	groupPermStore store.WorkstationGroupPermissionStore // Phase 8; may be nil
 	eventBus      eventbus.DomainEventBus              // may be nil; used for allowlist cache invalidation
 }
 
@@ -46,6 +48,16 @@ func (h *WorkstationsHandler) SetPermStore(ps store.WorkstationPermissionStore) 
 // SetActivityStore wires the activity store for audit log endpoints (Phase 7).
 func (h *WorkstationsHandler) SetActivityStore(as store.WorkstationActivityStore) {
 	h.activityStore = as
+}
+
+// SetGroupStore wires the command group store for group CRUD endpoints (Phase 8).
+func (h *WorkstationsHandler) SetGroupStore(gs store.WorkstationCommandGroupStore) {
+	h.groupStore = gs
+}
+
+// SetGroupPermStore wires the group permission store for applying groups to workstations (Phase 8).
+func (h *WorkstationsHandler) SetGroupPermStore(gps store.WorkstationGroupPermissionStore) {
+	h.groupPermStore = gps
 }
 
 // SetEventBus wires the domain event bus for allowlist cache invalidation.
@@ -116,6 +128,17 @@ func (h *WorkstationsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /v1/workstations/{id}/permissions/{permId}/toggle", h.auth(h.handlePermToggle))
 	// Phase 7: activity audit log
 	mux.HandleFunc("GET /v1/workstations/{id}/activity", h.auth(h.handleActivityList))
+	// Phase 8: command group CRUD
+	mux.HandleFunc("GET /v1/workstations/command-groups", h.auth(h.handleCGList))
+	mux.HandleFunc("POST /v1/workstations/command-groups", h.auth(h.handleCGCreate))
+	mux.HandleFunc("GET /v1/workstations/command-groups/{id}", h.auth(h.handleCGGet))
+	mux.HandleFunc("PUT /v1/workstations/command-groups/{id}", h.auth(h.handleCGUpdate))
+	mux.HandleFunc("DELETE /v1/workstations/command-groups/{id}", h.auth(h.handleCGDelete))
+	// Phase 8: group-to-workstation links
+	mux.HandleFunc("GET /v1/workstations/{id}/command-groups", h.auth(h.handleCGListForWorkstation))
+	mux.HandleFunc("POST /v1/workstations/{id}/command-groups/{groupId}/apply", h.auth(h.handleCGApply))
+	mux.HandleFunc("DELETE /v1/workstations/{id}/command-groups/{groupId}", h.auth(h.handleCGRemove))
+	mux.HandleFunc("PUT /v1/workstations/{id}/command-groups/{groupId}/toggle", h.auth(h.handleCGToggle))
 }
 
 func (h *WorkstationsHandler) auth(next http.HandlerFunc) http.HandlerFunc {
@@ -680,4 +703,339 @@ func (h *WorkstationsHandler) handleActivityList(w http.ResponseWriter, r *http.
 		resp["nextCursor"] = nextCursor.String()
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// --- Phase 8: command group CRUD ---
+
+func (h *WorkstationsHandler) requireGroupStore(w http.ResponseWriter, locale string) bool {
+	if h.groupStore == nil {
+		writeError(w, http.StatusNotImplemented, protocol.ErrNotImplemented,
+			i18n.T(locale, i18n.MsgNotImplemented, "workstations command groups"))
+		return false
+	}
+	return true
+}
+
+func (h *WorkstationsHandler) handleCGList(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	locale := store.LocaleFromContext(ctx)
+	if !requireTenantAdmin(w, r, h.tenantStore) || !h.requireGroupStore(w, locale) {
+		return
+	}
+	groups, err := h.groupStore.List(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToList, "command groups"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"groups": groups})
+}
+
+func (h *WorkstationsHandler) handleCGGet(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	locale := store.LocaleFromContext(ctx)
+	if !requireTenantAdmin(w, r, h.tenantStore) || !h.requireGroupStore(w, locale) {
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "command group"))
+		return
+	}
+	group, err := h.groupStore.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgNotFound, "command group"))
+			return
+		}
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgInternalError, err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"group": group})
+}
+
+func (h *WorkstationsHandler) handleCGCreate(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	locale := store.LocaleFromContext(ctx)
+	if !requireTenantAdmin(w, r, h.tenantStore) || !h.requireGroupStore(w, locale) {
+		return
+	}
+	var body struct {
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		Patterns    []string `json:"patterns"`
+	}
+	if !bindJSON(w, r, locale, &body) {
+		return
+	}
+	if body.Name == "" {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgRequired, "name"))
+		return
+	}
+	userID := store.UserIDFromContext(ctx)
+	group := &store.WorkstationCommandGroup{
+		Name:        body.Name,
+		Description: body.Description,
+		Patterns:    body.Patterns,
+		CreatedBy:   userID,
+	}
+	if err := h.groupStore.Create(ctx, group); err != nil {
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToCreate, "command group", err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"group": group})
+}
+
+func (h *WorkstationsHandler) handleCGUpdate(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	locale := store.LocaleFromContext(ctx)
+	if !requireTenantAdmin(w, r, h.tenantStore) || !h.requireGroupStore(w, locale) {
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "command group"))
+		return
+	}
+	var updates map[string]any
+	if !bindJSON(w, r, locale, &updates) {
+		return
+	}
+	if len(updates) == 0 {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgNoUpdatesProvided))
+		return
+	}
+	if err := h.groupStore.Update(ctx, id, updates); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgNotFound, "command group"))
+			return
+		}
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToUpdate, "command group", err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+}
+
+func (h *WorkstationsHandler) handleCGDelete(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	locale := store.LocaleFromContext(ctx)
+	if !requireTenantAdmin(w, r, h.tenantStore) || !h.requireGroupStore(w, locale) {
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "command group"))
+		return
+	}
+	if err := h.groupStore.Delete(ctx, id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgNotFound, "command group"))
+			return
+		}
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToDelete, "command group", err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+}
+
+func (h *WorkstationsHandler) requireGroupPermStore(w http.ResponseWriter, locale string) bool {
+	if h.groupPermStore == nil {
+		writeError(w, http.StatusNotImplemented, protocol.ErrNotImplemented,
+			i18n.T(locale, i18n.MsgNotImplemented, "workstation group permissions"))
+		return false
+	}
+	return true
+}
+
+func (h *WorkstationsHandler) handleCGListForWorkstation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	locale := store.LocaleFromContext(ctx)
+	if !requireTenantAdmin(w, r, h.tenantStore) || !h.requireGroupPermStore(w, locale) {
+		return
+	}
+	wsID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation"))
+		return
+	}
+	if _, err := h.wsStore.GetByID(ctx, wsID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgWorkstationNotFound, wsID.String()))
+			return
+		}
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgInternalError, err.Error()))
+		return
+	}
+	links, err := h.groupPermStore.ListForWorkstation(ctx, wsID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToList, "group permissions"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"links": links})
+}
+
+func (h *WorkstationsHandler) handleCGApply(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	locale := store.LocaleFromContext(ctx)
+	if !requireTenantAdmin(w, r, h.tenantStore) || !h.requireGroupPermStore(w, locale) || !h.requireGroupStore(w, locale) {
+		return
+	}
+	wsID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation"))
+		return
+	}
+	groupID, err := uuid.Parse(r.PathValue("groupId"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "command group"))
+		return
+	}
+	if _, err := h.wsStore.GetByID(ctx, wsID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgWorkstationNotFound, wsID.String()))
+			return
+		}
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgInternalError, err.Error()))
+		return
+	}
+	group, err := h.groupStore.GetByID(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, protocol.ErrNotFound,
+				i18n.T(locale, i18n.MsgNotFound, "command group"))
+			return
+		}
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgInternalError, err.Error()))
+		return
+	}
+	link := &store.WorkstationGroupPermission{
+		WorkstationID: wsID,
+		GroupID:       groupID,
+		Enabled:       true,
+	}
+	if err := h.groupPermStore.Add(ctx, link); err != nil {
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToCreate, "group permission", err.Error()))
+		return
+	}
+	h.emitPermChanged(wsID)
+	writeJSON(w, http.StatusOK, map[string]any{"linked": true, "group": group})
+}
+
+func (h *WorkstationsHandler) handleCGRemove(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	locale := store.LocaleFromContext(ctx)
+	if !requireTenantAdmin(w, r, h.tenantStore) || !h.requireGroupPermStore(w, locale) {
+		return
+	}
+	wsID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation"))
+		return
+	}
+	groupID, err := uuid.Parse(r.PathValue("groupId"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "command group"))
+		return
+	}
+	// Find the link by workstation_id + group_id, then remove by link ID.
+	links, err := h.groupPermStore.ListForWorkstation(ctx, wsID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToList, "group permissions"))
+		return
+	}
+	var linkID uuid.UUID
+	for _, l := range links {
+		if l.GroupID == groupID {
+			linkID = l.ID
+			break
+		}
+	}
+	if linkID == uuid.Nil {
+		writeError(w, http.StatusNotFound, protocol.ErrNotFound,
+			i18n.T(locale, i18n.MsgNotFound, "group permission"))
+		return
+	}
+	if err := h.groupPermStore.Remove(ctx, linkID); err != nil {
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToDelete, "group permission", err.Error()))
+		return
+	}
+	h.emitPermChanged(wsID)
+	writeJSON(w, http.StatusOK, map[string]any{"id": linkID})
+}
+
+func (h *WorkstationsHandler) handleCGToggle(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	locale := store.LocaleFromContext(ctx)
+	if !requireTenantAdmin(w, r, h.tenantStore) || !h.requireGroupPermStore(w, locale) {
+		return
+	}
+	wsID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "workstation"))
+		return
+	}
+	groupID, err := uuid.Parse(r.PathValue("groupId"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
+			i18n.T(locale, i18n.MsgInvalidID, "command group"))
+		return
+	}
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	if !bindJSON(w, r, locale, &body) {
+		return
+	}
+	links, err := h.groupPermStore.ListForWorkstation(ctx, wsID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToList, "group permissions"))
+		return
+	}
+	var linkID uuid.UUID
+	for _, l := range links {
+		if l.GroupID == groupID {
+			linkID = l.ID
+			break
+		}
+	}
+	if linkID == uuid.Nil {
+		writeError(w, http.StatusNotFound, protocol.ErrNotFound,
+			i18n.T(locale, i18n.MsgNotFound, "group permission"))
+		return
+	}
+	if err := h.groupPermStore.SetEnabled(ctx, linkID, body.Enabled); err != nil {
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToUpdate, "group permission", err.Error()))
+		return
+	}
+	h.emitPermChanged(wsID)
+	writeJSON(w, http.StatusOK, map[string]any{"id": linkID, "enabled": body.Enabled})
 }

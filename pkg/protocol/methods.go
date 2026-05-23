@@ -220,6 +220,17 @@ const (
 
 	// Workstation agent links
 	MethodWorkstationsListLinkedAgents = "workstations.listLinkedAgents"
+
+	// Workstation command groups (Phase 8)
+	MethodWorkstationsCommandGroupsList              = "workstations.commandGroups.list"
+	MethodWorkstationsCommandGroupsCreate            = "workstations.commandGroups.create"
+	MethodWorkstationsCommandGroupsGet               = "workstations.commandGroups.get"
+	MethodWorkstationsCommandGroupsUpdate            = "workstations.commandGroups.update"
+	MethodWorkstationsCommandGroupsDelete            = "workstations.commandGroups.delete"
+	MethodWorkstationsCommandGroupsApply             = "workstations.commandGroups.apply"
+	MethodWorkstationsCommandGroupsRemove            = "workstations.commandGroups.remove"
+	MethodWorkstationsCommandGroupsToggle            = "workstations.commandGroups.toggle"
+	MethodWorkstationsCommandGroupsListForWorkstation = "workstations.commandGroups.listForWorkstation"
 )
 
 // Agent hooks (Phase 3)
