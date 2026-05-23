@@ -6,21 +6,24 @@ import { Pencil, Trash2, Terminal } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { useCommandGroups, type CommandGroup } from "./hooks/use-command-groups";
+import { type CommandGroup } from "./hooks/use-command-groups";
 
 interface CommandGroupsTabProps {
-  dialogOpen: boolean;
+  groups: CommandGroup[];
+  loading: boolean;
+  deleteGroup: (id: string) => Promise<void>;
   onDialogOpenChange: (open: boolean) => void;
-  editTarget: CommandGroup | null;
   onEditTargetChange: (group: CommandGroup | null) => void;
 }
 
 export function CommandGroupsTab({
+  groups,
+  loading,
+  deleteGroup,
   onDialogOpenChange,
   onEditTargetChange,
 }: CommandGroupsTabProps) {
   const { t } = useTranslation("workstations");
-  const { groups, loading, deleteGroup } = useCommandGroups();
 
   const [deleteTarget, setDeleteTarget] = useState<CommandGroup | null>(null);
 

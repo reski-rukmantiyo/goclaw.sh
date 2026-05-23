@@ -23,7 +23,7 @@ import { useCommandGroups, type CommandGroup } from "./hooks/use-command-groups"
 export function WorkstationsPage() {
   const { t } = useTranslation("workstations");
   const { workstations, loading, refresh, getWorkstation, createWorkstation, updateWorkstation, deleteWorkstation, toggleWorkstation } = useWorkstations();
-  const { createGroup, updateGroup } = useCommandGroups();
+  const { groups, loading: cgLoading, createGroup, updateGroup, deleteGroup } = useCommandGroups();
 
   const spinning = useMinLoading(loading);
   const isEmpty = workstations.length === 0;
@@ -236,9 +236,10 @@ export function WorkstationsPage() {
 
         <TabsContent value="commandGroups">
           <CommandGroupsTab
-            dialogOpen={cgDialogOpen}
+            groups={groups}
+            loading={cgLoading}
+            deleteGroup={deleteGroup}
             onDialogOpenChange={setCgDialogOpen}
-            editTarget={cgEditTarget}
             onEditTargetChange={setCgEditTarget}
           />
         </TabsContent>
