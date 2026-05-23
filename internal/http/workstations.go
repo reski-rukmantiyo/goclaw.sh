@@ -129,11 +129,13 @@ func (h *WorkstationsHandler) RegisterRoutes(mux *http.ServeMux) {
 	// Phase 7: activity audit log
 	mux.HandleFunc("GET /v1/workstations/{id}/activity", h.auth(h.handleActivityList))
 	// Phase 8: command group CRUD
-	mux.HandleFunc("GET /v1/workstations/command-groups", h.auth(h.handleCGList))
-	mux.HandleFunc("POST /v1/workstations/command-groups", h.auth(h.handleCGCreate))
-	mux.HandleFunc("GET /v1/workstations/command-groups/{id}", h.auth(h.handleCGGet))
-	mux.HandleFunc("PUT /v1/workstations/command-groups/{id}", h.auth(h.handleCGUpdate))
-	mux.HandleFunc("DELETE /v1/workstations/command-groups/{id}", h.auth(h.handleCGDelete))
+	// Using /v1/workstation-command-groups (not nested under /v1/workstations) to avoid
+	// route conflict with /v1/workstations/{id} wildcard.
+	mux.HandleFunc("GET /v1/workstation-command-groups", h.auth(h.handleCGList))
+	mux.HandleFunc("POST /v1/workstation-command-groups", h.auth(h.handleCGCreate))
+	mux.HandleFunc("GET /v1/workstation-command-groups/{id}", h.auth(h.handleCGGet))
+	mux.HandleFunc("PUT /v1/workstation-command-groups/{id}", h.auth(h.handleCGUpdate))
+	mux.HandleFunc("DELETE /v1/workstation-command-groups/{id}", h.auth(h.handleCGDelete))
 	// Phase 8: group-to-workstation links
 	mux.HandleFunc("GET /v1/workstations/{id}/command-groups", h.auth(h.handleCGListForWorkstation))
 	mux.HandleFunc("POST /v1/workstations/{id}/command-groups/{groupId}/apply", h.auth(h.handleCGApply))
