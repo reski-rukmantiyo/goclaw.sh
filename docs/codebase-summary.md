@@ -199,18 +199,20 @@ Remote execution environments (SSH / Docker) for the `exec` tool. Standard editi
 
 | Path | Purpose |
 |------|---------|
-| `internal/store/workstation_store.go` | `WorkstationStore`, `WorkstationPermissionStore`, `WorkstationActivityStore` interfaces |
+| `internal/store/workstation_store.go` | `WorkstationStore`, `WorkstationPermissionStore`, `WorkstationActivityStore`, `WorkstationCommandGroupStore` interfaces |
 | `internal/store/pg/workstations.go` | PostgreSQL implementation (AES-256-GCM encrypted metadata/env) |
+| `internal/store/pg/workstation_command_groups.go` | PostgreSQL command group implementation |
 | `internal/store/sqlitestore/workstations.go` | SQLite implementation (Lite edition — schema only, no UI/router) |
-| `internal/http/workstations.go` | CRUD + link + permission + activity handlers |
+| `internal/store/sqlitestore/workstation_command_groups.go` | SQLite command group implementation |
+| `internal/http/workstations.go` | CRUD + link + permission + activity + command group handlers |
 | `internal/http/workstations_test.go` | Handler tests |
-| `migrations/` | PG migrations 000073–000075 (workstations + permissions + activity) |
-| `internal/store/sqlitestore/schema.go` | SQLite v34–v37 (workstations, permissions, activity) |
+| `migrations/` | PG migrations 000073–000078 (workstations, permissions, activity, command groups) |
+| `internal/store/sqlitestore/schema.go` | SQLite v34–v40 (workstations, permissions, activity, command groups) |
 
 ### Security Model
 
 - **Default-deny exec**: No matching enabled permission pattern → `exec` rejected.
-- **Permission patterns**: Match `argv[0]` only. Stored per-workstation in `workstation_permissions`.
+- **Permission patterns**: Match `argv[0]` only. Stored per-workstation in `workstation_permissions` (legacy) or via reusable `workstation_command_groups` applied through `workstation_group_permissions`.
 - **Encrypted at rest**: `metadata` (SSH keys, Docker creds) and `default_env` encrypted via AES-256-GCM using `GOCLAW_ENCRYPTION_KEY`.
 - **Sanitized API responses**: `Workstation.SanitizedView()` strips `Metadata`/`DefaultEnv`; returns `MetadataSummary` (host/port/user/hasKey for SSH; image/containerName for Docker).
 - **Audit logging**: Every exec/deny logged to `workstation_activity` with `cmd_preview`, `exit_code`, `duration_ms`, `deny_reason`. Nightly prune (30 days).

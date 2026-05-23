@@ -574,6 +574,8 @@ flowchart TD
         WS["workstations"] --> WSL["agent_workstation_links"]
         WS --> WSP["workstation_permissions"]
         WS --> WSA["workstation_activity"]
+        WSCG["workstation_command_groups"] --> WSGP["workstation_group_permissions"]
+        WSGP --> WS
     end
 ```
 
@@ -607,7 +609,9 @@ flowchart TD
 | `listen_raw_messages` | Raw message capture + extraction pipeline | `agent_id`, `group_jid`, `sender_jid`, `text`, `processed_at`, `embedded_at`, `extraction_status`, `extraction_error`, `extraction_attempts`, `last_attempted_at`, `tenant_id` |
 | `workstations` | Remote execution environments (SSH / Docker) | `workstation_key`, `tenant_id`, `name`, `backend_type`, `metadata` (encrypted), `default_cwd`, `default_env` (encrypted), `active`, `created_by` |
 | `agent_workstation_links` | Agent ↔ workstation bindings | PK(agent_id, workstation_id), `tenant_id`, `is_default` |
-| `workstation_permissions` | Per-workstation exec allowlist | `workstation_id`, `tenant_id`, `pattern`, `enabled`, `created_by` — default-deny: no match → exec rejected |
+| `workstation_permissions` | Per-workstation exec allowlist (legacy) | `workstation_id`, `tenant_id`, `pattern`, `enabled`, `created_by` — default-deny: no match → exec rejected |
+| `workstation_command_groups` | Reusable command pattern collections | `name`, `description`, `patterns` (JSONB), `is_builtin`, `tenant_id` (NULL = global), `created_by` |
+| `workstation_group_permissions` | Group-to-workstation links | `workstation_id`, `group_id`, `tenant_id`, `enabled` — UNIQUE(workstation_id, group_id) |
 | `workstation_activity` | Exec/deny audit log | `workstation_id`, `tenant_id`, `agent_id`, `action`, `cmd_hash`, `cmd_preview`, `exit_code`, `duration_ms`, `deny_reason` — pruned nightly (30 days) |
 
 ### Migrations
@@ -631,6 +635,9 @@ flowchart TD
 | `000073_workstations` | `workstations` and `agent_workstation_links` tables |
 | `000074_workstation_permissions` | `workstation_permissions` table (default-deny exec allowlist) |
 | `000075_workstation_activity` | `workstation_activity` table (rolling audit log, 30-day prune) |
+| `000076_workstation_command_groups` | `workstation_command_groups` and `workstation_group_permissions` tables |
+| `000077_seed_command_groups` | Built-in command groups (Linux Monitoring, Container Tools, System Utilities, Network Tools, Default Commands) |
+| `000078_workstation_activity_agent_idx` | `idx_ws_activity_agent_time` index on `workstation_activity(agent_id, created_at DESC)` |
 
 ### Required PostgreSQL Extensions
 

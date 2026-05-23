@@ -4,7 +4,28 @@ Significant changes, features, and fixes in reverse chronological order.
 
 ---
 
-## v3.12.0 — 2026-05-22
+## v3.12.0A — 2026-05-23
+
+### Features
+
+- **Workstation Agent Linking** — Link agents to workstations with `is_default` flag. `POST /v1/workstations/{id}/agents` to link, `DELETE /v1/workstations/{id}/agents/{agentId}` to unlink, `GET /v1/workstations/{id}/agents` to list linked agents. Web UI adds Agents tab to workstation detail.
+- **Workstation Permission Management UI** — Full allowlist CRUD in web UI via Permissions tab. Add/remove/toggle permission patterns per workstation. Cache invalidation fires `EventWorkstationPermChanged` on every mutation so `workstation_exec` allowlist cache stays consistent.
+- **Workstation Command Groups** — Reusable collections of allowed command patterns. `workstation_command_groups` table stores group definitions (name, description, patterns JSONB, `is_builtin` flag). Built-in groups: Linux Monitoring, Container Tools, System Utilities, Network Tools, Default Commands. Apply groups to workstations via `workstation_group_permissions`. HTTP endpoints: `GET /v1/workstation-command-groups`, `POST /v1/workstation-command-groups`, `GET|PUT|DELETE /v1/workstation-command-groups/{id}`. WS methods: `workstations.commandGroups.*`. Web UI adds Command Groups tab.
+- **Global Workstation Activity View** — New top-level "Activity" tab on Workstations page shows exec/deny events across all workstations. Filter by workstation or agent via dropdown selectors. Adds `GET /v1/workstations/activity` endpoint with `workstation_id` and `agent_id` query params. WS `workstations.activity.list` now accepts optional `workstationId` and `agentId` filters; routes to `ListAll` when filters present.
+- **Workstation Activity Agent Filter** — New index `idx_ws_activity_agent_time` on `workstation_activity(agent_id, created_at DESC)` for efficient agent-scoped activity queries. PG migration `000078`, SQLite schema v40.
+- **Workstation Toggle** — `POST /v1/workstations/{id}/toggle` with `{"active": bool}` enables or disables a workstation. Inactive workstations are skipped during agent exec resolution.
+- **Shell Syntax Validation** — `workstation_exec` tool rejects shell metacharacters (`&`, `|`, `;`, `$`, `` ` ``, `<`, `>`, `*`, `?`, `[`, `]`) in `cmd` input. Enforces binary-only `argv[0]` with separate `args` array. Prevents agents from passing shell pipelines to SSH backends that use `execve`, not `sh -c`.
+- **Workstation Read-Only Policy** — `workstations.list`, `workstations.get`, `workstations.permList`, `workstations.listActivity`, `workstations.listLinkedAgents` classified as read methods in RBAC policy. Non-admin users can view but not mutate.
+- **Workstation SQLite Support** — Full SQLite schema for remote workstations (v34 → v40): `workstations`, `agent_workstation_links`, `workstation_permissions`, `workstation_activity`, `workstation_command_groups`, `workstation_group_permissions`. PG migrations 000073–000078. Desktop/lite edition gets schema compatibility; router remains standard-edition gated.
+- **Skill Grant Management Privileges** — `skill_agent_grants.can_manage` boolean. When true, the granted agent can update, patch, and delete the skill. Cross-tenant scope verification (`verifySkillGrantScope`) ensures both skill and agent belong to the requesting tenant (system skills exempt).
+- **Skill Management Metadata** — Skill list/detail responses now include `creator_agent` (resolved from frontmatter) and `manager_agents` (agents with `can_manage=true`). UI skill detail dialog supports version-param deeplinks and direct file-tab routing.
+
+### Refactors
+
+- **Per-Workstation Activity Tab Removed** — Activity tab removed from expanded workstation detail rows. Activity now lives exclusively on the global Activity tab.
+- **Topic Guard Removal** — `topic_guard.go` and all UI/i18n references removed. `ContextGuard` (keyword + optional LLM fallback) remains as the unified content filter. `topic_guard.large_model` warning renamed to `context_guard.large_model`.
+
+---
 
 ### Features
 

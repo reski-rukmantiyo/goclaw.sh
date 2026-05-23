@@ -632,18 +632,18 @@ Remote execution environments for the `exec` tool — SSH hosts or Docker contai
 
 | Component | Location | Role |
 |-----------|----------|------|
-| HTTP handlers | `internal/http/workstations.go` | CRUD, link, permission, activity endpoints |
-| Store interfaces | `internal/store/workstation_store.go` | `WorkstationStore`, `WorkstationPermissionStore`, `WorkstationActivityStore` |
+| HTTP handlers | `internal/http/workstations.go` | CRUD, link, permission, activity, command group endpoints |
+| Store interfaces | `internal/store/workstation_store.go` | `WorkstationStore`, `WorkstationPermissionStore`, `WorkstationActivityStore`, `WorkstationCommandGroupStore` |
 | PG store | `internal/store/pg/workstations.go` | Tenant-scoped SQL; AES-256-GCM encrypts `metadata` + `default_env` |
 | SQLite store | `internal/store/sqlitestore/workstations.go` | Lite edition schema (no UI/router registration) |
-| Migrations | `migrations/` (PG) | 000073–000075 |
+| Migrations | `migrations/` (PG) | 000073–000078 |
 
 ### Security Model
 
-- **Default-deny exec**: `workstation_permissions` stores enabled patterns matching `argv[0]`. No match → exec rejected.
+- **Default-deny exec**: `workstation_permissions` stores enabled patterns matching `argv[0]`. No match → exec rejected. Command groups (`workstation_command_groups`) provide reusable pattern collections that can be applied to multiple workstations via `workstation_group_permissions`.
 - **Encrypted at rest**: SSH keys, passwords, Docker credentials, and env overrides encrypted via `GOCLAW_ENCRYPTION_KEY`.
 - **Sanitized responses**: API returns `MetadataSummary` (host/port/user/hasKey for SSH; image/containerName for Docker) — raw credentials never leave the server.
-- **Audit log**: Every exec and deny event appended to `workstation_activity` with `cmd_preview`, `exit_code`, `duration_ms`, `deny_reason`. Nightly prune removes rows older than 30 days.
+- **Audit log**: Every exec and deny event appended to `workstation_activity` with `cmd_preview`, `exit_code`, `duration_ms`, `deny_reason`. Nightly prune removes rows older than 30 days. Global activity view available via `GET /v1/workstations/activity` with optional `workstation_id` and `agent_id` filters.
 
 ### Agent Linking
 
