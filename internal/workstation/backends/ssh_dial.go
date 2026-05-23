@@ -88,7 +88,8 @@ func buildHostKeyCallback(meta *store.SSHMetadata) (ssh.HostKeyCallback, error) 
 }
 
 // buildAuthMethods constructs SSH auth methods from metadata.
-// Prefers public-key auth when keyMaterial is non-empty; falls back to password.
+// Prefers public-key auth when keyMaterial is non-empty; falls back to password
+// and keyboard-interactive (many servers disable password but allow kbd-int).
 func buildAuthMethods(meta *store.SSHMetadata, keyMaterial []byte) ([]ssh.AuthMethod, error) {
 	var methods []ssh.AuthMethod
 	if len(keyMaterial) > 0 {
@@ -100,6 +101,13 @@ func buildAuthMethods(meta *store.SSHMetadata, keyMaterial []byte) ([]ssh.AuthMe
 	}
 	if meta.Password != "" {
 		methods = append(methods, ssh.Password(meta.Password))
+		methods = append(methods, ssh.KeyboardInteractive(func(user, instruction string, questions []string, echos []bool) ([]string, error) {
+			answers := make([]string, len(questions))
+			for i := range questions {
+				answers[i] = meta.Password
+			}
+			return answers, nil
+		}))
 	}
 	if len(methods) == 0 {
 		return nil, errors.New("no auth method available: provide privateKey or password")
