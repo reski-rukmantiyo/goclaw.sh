@@ -77,7 +77,7 @@ type ContactStore interface {
 	// Returns ("", nil) when the contact is not found or not merged.
 	ResolveTenantUserID(ctx context.Context, channelType, senderID string) (string, error)
 
-	// DeleteStaleGroupContacts removes group contacts for the given channelType
-	// whose sender_id is NOT in the activeJIDs set. Returns number of deleted rows.
-	DeleteStaleGroupContacts(ctx context.Context, channelType string, activeJIDs []string) (int, error)
+	// DeleteStaleGroupContacts removes group contacts for the given channelType and
+	// channelInstance whose sender_id is NOT in the activeJIDs set. Returns number of deleted rows.
+	DeleteStaleGroupContacts(ctx context.Context, channelType, channelInstance string, activeJIDs []string) (int, error)
 }

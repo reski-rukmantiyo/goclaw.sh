@@ -76,7 +76,7 @@ func (m *mockContactStore) UnmergeContacts(_ context.Context, _ []uuid.UUID) err
 func (m *mockContactStore) GetContactsByMergedID(_ context.Context, _ uuid.UUID) ([]ChannelContact, error) {
 	return nil, nil
 }
-func (m *mockContactStore) DeleteStaleGroupContacts(_ context.Context, _ string, _ []string) (int, error) {
+func (m *mockContactStore) DeleteStaleGroupContacts(_ context.Context, _, _ string, _ []string) (int, error) {
 	return 0, nil
 }
 

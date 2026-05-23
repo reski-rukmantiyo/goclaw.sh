@@ -321,7 +321,7 @@ func (s *PGContactStore) GetContactsByMergedID(ctx context.Context, mergedID uui
 	return contacts, rows.Err()
 }
 
-func (s *PGContactStore) DeleteStaleGroupContacts(ctx context.Context, channelType string, activeJIDs []string) (int, error) {
+func (s *PGContactStore) DeleteStaleGroupContacts(ctx context.Context, channelType, channelInstance string, activeJIDs []string) (int, error) {
 	tid := store.TenantIDFromContext(ctx)
 	if tid == uuid.Nil {
 		tid = store.MasterTenantID
@@ -329,8 +329,8 @@ func (s *PGContactStore) DeleteStaleGroupContacts(ctx context.Context, channelTy
 
 	if len(activeJIDs) == 0 {
 		res, err := s.db.ExecContext(ctx,
-			`DELETE FROM channel_contacts WHERE tenant_id = $1 AND channel_type = $2 AND contact_type = 'group'`,
-			tid, channelType)
+			`DELETE FROM channel_contacts WHERE tenant_id = $1 AND channel_type = $2 AND COALESCE(channel_instance, '') = COALESCE(NULLIF($3,''), '') AND contact_type = 'group'`,
+			tid, channelType, channelInstance)
 		if err != nil {
 			return 0, err
 		}
@@ -339,15 +339,15 @@ func (s *PGContactStore) DeleteStaleGroupContacts(ctx context.Context, channelTy
 	}
 
 	placeholders := make([]string, len(activeJIDs))
-	args := make([]any, 0, len(activeJIDs)+2)
-	args = append(args, tid, channelType)
+	args := make([]any, 0, len(activeJIDs)+3)
+	args = append(args, tid, channelType, channelInstance)
 	for i, jid := range activeJIDs {
-		placeholders[i] = fmt.Sprintf("$%d", i+3)
+		placeholders[i] = fmt.Sprintf("$%d", i+4)
 		args = append(args, jid)
 	}
 
 	q := fmt.Sprintf(
-		`DELETE FROM channel_contacts WHERE tenant_id = $1 AND channel_type = $2 AND contact_type = 'group' AND sender_id NOT IN (%s)`,
+		`DELETE FROM channel_contacts WHERE tenant_id = $1 AND channel_type = $2 AND COALESCE(channel_instance, '') = COALESCE(NULLIF($3,''), '') AND contact_type = 'group' AND sender_id NOT IN (%s)`,
 		strings.Join(placeholders, ","),
 	)
 	res, err := s.db.ExecContext(ctx, q, args...)

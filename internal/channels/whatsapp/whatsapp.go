@@ -563,7 +563,7 @@ func (c *Channel) RefreshGroups(ctx context.Context) ([]RefreshedGroup, error) {
 	}
 
 	if cc != nil {
-		deleted, err := cc.DeleteStaleGroupContacts(ctx, c.Type(), activeJIDs)
+		deleted, err := cc.DeleteStaleGroupContacts(ctx, c.Type(), c.Name(), activeJIDs)
 		if err != nil {
 			slog.Warn("whatsapp: failed to delete stale group contacts", "error", err)
 		} else if deleted > 0 {
