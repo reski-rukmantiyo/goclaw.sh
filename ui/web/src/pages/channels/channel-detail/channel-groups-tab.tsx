@@ -19,7 +19,7 @@ interface ChannelGroupsTabProps {
   instance: ChannelInstanceData;
   onUpdate: (updates: Record<string, unknown>) => Promise<void>;
   listManagerGroups: () => Promise<GroupManagerGroupInfo[]>;
-  listContacts: (search: string, channelType?: string) => Promise<ChannelContact[]>;
+  listContacts: (search: string, channelType?: string, peerKind?: string, contactType?: string) => Promise<ChannelContact[]>;
   agents: AgentData[];
 }
 
@@ -135,7 +135,7 @@ function WhatsAppGroupsContent({
 }: {
   instance: ChannelInstanceData;
   onUpdate: (updates: Record<string, unknown>) => Promise<void>;
-  listContacts: (search: string, channelType?: string) => Promise<ChannelContact[]>;
+  listContacts: (search: string, channelType?: string, peerKind?: string, contactType?: string) => Promise<ChannelContact[]>;
   agents: AgentData[];
 }) {
   const { t } = useTranslation("channels");

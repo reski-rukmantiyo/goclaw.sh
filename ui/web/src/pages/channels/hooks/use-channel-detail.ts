@@ -97,11 +97,13 @@ export function useChannelDetail(instanceId: string | undefined) {
   );
 
   const listContacts = useCallback(
-    async (search: string, channelType?: string): Promise<ChannelContact[]> => {
+    async (search: string, channelType?: string, peerKind?: string, contactType?: string): Promise<ChannelContact[]> => {
       const params: Record<string, string> = {};
       if (search) params.search = search;
       if (channelType) params.channel_type = channelType;
-      params.limit = "20";
+      if (peerKind) params.peer_kind = peerKind;
+      if (contactType) params.contact_type = contactType;
+      params.limit = "500";
       const res = await http.get<{ contacts: ChannelContact[] }>("/v1/contacts", params);
       return res.contacts ?? [];
     },

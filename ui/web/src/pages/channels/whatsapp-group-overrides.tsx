@@ -29,7 +29,7 @@ interface WhatsAppGroupConfigValues {
 interface Props {
   groups: Record<string, WhatsAppGroupConfigValues>;
   onChange: (groups: Record<string, WhatsAppGroupConfigValues>) => void;
-  listContacts: (search: string, channelType?: string) => Promise<ChannelContact[]>;
+  listContacts: (search: string, channelType?: string, peerKind?: string, contactType?: string) => Promise<ChannelContact[]>;
   agents: AgentData[];
   instanceId: string;
 }
@@ -81,11 +81,8 @@ export function WhatsAppGroupOverrides({
   // Load discovered WhatsApp groups from contacts API
   const loadKnownGroups = useCallback(async () => {
     try {
-      const contacts = await listContacts("", "whatsapp");
-      const groupContacts = contacts.filter(
-        (c) => c.peer_kind === "group" && c.contact_type === "group",
-      );
-      setKnownGroups(groupContacts);
+      const contacts = await listContacts("", "whatsapp", "group", "group");
+      setKnownGroups(contacts);
     } catch {
       /* handled by http hook */
     }
