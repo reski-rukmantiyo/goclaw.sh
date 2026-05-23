@@ -279,6 +279,18 @@ func (h *WorkstationsHandler) handleUpdate(w http.ResponseWriter, r *http.Reques
 				i18n.T(locale, i18n.MsgInvalidMetadataShape, string(current.BackendType), err.Error()))
 			return
 		}
+		// Merge metadata to preserve auth fields not explicitly changed.
+		if current.BackendType == store.BackendSSH {
+			if metaMap, ok := updates["metadata"].(map[string]any); ok {
+				merged, err := store.MergeSSHMetadata(current.Metadata, metaMap)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+						i18n.T(locale, i18n.MsgInternalError, err.Error()))
+					return
+				}
+				updates["metadata"] = merged
+			}
+		}
 	}
 	if err := h.wsStore.Update(ctx, id, updates); err != nil {
 		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,

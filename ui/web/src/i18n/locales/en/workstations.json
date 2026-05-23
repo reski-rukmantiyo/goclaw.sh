@@ -54,6 +54,12 @@
     "cancel": "Cancel",
     "create": "Create"
   },
+  "editDialog": {
+    "title": "Edit Workstation",
+    "description": "Update workstation connection settings.",
+    "save": "Save",
+    "authHint": "Leave auth fields empty to keep current credentials."
+  },
   "deleteDialog": {
     "title": "Delete Workstation",
     "description": "Are you sure you want to delete \"{{name}}\"? This cannot be undone.",

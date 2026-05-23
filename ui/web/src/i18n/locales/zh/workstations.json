@@ -54,6 +54,12 @@
     "cancel": "取消",
     "create": "创建"
   },
+  "editDialog": {
+    "title": "编辑工作站",
+    "description": "更新工作站连接设置。",
+    "save": "保存",
+    "authHint": "留空认证字段以保留当前凭据。"
+  },
   "deleteDialog": {
     "title": "删除工作站",
     "description": "确定要删除「{{name}}」吗？此操作无法撤销。",
