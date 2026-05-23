@@ -13,7 +13,6 @@ import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { formatDate } from "@/lib/format";
 import { useWorkstations, type Workstation } from "./hooks/use-workstations";
 import { WorkstationCreateDialog } from "./workstation-create-dialog";
-import { WorkstationActivityTab } from "./workstation-activity-tab";
 import { WorkstationAgentsTab } from "./workstation-agents-tab";
 import { WorkstationPermissionsTab } from "./workstation-permissions-tab";
 import { WorkstationGlobalActivityTab } from "./workstation-global-activity-tab";
@@ -173,15 +172,11 @@ export function WorkstationsPage() {
                         {isExpanded && (
                           <tr key={`${ws.id}-detail`} className="bg-muted/10">
                             <td colSpan={7} className="px-4 py-4">
-                              <Tabs defaultValue="activity">
+                              <Tabs defaultValue="agents">
                                 <TabsList className="mb-3">
-                                  <TabsTrigger value="activity">{t("activity.title")}</TabsTrigger>
                                   <TabsTrigger value="agents">{t("agents.title", "Linked Agents")}</TabsTrigger>
                                   <TabsTrigger value="permissions">{t("permissions.title", "Permissions")}</TabsTrigger>
                                 </TabsList>
-                                <TabsContent value="activity">
-                                  <WorkstationActivityTab workstationId={ws.id} />
-                                </TabsContent>
                                 <TabsContent value="agents">
                                   <WorkstationAgentsTab workstationId={ws.id} />
                                 </TabsContent>
