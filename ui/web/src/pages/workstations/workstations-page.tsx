@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { MonitorCog, Plus, RefreshCw, Trash2, Power, PowerOff, ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -104,9 +104,8 @@ export function WorkstationsPage() {
                   {workstations.map((ws) => {
                     const isExpanded = expandedId === ws.id;
                     return (
-                      <>
+                      <Fragment key={ws.id}>
                         <tr
-                          key={ws.id}
                           className="border-b last:border-0 hover:bg-muted/30 cursor-pointer"
                           onClick={() => toggleExpand(ws.id)}
                         >
@@ -191,7 +190,7 @@ export function WorkstationsPage() {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </Fragment>
                     );
                   })}
                 </tbody>

@@ -293,6 +293,17 @@ func isAdminMethod(method string) bool {
 		protocol.MethodWorkstationsPermAdd,
 		protocol.MethodWorkstationsPermRemove,
 		protocol.MethodWorkstationsPermToggle,
+
+		// Workstation command groups — global/tenant-wide definitions, admin-only.
+		protocol.MethodWorkstationsCommandGroupsList,
+		protocol.MethodWorkstationsCommandGroupsCreate,
+		protocol.MethodWorkstationsCommandGroupsGet,
+		protocol.MethodWorkstationsCommandGroupsUpdate,
+		protocol.MethodWorkstationsCommandGroupsDelete,
+		protocol.MethodWorkstationsCommandGroupsApply,
+		protocol.MethodWorkstationsCommandGroupsRemove,
+		protocol.MethodWorkstationsCommandGroupsToggle,
+		protocol.MethodWorkstationsCommandGroupsListForWorkstation,
 	}
 	return slices.Contains(adminMethods, method)
 }
