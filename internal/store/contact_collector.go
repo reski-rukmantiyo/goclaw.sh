@@ -61,6 +61,6 @@ func (c *ContactCollector) ResolveTenantUserID(ctx context.Context, channelType,
 }
 
 // DeleteStaleGroupContacts delegates to the underlying ContactStore.
-func (c *ContactCollector) DeleteStaleGroupContacts(ctx context.Context, channelType string, activeJIDs []string) (int, error) {
-	return c.store.DeleteStaleGroupContacts(ctx, channelType, activeJIDs)
+func (c *ContactCollector) DeleteStaleGroupContacts(ctx context.Context, channelType, channelInstance string, activeJIDs []string) (int, error) {
+	return c.store.DeleteStaleGroupContacts(ctx, channelType, channelInstance, activeJIDs)
 }

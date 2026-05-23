@@ -311,7 +311,7 @@ func (s *SQLiteContactStore) ResolveTenantUserID(ctx context.Context, channelTyp
 	return tenantUserID, err
 }
 
-func (s *SQLiteContactStore) DeleteStaleGroupContacts(ctx context.Context, channelType string, activeJIDs []string) (int, error) {
+func (s *SQLiteContactStore) DeleteStaleGroupContacts(ctx context.Context, channelType, channelInstance string, activeJIDs []string) (int, error) {
 	tid := store.TenantIDFromContext(ctx)
 	if tid == uuid.Nil {
 		tid = store.MasterTenantID
@@ -319,8 +319,8 @@ func (s *SQLiteContactStore) DeleteStaleGroupContacts(ctx context.Context, chann
 
 	if len(activeJIDs) == 0 {
 		res, err := s.db.ExecContext(ctx,
-			`DELETE FROM channel_contacts WHERE tenant_id = ? AND channel_type = ? AND contact_type = 'group'`,
-			tid, channelType)
+			`DELETE FROM channel_contacts WHERE tenant_id = ? AND channel_type = ? AND COALESCE(channel_instance, '') = COALESCE(NULLIF(?,''), '') AND contact_type = 'group'`,
+			tid, channelType, channelInstance)
 		if err != nil {
 			return 0, err
 		}
@@ -329,15 +329,15 @@ func (s *SQLiteContactStore) DeleteStaleGroupContacts(ctx context.Context, chann
 	}
 
 	placeholders := make([]string, len(activeJIDs))
-	args := make([]any, 0, len(activeJIDs)+2)
-	args = append(args, tid, channelType)
+	args := make([]any, 0, len(activeJIDs)+3)
+	args = append(args, tid, channelType, channelInstance)
 	for i, jid := range activeJIDs {
 		placeholders[i] = "?"
 		args = append(args, jid)
 	}
 
 	q := fmt.Sprintf(
-		`DELETE FROM channel_contacts WHERE tenant_id = ? AND channel_type = ? AND contact_type = 'group' AND sender_id NOT IN (%s)`,
+		`DELETE FROM channel_contacts WHERE tenant_id = ? AND channel_type = ? AND COALESCE(channel_instance, '') = COALESCE(NULLIF(?,''), '') AND contact_type = 'group' AND sender_id NOT IN (%s)`,
 		strings.Join(placeholders, ","),
 	)
 	res, err := s.db.ExecContext(ctx, q, args...)
