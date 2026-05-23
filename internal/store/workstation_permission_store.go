@@ -48,11 +48,23 @@ type WorkstationPermissionStore interface {
 	SeedDefaults(ctx context.Context, workstationID, tenantID uuid.UUID) error
 }
 
-// DefaultAllowedBinaries is the set of binary names seeded when a workstation is created.
-// These are safe, read-only or low-risk commands. Admin must add anything else.
+// DefaultAllowedBinaries is the set of binary names and shell builtins seeded
+// when a workstation is created. These are safe, read-only or low-risk commands.
+// Admin must add anything else.
 // NOTE: shells (bash, sh, zsh) are intentionally excluded — adding a shell binary
 // bypasses all protection by allowing arbitrary commands as arguments.
 var DefaultAllowedBinaries = []string{
+	// External binaries
 	"echo", "pwd", "ls", "cat", "git", "env",
 	"whoami", "hostname", "date", "uname", "claude",
+	// Bash builtins — safe subset (excludes eval, exec, trap, alias, kill)
+	"cd", "pushd", "popd", "dirs",
+	"printf", "read",
+	"export", "unset", "declare", "typeset", "local",
+	"test", "true", "false", "set", "shift", "exit", "wait",
+	"source", ".",
+	"type", "help", "history", "times", "builtin", "command",
+	"shopt", "ulimit", "umask",
+	"mapfile", "readarray",
+	"caller", "enable", "compgen", "complete", "compopt",
 }
