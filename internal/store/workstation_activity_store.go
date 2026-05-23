@@ -32,6 +32,10 @@ type WorkstationActivityStore interface {
 	// Pass cursor (last seen ID) to page. Returns next cursor (nil if no more rows).
 	List(ctx context.Context, workstationID uuid.UUID, limit int, cursor *uuid.UUID) ([]WorkstationActivity, *uuid.UUID, error)
 
+	// ListAll returns up to limit rows for the tenant, ordered by created_at DESC.
+	// Optional workstationID and agentID filters. Pass cursor to page.
+	ListAll(ctx context.Context, workstationID *uuid.UUID, agentID *string, limit int, cursor *uuid.UUID) ([]WorkstationActivity, *uuid.UUID, error)
+
 	// Prune deletes all rows created before the given time. Returns rows deleted.
 	Prune(ctx context.Context, before time.Time) (int64, error)
 

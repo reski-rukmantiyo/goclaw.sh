@@ -1871,6 +1871,7 @@ CREATE TABLE IF NOT EXISTS workstation_activity (
 CREATE INDEX IF NOT EXISTS idx_ws_activity_ws_time     ON workstation_activity(workstation_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ws_activity_tenant_time ON workstation_activity(tenant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ws_activity_retention   ON workstation_activity(created_at);
+CREATE INDEX IF NOT EXISTS idx_ws_activity_agent_time  ON workstation_activity(agent_id, created_at DESC);
 
 -- ============================================================
 -- Table: workstation_command_groups (migration 000076)

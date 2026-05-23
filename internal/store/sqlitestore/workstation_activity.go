@@ -115,6 +115,83 @@ func (s *SQLiteWorkstationActivityStore) List(ctx context.Context, workstationID
 	return result, nextCursor, nil
 }
 
+// ListAll returns up to limit rows for the tenant, newest first.
+// Optional workstationID and agentID filters.
+func (s *SQLiteWorkstationActivityStore) ListAll(ctx context.Context, workstationID *uuid.UUID, agentID *string, limit int, cursor *uuid.UUID) ([]store.WorkstationActivity, *uuid.UUID, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+
+	tenantID := store.TenantIDFromContext(ctx)
+	args := []any{tenantID.String()}
+
+	where := "WHERE tenant_id = ?"
+	if workstationID != nil {
+		where += " AND workstation_id = ?"
+		args = append(args, workstationID.String())
+	}
+	if agentID != nil && *agentID != "" {
+		where += " AND agent_id = ?"
+		args = append(args, *agentID)
+	}
+
+	var rows *sql.Rows
+	var err error
+	if cursor == nil {
+		query := `SELECT id, tenant_id, workstation_id, agent_id, action, cmd_hash, cmd_preview,
+			        exit_code, duration_ms, deny_reason, created_at
+			 FROM workstation_activity
+			 ` + where + `
+			 ORDER BY created_at DESC
+			 LIMIT ?`
+		args = append(args, limit+1)
+		rows, err = s.db.QueryContext(ctx, query, args...)
+	} else {
+		query := `SELECT id, tenant_id, workstation_id, agent_id, action, cmd_hash, cmd_preview,
+			        exit_code, duration_ms, deny_reason, created_at
+			 FROM workstation_activity
+			 ` + where + `
+			   AND created_at < (SELECT created_at FROM workstation_activity WHERE id = ?)
+			 ORDER BY created_at DESC
+			 LIMIT ?`
+		args = append(args, cursor.String(), limit+1)
+		rows, err = s.db.QueryContext(ctx, query, args...)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	var result []store.WorkstationActivity
+	for rows.Next() {
+		var a store.WorkstationActivity
+		var idStr, tenantStr, wsStr string
+		var createdAtStr string
+		if err := rows.Scan(
+			&idStr, &tenantStr, &wsStr, &a.AgentID, &a.Action,
+			&a.CmdHash, &a.CmdPreview, &a.ExitCode, &a.DurationMS, &a.DenyReason, &createdAtStr,
+		); err != nil {
+			return nil, nil, err
+		}
+		a.ID, _ = uuid.Parse(idStr)
+		a.TenantID, _ = uuid.Parse(tenantStr)
+		a.WorkstationID, _ = uuid.Parse(wsStr)
+		a.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAtStr)
+		result = append(result, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	var nextCursor *uuid.UUID
+	if len(result) > limit {
+		last := result[limit-1].ID
+		nextCursor = &last
+		result = result[:limit]
+	}
+	return result, nextCursor, nil
+}
+
 // Prune deletes rows older than before in batches.
 func (s *SQLiteWorkstationActivityStore) Prune(ctx context.Context, before time.Time) (int64, error) {
 	var total int64

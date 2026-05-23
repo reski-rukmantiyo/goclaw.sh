@@ -659,6 +659,7 @@ func (m *WorkstationsMethods) handleListActivity(ctx context.Context, client *ga
 	}
 	var params struct {
 		WorkstationID string `json:"workstationId"`
+		AgentID       string `json:"agentId"`
 		Limit         int    `json:"limit"`
 		Cursor        string `json:"cursor"`
 	}
@@ -668,24 +669,7 @@ func (m *WorkstationsMethods) handleListActivity(ctx context.Context, client *ga
 			return
 		}
 	}
-	wsID, err := uuid.Parse(params.WorkstationID)
-	if err != nil {
-		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
-			i18n.T(locale, i18n.MsgInvalidID, "workstation")))
-		return
-	}
-	// Ownership check: verify the workstation belongs to the caller's tenant.
-	// GetByID scopes by tenant_id — returns ErrNoRows if workstation is in a different tenant.
-	if _, err := m.wsStore.GetByID(ctx, wsID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
-				i18n.T(locale, i18n.MsgWorkstationNotFound, params.WorkstationID)))
-			return
-		}
-		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
-			i18n.T(locale, i18n.MsgInternalError, err.Error())))
-		return
-	}
+
 	limit := params.Limit
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -696,7 +680,47 @@ func (m *WorkstationsMethods) handleListActivity(ctx context.Context, client *ga
 			cursor = &cID
 		}
 	}
-	rows, nextCursor, err := m.activityStore.List(ctx, wsID, limit, cursor)
+
+	var rows []store.WorkstationActivity
+	var nextCursor *uuid.UUID
+	var err error
+
+	if params.WorkstationID != "" {
+		wsID, parseErr := uuid.Parse(params.WorkstationID)
+		if parseErr != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest,
+				i18n.T(locale, i18n.MsgInvalidID, "workstation")))
+			return
+		}
+		// Ownership check: verify the workstation belongs to the caller's tenant.
+		if _, err := m.wsStore.GetByID(ctx, wsID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound,
+					i18n.T(locale, i18n.MsgWorkstationNotFound, params.WorkstationID)))
+				return
+			}
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
+				i18n.T(locale, i18n.MsgInternalError, err.Error())))
+			return
+		}
+		var agentID *string
+		if params.AgentID != "" {
+			agentID = &params.AgentID
+		}
+		if agentID != nil {
+			rows, nextCursor, err = m.activityStore.ListAll(ctx, &wsID, agentID, limit, cursor)
+		} else {
+			rows, nextCursor, err = m.activityStore.List(ctx, wsID, limit, cursor)
+		}
+	} else {
+		var wsID *uuid.UUID
+		var agentID *string
+		if params.AgentID != "" {
+			agentID = &params.AgentID
+		}
+		rows, nextCursor, err = m.activityStore.ListAll(ctx, wsID, agentID, limit, cursor)
+	}
+
 	if err != nil {
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal,
 			i18n.T(locale, i18n.MsgFailedToList, "activity")))

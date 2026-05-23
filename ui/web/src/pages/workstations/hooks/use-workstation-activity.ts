@@ -16,12 +16,17 @@ export interface WorkstationActivity {
   createdAt: string;
 }
 
+export interface ActivityFilters {
+  workstationId?: string;
+  agentId?: string;
+}
+
 interface UseWorkstationActivityResult {
   rows: WorkstationActivity[];
   loading: boolean;
   error: string | null;
   hasMore: boolean;
-  load: (workstationId: string) => Promise<void>;
+  load: (filters: ActivityFilters) => Promise<void>;
   loadMore: () => Promise<void>;
 }
 
@@ -32,22 +37,28 @@ export function useWorkstationActivity(): UseWorkstationActivityResult {
   const [error, setError] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [hasMore, setHasMore] = useState(false);
-  const [currentWsId, setCurrentWsId] = useState<string | null>(null);
+  const [currentFilters, setCurrentFilters] = useState<ActivityFilters>({});
 
   const load = useCallback(
-    async (workstationId: string) => {
+    async (filters: ActivityFilters) => {
       setLoading(true);
       setError(null);
-      setCurrentWsId(workstationId);
+      setCurrentFilters(filters);
       setCursor(undefined);
       try {
+        const params: Record<string, unknown> = {
+          limit: 50,
+        };
+        if (filters.workstationId) {
+          params.workstationId = filters.workstationId;
+        }
+        if (filters.agentId) {
+          params.agentId = filters.agentId;
+        }
         const res = await ws.call<{
           activity: WorkstationActivity[];
           nextCursor?: string;
-        }>(Methods.WORKSTATIONS_LIST_ACTIVITY, {
-          workstationId,
-          limit: 50,
-        });
+        }>(Methods.WORKSTATIONS_LIST_ACTIVITY, params);
         setRows(res.activity ?? []);
         setCursor(res.nextCursor);
         setHasMore(!!res.nextCursor);
@@ -61,17 +72,23 @@ export function useWorkstationActivity(): UseWorkstationActivityResult {
   );
 
   const loadMore = useCallback(async () => {
-    if (!currentWsId || !cursor || loading) return;
+    if (!cursor || loading) return;
     setLoading(true);
     try {
+      const params: Record<string, unknown> = {
+        limit: 50,
+        cursor,
+      };
+      if (currentFilters.workstationId) {
+        params.workstationId = currentFilters.workstationId;
+      }
+      if (currentFilters.agentId) {
+        params.agentId = currentFilters.agentId;
+      }
       const res = await ws.call<{
         activity: WorkstationActivity[];
         nextCursor?: string;
-      }>(Methods.WORKSTATIONS_LIST_ACTIVITY, {
-        workstationId: currentWsId,
-        limit: 50,
-        cursor,
-      });
+      }>(Methods.WORKSTATIONS_LIST_ACTIVITY, params);
       setRows((prev) => [...prev, ...(res.activity ?? [])]);
       setCursor(res.nextCursor);
       setHasMore(!!res.nextCursor);
@@ -80,7 +97,7 @@ export function useWorkstationActivity(): UseWorkstationActivityResult {
     } finally {
       setLoading(false);
     }
-  }, [ws, currentWsId, cursor, loading]);
+  }, [ws, currentFilters, cursor, loading]);
 
   return { rows, loading, error, hasMore, load, loadMore };
 }

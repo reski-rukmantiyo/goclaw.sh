@@ -75,6 +75,7 @@
     "emptyDescription": "Agent 执行命令后将在此显示。",
     "columns": {
       "action": "操作",
+      "workstation": "工作站",
       "cmdPreview": "命令",
       "exitCode": "退出码",
       "duration": "耗时",
@@ -84,6 +85,12 @@
     "actions": {
       "exec": "执行",
       "deny": "拒绝"
+    },
+    "filters": {
+      "allWorkstations": "全部工作站",
+      "allAgents": "全部 Agent",
+      "workstation": "工作站",
+      "agent": "Agent"
     },
     "loadMore": "加载更多"
   },
@@ -109,7 +116,8 @@
   },
   "tabs": {
     "workstations": "工作站",
-    "commandGroups": "命令分组"
+    "commandGroups": "命令分组",
+    "activity": "活动"
   },
   "commandGroups": {
     "title": "命令分组",

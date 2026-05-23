@@ -75,6 +75,7 @@
     "emptyDescription": "Exec events will appear here once agents run commands.",
     "columns": {
       "action": "Action",
+      "workstation": "Workstation",
       "cmdPreview": "Command",
       "exitCode": "Exit Code",
       "duration": "Duration",
@@ -84,6 +85,12 @@
     "actions": {
       "exec": "Exec",
       "deny": "Denied"
+    },
+    "filters": {
+      "allWorkstations": "All Workstations",
+      "allAgents": "All Agents",
+      "workstation": "Workstation",
+      "agent": "Agent"
     },
     "loadMore": "Load more"
   },
@@ -109,7 +116,8 @@
   },
   "tabs": {
     "workstations": "Workstations",
-    "commandGroups": "Command Groups"
+    "commandGroups": "Command Groups",
+    "activity": "Activity"
   },
   "commandGroups": {
     "title": "Command Groups",

@@ -16,6 +16,7 @@ import { WorkstationCreateDialog } from "./workstation-create-dialog";
 import { WorkstationActivityTab } from "./workstation-activity-tab";
 import { WorkstationAgentsTab } from "./workstation-agents-tab";
 import { WorkstationPermissionsTab } from "./workstation-permissions-tab";
+import { WorkstationGlobalActivityTab } from "./workstation-global-activity-tab";
 import { CommandGroupsTab } from "./command-groups-tab";
 import { CommandGroupDialog } from "./command-group-dialog";
 import { useCommandGroups, type CommandGroup } from "./hooks/use-command-groups";
@@ -55,6 +56,7 @@ export function WorkstationsPage() {
           <TabsList>
             <TabsTrigger value="workstations">{t("tabs.workstations")}</TabsTrigger>
             <TabsTrigger value="commandGroups">{t("tabs.commandGroups")}</TabsTrigger>
+            <TabsTrigger value="activity">{t("tabs.activity")}</TabsTrigger>
           </TabsList>
 
           {activeTab === "workstations" && (
@@ -242,6 +244,10 @@ export function WorkstationsPage() {
             onDialogOpenChange={setCgDialogOpen}
             onEditTargetChange={setCgEditTarget}
           />
+        </TabsContent>
+
+        <TabsContent value="activity">
+          <WorkstationGlobalActivityTab />
         </TabsContent>
       </Tabs>
 

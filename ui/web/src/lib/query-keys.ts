@@ -80,6 +80,10 @@ export const queryKeys = {
     all: ["memory"] as const,
     list: (params: Record<string, unknown>) => ["memory", params] as const,
   },
+  workstations: {
+    all: ["workstations"] as const,
+    activity: (params: Record<string, unknown>) => ["workstations", "activity", params] as const,
+  },
   v3Flags: {
     detail: (agentId: string) => ["v3-flags", agentId] as const,
   },

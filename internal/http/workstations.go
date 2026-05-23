@@ -127,6 +127,7 @@ func (h *WorkstationsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /v1/workstations/{id}/permissions/{permId}", h.auth(h.handlePermRemove))
 	mux.HandleFunc("PUT /v1/workstations/{id}/permissions/{permId}/toggle", h.auth(h.handlePermToggle))
 	// Phase 7: activity audit log
+	mux.HandleFunc("GET /v1/workstations/activity", h.auth(h.handleActivityListAll))
 	mux.HandleFunc("GET /v1/workstations/{id}/activity", h.auth(h.handleActivityList))
 	// Phase 8: command group CRUD
 	// Using /v1/workstation-command-groups (not nested under /v1/workstations) to avoid
@@ -694,6 +695,56 @@ func (h *WorkstationsHandler) handleActivityList(w http.ResponseWriter, r *http.
 	}
 
 	rows, nextCursor, err := h.activityStore.List(ctx, wsID, limit, cursor)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
+			i18n.T(locale, i18n.MsgFailedToList, "activity"))
+		return
+	}
+
+	resp := map[string]any{"activity": rows}
+	if nextCursor != nil {
+		resp["nextCursor"] = nextCursor.String()
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *WorkstationsHandler) handleActivityListAll(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	locale := store.LocaleFromContext(ctx)
+	if !requireTenantAdmin(w, r, h.tenantStore) {
+		return
+	}
+	if h.activityStore == nil {
+		writeError(w, http.StatusNotImplemented, protocol.ErrNotImplemented,
+			i18n.T(locale, i18n.MsgNotImplemented, "workstations activity"))
+		return
+	}
+
+	var wsID *uuid.UUID
+	if wsStr := r.URL.Query().Get("workstation_id"); wsStr != "" {
+		if id, err := uuid.Parse(wsStr); err == nil {
+			wsID = &id
+		}
+	}
+	var agentID *string
+	if agentStr := r.URL.Query().Get("agent_id"); agentStr != "" {
+		agentID = &agentStr
+	}
+
+	limit := 50
+	if lStr := r.URL.Query().Get("limit"); lStr != "" {
+		if l, err := strconv.Atoi(lStr); err == nil && l > 0 && l <= 200 {
+			limit = l
+		}
+	}
+	var cursor *uuid.UUID
+	if cStr := r.URL.Query().Get("cursor"); cStr != "" {
+		if cID, err := uuid.Parse(cStr); err == nil {
+			cursor = &cID
+		}
+	}
+
+	rows, nextCursor, err := h.activityStore.ListAll(ctx, wsID, agentID, limit, cursor)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, protocol.ErrInternal,
 			i18n.T(locale, i18n.MsgFailedToList, "activity"))

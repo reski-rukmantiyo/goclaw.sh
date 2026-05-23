@@ -16,7 +16,7 @@ var schemaSQL string
 
 // SchemaVersion is the current SQLite schema version.
 // Bump this when adding new migration steps below.
-const SchemaVersion = 39
+const SchemaVersion = 40
 
 // migrations maps version → SQL to apply when upgrading FROM that version.
 // schema.sql always represents the LATEST full schema (for fresh DBs).
@@ -765,6 +765,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_webhook_calls_idempotency
 		// Version 38 → 39: add Default Commands built-in group.
 		38: `INSERT OR IGNORE INTO workstation_command_groups (id, tenant_id, name, description, patterns, is_builtin, created_by) VALUES
 		  ('0193a5b0-7000-7000-8000-000000000104', NULL, 'Default Commands', 'Safe commands automatically allowed on all workstations', '["echo","pwd","ls","cat","git","env","whoami","hostname","date","uname","claude","cd","pushd","popd","dirs","printf","read","export","unset","declare","typeset","local","test","true","false","set","shift","exit","wait","source",".","type","help","history","times","builtin","command","shopt","ulimit","umask","mapfile","readarray","caller","enable","compgen","complete","compopt"]', 1, 'system');`,
+
+		// Version 39 → 40: add agent_id index on workstation_activity for filter support.
+		39: `CREATE INDEX IF NOT EXISTS idx_ws_activity_agent_time ON workstation_activity(agent_id, created_at DESC);`,
 }
 
 // addHooksTables is the SQLite incremental migration for schema v19 → v20.

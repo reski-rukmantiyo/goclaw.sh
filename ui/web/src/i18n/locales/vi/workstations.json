@@ -75,15 +75,22 @@
     "emptyDescription": "Các lệnh thực thi sẽ xuất hiện ở đây.",
     "columns": {
       "action": "Hành động",
+      "workstation": "Workstation",
       "cmdPreview": "Lệnh",
       "exitCode": "Mã thoát",
-      "duration": "Thời gian",
+      "duration": "Thờởan",
       "agent": "Agent",
-      "timestamp": "Thời điểm"
+      "timestamp": "Thờởiểm"
     },
     "actions": {
       "exec": "Thực thi",
       "deny": "Từ chối"
+    },
+    "filters": {
+      "allWorkstations": "Tất cả Workstation",
+      "allAgents": "Tất cả Agent",
+      "workstation": "Workstation",
+      "agent": "Agent"
     },
     "loadMore": "Tải thêm"
   },
@@ -109,7 +116,8 @@
   },
   "tabs": {
     "workstations": "Workstations",
-    "commandGroups": "Nhóm lệnh"
+    "commandGroups": "Nhóm lệnh",
+    "activity": "Hoạt động"
   },
   "commandGroups": {
     "title": "Nhóm lệnh",
