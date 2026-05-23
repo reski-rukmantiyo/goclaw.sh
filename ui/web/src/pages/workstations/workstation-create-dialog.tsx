@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -253,7 +254,8 @@ export function WorkstationCreateDialog({
             <Button type="button" variant="outline" onClick={() => { resetForm(); onOpenChange(false); }} disabled={submitting}>
               {t("createDialog.cancel")}
             </Button>
-            <Button type="submit" disabled={submitting || !name.trim() || !key.trim()}>
+            <Button type="submit" disabled={submitting || !name.trim() || !key.trim()} className="gap-1">
+              {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
               {t("createDialog.create")}
             </Button>
           </DialogFooter>
