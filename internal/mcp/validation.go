@@ -34,15 +34,22 @@ func SetExtraAllowedCommands(cmds []string) {
 // Shell metacharacters that indicate injection attempt.
 var shellMetaChars = regexp.MustCompile(`[;|&$` + "`" + `(){}[\]<>]`)
 
-// Dangerous arg flags that enable code execution.
-var dangerousArgPatterns = []string{
-	"--eval", "-e", "-c",      // Code execution flags
-	"--require", "-r",         // Module injection
-	"--import",                // ES module injection
-	"exec(", "eval(",          // Inline code
-	"__import__",              // Python import injection
-	"child_process",           // Node.js process spawning
-	"subprocess",              // Python subprocess
+// dangerousArgExact matches flags that must be exactly equal (e.g. "-r" should
+// not match "--directory" which merely contains the byte 'r' after a dash).
+var dangerousArgExact = []string{
+	"-e", "-c", "-r",
+}
+
+// dangerousArgSubstring matches substrings that are always dangerous regardless
+// of position within the argument.
+var dangerousArgSubstring = []string{
+	"--eval",
+	"--require",
+	"--import",
+	"exec(", "eval(",
+	"__import__",
+	"child_process",
+	"subprocess",
 }
 
 // Fail-closed env var allowlist — only these are permitted for env: resolution.
@@ -107,11 +114,21 @@ func ValidateCommand(cmd string) error {
 func ValidateArgs(args []string) error {
 	for i, arg := range args {
 		argLower := strings.ToLower(arg)
-		for _, pattern := range dangerousArgPatterns {
+
+		// Exact-match short flags ("-r" should not match "--directory")
+		for _, pattern := range dangerousArgExact {
+			if argLower == pattern {
+				return fmt.Errorf("arg[%d] is a dangerous flag %q", i, pattern)
+			}
+		}
+
+		// Substring-match long patterns
+		for _, pattern := range dangerousArgSubstring {
 			if strings.Contains(argLower, pattern) {
 				return fmt.Errorf("arg[%d] contains dangerous pattern %q", i, pattern)
 			}
 		}
+
 		// Check for shell metacharacters in args
 		if shellMetaChars.MatchString(arg) {
 			return fmt.Errorf("arg[%d] contains shell metacharacters", i)
