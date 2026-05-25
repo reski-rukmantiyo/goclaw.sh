@@ -125,3 +125,79 @@ func TestKimiCoding_TemperatureSentForOtherProviders(t *testing.T) {
 		t.Errorf("temperature = %v, want 0.7", got)
 	}
 }
+
+// TestKimiCoding_ReasoningContentAlwaysPresentOnAssistant reproduces upstream
+// "thinking is enabled but reasoning_content is missing in assistant tool call
+// message" — when an assistant message has tool_calls but no captured Thinking,
+// kimi_coding must still carry reasoning_content (empty string is fine).
+func TestKimiCoding_ReasoningContentAlwaysPresentOnAssistant(t *testing.T) {
+	p := NewOpenAIProvider("kimi-coding", "sk", "https://api.kimi.com/coding/v1", "kimi-k2-turbo-preview").
+		WithProviderType("kimi_coding")
+
+	body := p.buildRequestBody("kimi-k2-turbo-preview", ChatRequest{
+		Messages: []Message{
+			{Role: "user", Content: "list pods"},
+			{Role: "assistant", ToolCalls: []ToolCall{{ID: "call_1", Name: "exec", Arguments: map[string]any{"cmd": "kubectl get pods"}}}},
+			{Role: "tool", Content: "...", ToolCallID: "call_1"},
+		},
+	}, true)
+
+	msgs, ok := body["messages"].([]map[string]any)
+	if !ok {
+		t.Fatalf("messages not []map[string]any: %T", body["messages"])
+	}
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(msgs))
+	}
+	// Assistant tool-call message must carry reasoning_content key.
+	assistant := msgs[1]
+	rc, present := assistant["reasoning_content"]
+	if !present {
+		t.Fatalf("kimi_coding assistant tool-call message must include reasoning_content key; got %v", assistant)
+	}
+	if rc != "" {
+		t.Errorf("reasoning_content = %q, want empty string when Thinking unset", rc)
+	}
+}
+
+// TestKimiCoding_ReasoningContentPreservedWhenSet ensures the empty-string
+// fallback doesn't clobber real captured thinking content.
+// (Use a non-trailing assistant message — buildRequestBody strips trailing
+// assistant prefills as a safety net for proxy providers.)
+func TestKimiCoding_ReasoningContentPreservedWhenSet(t *testing.T) {
+	p := NewOpenAIProvider("kimi-coding", "sk", "https://api.kimi.com/coding/v1", "kimi-k2-turbo-preview").
+		WithProviderType("kimi_coding")
+
+	body := p.buildRequestBody("kimi-k2-turbo-preview", ChatRequest{
+		Messages: []Message{
+			{Role: "user", Content: "hi"},
+			{Role: "assistant", Content: "hello", Thinking: "the user said hi"},
+			{Role: "user", Content: "more"},
+		},
+	}, true)
+
+	msgs := body["messages"].([]map[string]any)
+	if got := msgs[1]["reasoning_content"]; got != "the user said hi" {
+		t.Errorf("reasoning_content = %q, want %q", got, "the user said hi")
+	}
+}
+
+// TestNonKimi_ReasoningContentNotAddedWhenEmpty is the negative control — for
+// other providers in the allowlist (e.g. deepseek), an empty Thinking must NOT
+// inject an empty reasoning_content key, preserving today's behavior.
+func TestNonKimi_ReasoningContentNotAddedWhenEmpty(t *testing.T) {
+	p := NewOpenAIProvider("deepseek", "sk", "https://api.deepseek.com/v1", "deepseek-chat")
+
+	body := p.buildRequestBody("deepseek-chat", ChatRequest{
+		Messages: []Message{
+			{Role: "user", Content: "hi"},
+			{Role: "assistant", ToolCalls: []ToolCall{{ID: "call_1", Name: "exec", Arguments: map[string]any{}}}},
+			{Role: "tool", Content: "...", ToolCallID: "call_1"},
+		},
+	}, true)
+
+	msgs := body["messages"].([]map[string]any)
+	if _, present := msgs[1]["reasoning_content"]; present {
+		t.Error("non-kimi providers must not inject empty reasoning_content; key should be absent")
+	}
+}
