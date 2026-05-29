@@ -158,6 +158,11 @@ func WireActivitySink(bus eventbus.DomainEventBus, activityStore store.Workstati
 	// Start nightly retention goroutine.
 	stopCh := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("workstation.activity.prune_panic", "error", r)
+			}
+		}()
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
 		for {

@@ -189,10 +189,11 @@ func (t *WorkstationExecTool) Execute(ctx context.Context, args map[string]any) 
 			if len(execArgs) > 0 {
 				cmdFull = cmd + " " + strings.Join(execArgs, " ")
 			}
+			cmdHash := fmt.Sprintf("%x", sha256.Sum256([]byte(cmd)))[:12]
 			t.eventBus.Publish(eventbus.DomainEvent{
 				ID:       uuid.New().String(),
 				Type:     eventbus.EventType(protocol.EventWorkstationExecDenied),
-				SourceID: ws.ID.String(),
+				SourceID: ws.ID.String() + ":" + cmdHash,
 				TenantID: ws.TenantID.String(),
 				AgentID:  agentID,
 				Payload: map[string]any{
@@ -414,7 +415,7 @@ func (t *WorkstationExecTool) streamAndCollect(
 	durationMs := time.Since(startTime).Milliseconds()
 
 	// Emit done event.
-	if t.eventBus != nil {
+		if t.eventBus != nil {
 		t.eventBus.Publish(eventbus.DomainEvent{
 			ID:       uuid.New().String(),
 			Type:     eventbus.EventType(protocol.EventWorkstationExecDone),

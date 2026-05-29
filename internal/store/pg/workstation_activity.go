@@ -66,7 +66,7 @@ func (s *PGWorkstationActivityStore) List(ctx context.Context, workstationID uui
 			        exit_code, duration_ms, deny_reason, created_at
 			 FROM workstation_activity
 			 WHERE workstation_id = $1
-			 ORDER BY created_at DESC
+			 ORDER BY created_at DESC, id DESC
 			 LIMIT $2`,
 			workstationID, limit+1,
 		)
@@ -77,8 +77,8 @@ func (s *PGWorkstationActivityStore) List(ctx context.Context, workstationID uui
 			        exit_code, duration_ms, deny_reason, created_at
 			 FROM workstation_activity
 			 WHERE workstation_id = $1
-			   AND created_at < (SELECT created_at FROM workstation_activity WHERE id = $2)
-			 ORDER BY created_at DESC
+			   AND (created_at, id) < (SELECT created_at, id FROM workstation_activity WHERE id = $2)
+			 ORDER BY created_at DESC, id DESC
 			 LIMIT $3`,
 			workstationID, *cursor, limit+1,
 		)
@@ -142,7 +142,7 @@ func (s *PGWorkstationActivityStore) ListAll(ctx context.Context, workstationID 
 			        exit_code, duration_ms, deny_reason, created_at
 			 FROM workstation_activity
 			 %s
-			 ORDER BY created_at DESC
+			 ORDER BY created_at DESC, id DESC
 			 LIMIT $%d`, where, paramIdx)
 		args = append(args, limit+1)
 		rows, err = s.db.QueryContext(ctx, query, args...)
@@ -151,8 +151,8 @@ func (s *PGWorkstationActivityStore) ListAll(ctx context.Context, workstationID 
 			        exit_code, duration_ms, deny_reason, created_at
 			 FROM workstation_activity
 			 %s
-			   AND created_at < (SELECT created_at FROM workstation_activity WHERE id = $%d)
-			 ORDER BY created_at DESC
+			   AND (created_at, id) < (SELECT created_at, id FROM workstation_activity WHERE id = $%d)
+			 ORDER BY created_at DESC, id DESC
 			 LIMIT $%d`, where, paramIdx, paramIdx+1)
 		args = append(args, *cursor, limit+1)
 		rows, err = s.db.QueryContext(ctx, query, args...)
@@ -217,19 +217,36 @@ func (s *PGWorkstationActivityStore) Prune(ctx context.Context, before time.Time
 
 // flusher reads from buf and batch-inserts into the DB every 500ms or 100 rows.
 func (s *PGWorkstationActivityStore) flusher() {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("workstation.activity.flusher_panic", "error", r)
+			s.wg.Add(1)
+			go s.flusher()
+		}
+	}()
 	defer s.wg.Done()
 	ticker := time.NewTicker(activityFlushPeriod)
 	defer ticker.Stop()
 
+	const maxFlushRetries = 10
 	var batch []*store.WorkstationActivity
+	var retryCount int
 	flush := func() {
 		if len(batch) == 0 {
 			return
 		}
 		if err := s.batchInsert(context.Background(), batch); err != nil {
-			slog.Warn("workstation.activity.flush_error", "error", err, "count", len(batch))
+			retryCount++
+			slog.Warn("workstation.activity.flush_error", "error", err, "count", len(batch), "retries", retryCount)
+			if retryCount >= maxFlushRetries {
+				slog.Error("workstation.activity.flush_discarded", "count", len(batch))
+				batch = batch[:0]
+				retryCount = 0
+			}
+			return
 		}
 		batch = batch[:0]
+		retryCount = 0
 	}
 
 	for {
