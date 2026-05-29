@@ -121,6 +121,8 @@ const (
 	// EventWorkstationExecDone is emitted when a remote exec command finishes.
 	// Payload: WorkstationExecDonePayload.
 	EventWorkstationExecDone = "workstation.exec.done"
+	// EventWorkstationExecDenied is emitted when a workstation exec command is denied by permission check.
+	EventWorkstationExecDenied = "workstation.exec.denied"
 )
 
 // Agent event subtypes (in payload.type)

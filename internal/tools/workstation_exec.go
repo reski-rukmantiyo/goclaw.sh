@@ -184,6 +184,25 @@ func (t *WorkstationExecTool) Execute(ctx context.Context, args map[string]any) 
 			"agent_id", agentID,
 			"cmd_hash", fmt.Sprintf("%x", sha256.Sum256([]byte(cmd)))[:12],
 		)
+		if t.eventBus != nil {
+			cmdFull := cmd
+			if len(execArgs) > 0 {
+				cmdFull = cmd + " " + strings.Join(execArgs, " ")
+			}
+			t.eventBus.Publish(eventbus.DomainEvent{
+				ID:       uuid.New().String(),
+				Type:     eventbus.EventType(protocol.EventWorkstationExecDenied),
+				SourceID: ws.ID.String(),
+				TenantID: ws.TenantID.String(),
+				AgentID:  agentID,
+				Payload: map[string]any{
+					"workstation_id": ws.ID.String(),
+					"agent_id":       agentID,
+					"deny_reason":    permErr.Error(),
+					"command":        cmdFull,
+				},
+			})
+		}
 		return ErrorResult(permErr.Error())
 	}
 

@@ -468,6 +468,7 @@ func runGateway() {
 		if domainBus != nil {
 			wsMethods.SetEventBus(domainBus)
 		}
+		wsMethods.SetAuditBus(msgBus)
 		wsMethods.Register(server.Router())
 		slog.Info("registered workstations RPC methods")
 	}

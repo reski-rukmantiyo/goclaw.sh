@@ -106,6 +106,55 @@ func WireActivitySink(bus eventbus.DomainEventBus, activityStore store.Workstati
 		return nil
 	})
 
+	// Subscribe to exec denied events (emitted when permission check blocks a command).
+	bus.Subscribe(eventbus.EventType(protocol.EventWorkstationExecDenied), func(ctx context.Context, ev eventbus.DomainEvent) error {
+		payload, ok := ev.Payload.(map[string]any)
+		if !ok {
+			return nil
+		}
+
+		wsIDStr, _ := payload["workstation_id"].(string)
+		wsID, err := uuid.Parse(wsIDStr)
+		if err != nil {
+			return nil
+		}
+		tenantID, _ := uuid.Parse(ev.TenantID)
+		agentID := ev.AgentID
+
+		cmdRaw, _ := payload["command"].(string)
+		if cmdRaw == "" {
+			cmdRaw = "(unknown)"
+		}
+		cmdPreview := redactSensitive(cmdRaw)
+		cmdHash := fmt.Sprintf("%x", sha256.Sum256([]byte(cmdRaw)))[:16]
+		denyReason, _ := payload["deny_reason"].(string)
+
+		row := &store.WorkstationActivity{
+			ID:            uuid.New(),
+			TenantID:      tenantID,
+			WorkstationID: wsID,
+			AgentID:       agentID,
+			Action:        "deny",
+			CmdHash:       cmdHash,
+			CmdPreview:    cmdPreview,
+			DenyReason:    denyReason,
+			CreatedAt:     time.Now().UTC(),
+		}
+
+		if err := activityStore.Insert(ctx, row); err != nil {
+			slog.Warn("workstation.activity.insert_error", "error", err)
+		}
+
+		slog.Info("workstation.exec.denied_logged",
+			"workstation_id", wsIDStr,
+			"tenant_id", ev.TenantID,
+			"agent_id", agentID,
+			"cmd_hash", cmdHash,
+			"deny_reason", denyReason,
+		)
+		return nil
+	})
+
 	// Start nightly retention goroutine.
 	stopCh := make(chan struct{})
 	go func() {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/eventbus"
 	"github.com/nextlevelbuilder/goclaw/internal/gateway"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
@@ -28,6 +29,7 @@ type WorkstationsMethods struct {
 	groupStore     store.WorkstationCommandGroupStore    // may be nil if Phase 8 not wired
 	groupPermStore store.WorkstationGroupPermissionStore // may be nil if Phase 8 not wired
 	eventBus       eventbus.DomainEventBus               // may be nil; used to invalidate allowlist cache
+	auditBus       bus.EventPublisher                    // for activity_logs audit trail; nil-safe
 }
 
 // NewWorkstationsMethods creates WorkstationsMethods with the given stores.
@@ -58,6 +60,11 @@ func (m *WorkstationsMethods) SetGroupPermStore(gps store.WorkstationGroupPermis
 // SetEventBus wires the domain event bus for allowlist cache invalidation.
 func (m *WorkstationsMethods) SetEventBus(eb eventbus.DomainEventBus) {
 	m.eventBus = eb
+}
+
+// SetAuditBus wires the legacy message bus for activity_logs audit trail.
+func (m *WorkstationsMethods) SetAuditBus(pub bus.EventPublisher) {
+	m.auditBus = pub
 }
 
 func (m *WorkstationsMethods) emitPermChanged(workstationID uuid.UUID) {
@@ -253,6 +260,7 @@ func (m *WorkstationsMethods) handleCreate(ctx context.Context, client *gateway.
 			i18n.T(locale, i18n.MsgFailedToCreate, "workstation", err.Error())))
 		return
 	}
+		emitAudit(m.auditBus, client, "create", "workstation", ws.ID.String())
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"workstation": ws.SanitizedView()}))
 }
 
@@ -323,6 +331,7 @@ func (m *WorkstationsMethods) handleUpdate(ctx context.Context, client *gateway.
 		return
 	}
 	m.emitUpdated(id)
+		emitAudit(m.auditBus, client, "update", "workstation", id.String())
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id}))
 }
 
@@ -349,6 +358,7 @@ func (m *WorkstationsMethods) handleDelete(ctx context.Context, client *gateway.
 		return
 	}
 	m.emitDeleted(id)
+		emitAudit(m.auditBus, client, "delete", "workstation", id.String())
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id}))
 }
 
@@ -377,6 +387,7 @@ func (m *WorkstationsMethods) handleToggle(ctx context.Context, client *gateway.
 	}
 	m.emitUpdated(id)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id, "active": params.Active}))
+		emitAudit(m.auditBus, client, "toggle", "workstation", id.String())
 }
 
 // handleTestConnection is a stub — real implementation in Phase 2/3.
@@ -422,6 +433,7 @@ func (m *WorkstationsMethods) handleLinkAgent(ctx context.Context, client *gatew
 		return
 	}
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"linked": true}))
+		emitAudit(m.auditBus, client, "link", "workstation_agent_link", wsID.String()+":"+agentID.String())
 }
 
 func (m *WorkstationsMethods) handleUnlinkAgent(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
@@ -454,6 +466,7 @@ func (m *WorkstationsMethods) handleUnlinkAgent(ctx context.Context, client *gat
 		return
 	}
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"unlinked": true}))
+		emitAudit(m.auditBus, client, "unlink", "workstation_agent_link", wsID.String()+":"+agentID.String())
 }
 
 // --- Phase 6: workstation permission allowlist CRUD ---
@@ -560,6 +573,7 @@ func (m *WorkstationsMethods) handlePermAdd(ctx context.Context, client *gateway
 	}
 	m.emitPermChanged(wsID)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"permission": perm}))
+		emitAudit(m.auditBus, client, "perm_add", "workstation_permission", perm.ID.String())
 }
 
 func (m *WorkstationsMethods) handlePermRemove(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
@@ -605,6 +619,7 @@ func (m *WorkstationsMethods) handlePermRemove(ctx context.Context, client *gate
 	}
 	m.emitPermChanged(perm.WorkstationID)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id}))
+		emitAudit(m.auditBus, client, "perm_remove", "workstation_permission", id.String())
 }
 
 func (m *WorkstationsMethods) handlePermToggle(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
@@ -646,6 +661,7 @@ func (m *WorkstationsMethods) handlePermToggle(ctx context.Context, client *gate
 	}
 	m.emitPermChanged(perm.WorkstationID)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id, "enabled": params.Enabled}))
+		emitAudit(m.auditBus, client, "perm_toggle", "workstation_permission", id.String())
 }
 
 // --- Phase 7: activity audit log ---
@@ -870,6 +886,7 @@ func (m *WorkstationsMethods) handleCGCreate(ctx context.Context, client *gatewa
 		return
 	}
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"group": group}))
+		emitAudit(m.auditBus, client, "cg_create", "workstation_command_group", group.ID.String())
 }
 
 func (m *WorkstationsMethods) handleCGUpdate(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
@@ -909,6 +926,7 @@ func (m *WorkstationsMethods) handleCGUpdate(ctx context.Context, client *gatewa
 		return
 	}
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id}))
+		emitAudit(m.auditBus, client, "cg_update", "workstation_command_group", id.String())
 }
 
 func (m *WorkstationsMethods) handleCGDelete(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
@@ -942,6 +960,7 @@ func (m *WorkstationsMethods) handleCGDelete(ctx context.Context, client *gatewa
 		return
 	}
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": id}))
+		emitAudit(m.auditBus, client, "cg_delete", "workstation_command_group", id.String())
 }
 
 func (m *WorkstationsMethods) handleCGListForWorkstation(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
@@ -1043,6 +1062,7 @@ func (m *WorkstationsMethods) handleCGApply(ctx context.Context, client *gateway
 	}
 	m.emitPermChanged(wsID)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"linked": true, "group": group}))
+		emitAudit(m.auditBus, client, "cg_apply", "workstation_command_group_link", link.ID.String())
 }
 
 func (m *WorkstationsMethods) handleCGRemove(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
@@ -1097,6 +1117,7 @@ func (m *WorkstationsMethods) handleCGRemove(ctx context.Context, client *gatewa
 	}
 	m.emitPermChanged(wsID)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": linkID}))
+		emitAudit(m.auditBus, client, "cg_remove", "workstation_command_group_link", linkID.String())
 }
 
 func (m *WorkstationsMethods) handleCGToggle(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
@@ -1152,4 +1173,5 @@ func (m *WorkstationsMethods) handleCGToggle(ctx context.Context, client *gatewa
 	}
 	m.emitPermChanged(wsID)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"id": linkID, "enabled": params.Enabled}))
+		emitAudit(m.auditBus, client, "cg_toggle", "workstation_command_group_link", linkID.String())
 }

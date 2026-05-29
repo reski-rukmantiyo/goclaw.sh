@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,9 +25,10 @@ const (
 // Uses the same buffered-flush pattern as the PG implementation, with smaller buffer
 // (SQLite write throughput is lower than PG in concurrent scenarios).
 type SQLiteWorkstationActivityStore struct {
-	db  *sql.DB
-	buf chan *store.WorkstationActivity
-	wg  sync.WaitGroup
+	db        *sql.DB
+	buf       chan *store.WorkstationActivity
+	wg        sync.WaitGroup
+	dropCount atomic.Int64
 }
 
 // NewSQLiteWorkstationActivityStore creates the store and starts the background flusher.
@@ -45,7 +47,7 @@ func (s *SQLiteWorkstationActivityStore) Insert(_ context.Context, row *store.Wo
 	select {
 	case s.buf <- row:
 	default:
-		slog.Warn("workstation.activity.buffer_full", "action", row.Action)
+		s.dropCount.Add(1); slog.Warn("workstation.activity.buffer_full", "action", row.Action, "total_drops", s.dropCount.Load())
 	}
 	return nil
 }
@@ -193,6 +195,9 @@ func (s *SQLiteWorkstationActivityStore) ListAll(ctx context.Context, workstatio
 }
 
 // Prune deletes rows older than before in batches.
+
+// DropCount returns the total number of rows silently dropped due to buffer full.
+func (s *SQLiteWorkstationActivityStore) DropCount() int64 { return s.dropCount.Load() }
 func (s *SQLiteWorkstationActivityStore) Prune(ctx context.Context, before time.Time) (int64, error) {
 	var total int64
 	ts := before.UTC().Format(time.RFC3339Nano)

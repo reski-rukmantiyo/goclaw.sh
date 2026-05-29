@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,9 +24,10 @@ const (
 // Inserts are buffered (channel size 1000) and flushed in batches every 500ms or 100 rows,
 // keeping exec hot-path latency below 1ms.
 type PGWorkstationActivityStore struct {
-	db  *sql.DB
-	buf chan *store.WorkstationActivity
-	wg  sync.WaitGroup
+	db        *sql.DB
+	buf       chan *store.WorkstationActivity
+	wg        sync.WaitGroup
+	dropCount atomic.Int64
 }
 
 // NewPGWorkstationActivityStore creates the store and starts the background flush goroutine.
@@ -44,7 +46,7 @@ func (s *PGWorkstationActivityStore) Insert(_ context.Context, row *store.Workst
 	select {
 	case s.buf <- row:
 	default:
-		slog.Warn("workstation.activity.buffer_full", "action", row.Action)
+		s.dropCount.Add(1); slog.Warn("workstation.activity.buffer_full", "action", row.Action, "total_drops", s.dropCount.Load())
 	}
 	return nil
 }
@@ -186,6 +188,9 @@ func (s *PGWorkstationActivityStore) ListAll(ctx context.Context, workstationID 
 
 // Prune deletes rows created before the given time in batches to avoid long locks.
 // Returns total rows deleted.
+
+// DropCount returns the total number of rows silently dropped due to buffer full.
+func (s *PGWorkstationActivityStore) DropCount() int64 { return s.dropCount.Load() }
 func (s *PGWorkstationActivityStore) Prune(ctx context.Context, before time.Time) (int64, error) {
 	var total int64
 	for {
