@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/eventbus"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/permissions"
@@ -29,6 +30,7 @@ type WorkstationsHandler struct {
 	groupStore    store.WorkstationCommandGroupStore   // Phase 8; may be nil
 	groupPermStore store.WorkstationGroupPermissionStore // Phase 8; may be nil
 	eventBus      eventbus.DomainEventBus              // may be nil; used for allowlist cache invalidation
+	msgBus        *bus.MessageBus                      // for activity_logs audit trail; nil-safe
 }
 
 // NewWorkstationsHandler creates a WorkstationsHandler.
@@ -63,6 +65,11 @@ func (h *WorkstationsHandler) SetGroupPermStore(gps store.WorkstationGroupPermis
 // SetEventBus wires the domain event bus for allowlist cache invalidation.
 func (h *WorkstationsHandler) SetEventBus(eb eventbus.DomainEventBus) {
 	h.eventBus = eb
+}
+
+// SetMsgBus wires the legacy message bus for activity_logs audit trail.
+func (h *WorkstationsHandler) SetMsgBus(mb *bus.MessageBus) {
+	h.msgBus = mb
 }
 
 func (h *WorkstationsHandler) emitPermChanged(workstationID uuid.UUID) {
@@ -256,6 +263,7 @@ func (h *WorkstationsHandler) handleCreate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"workstation": ws.SanitizedView()})
+		emitAudit(h.msgBus, r, "create", "workstation", ws.ID.String())
 }
 
 func (h *WorkstationsHandler) handleUpdate(w http.ResponseWriter, r *http.Request) {
@@ -325,6 +333,7 @@ func (h *WorkstationsHandler) handleUpdate(w http.ResponseWriter, r *http.Reques
 	}
 	h.emitUpdated(id)
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+		emitAudit(h.msgBus, r, "update", "workstation", id.String())
 }
 
 func (h *WorkstationsHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
@@ -347,6 +356,7 @@ func (h *WorkstationsHandler) handleDelete(w http.ResponseWriter, r *http.Reques
 	}
 	h.emitDeleted(id)
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+		emitAudit(h.msgBus, r, "delete", "workstation", id.String())
 }
 
 func (h *WorkstationsHandler) handleToggle(w http.ResponseWriter, r *http.Request) {
@@ -375,6 +385,7 @@ func (h *WorkstationsHandler) handleToggle(w http.ResponseWriter, r *http.Reques
 	}
 	h.emitUpdated(id)
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "active": body.Active})
+		emitAudit(h.msgBus, r, "toggle", "workstation", id.String())
 }
 
 // handleTest is a stub — real implementation in Phase 2/3.
@@ -447,6 +458,7 @@ func (h *WorkstationsHandler) handleLinkAgent(w http.ResponseWriter, r *http.Req
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"linked": true})
+		emitAudit(h.msgBus, r, "link", "workstation_agent_link", wsID.String()+":"+agentID.String())
 }
 
 func (h *WorkstationsHandler) handleUnlinkAgent(w http.ResponseWriter, r *http.Request) {
@@ -475,6 +487,7 @@ func (h *WorkstationsHandler) handleUnlinkAgent(w http.ResponseWriter, r *http.R
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"unlinked": true})
+		emitAudit(h.msgBus, r, "unlink", "workstation_agent_link", wsID.String()+":"+agentID.String())
 }
 
 // --- Phase 6: workstation permission allowlist CRUD ---
@@ -571,6 +584,7 @@ func (h *WorkstationsHandler) handlePermAdd(w http.ResponseWriter, r *http.Reque
 	}
 	h.emitPermChanged(wsID)
 	writeJSON(w, http.StatusCreated, map[string]any{"permission": perm})
+		emitAudit(h.msgBus, r, "perm_add", "workstation_permission", perm.ID.String())
 }
 
 func (h *WorkstationsHandler) handlePermRemove(w http.ResponseWriter, r *http.Request) {
@@ -608,6 +622,7 @@ func (h *WorkstationsHandler) handlePermRemove(w http.ResponseWriter, r *http.Re
 	}
 	h.emitPermChanged(perm.WorkstationID)
 	writeJSON(w, http.StatusOK, map[string]any{"id": permID})
+		emitAudit(h.msgBus, r, "perm_remove", "workstation_permission", permID.String())
 }
 
 func (h *WorkstationsHandler) handlePermToggle(w http.ResponseWriter, r *http.Request) {
@@ -646,6 +661,7 @@ func (h *WorkstationsHandler) handlePermToggle(w http.ResponseWriter, r *http.Re
 	}
 	h.emitPermChanged(perm.WorkstationID)
 	writeJSON(w, http.StatusOK, map[string]any{"id": permID, "enabled": body.Enabled})
+		emitAudit(h.msgBus, r, "perm_toggle", "workstation_permission", permID.String())
 }
 
 // --- Phase 7: workstation activity audit log ---
@@ -842,6 +858,7 @@ func (h *WorkstationsHandler) handleCGCreate(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"group": group})
+		emitAudit(h.msgBus, r, "cg_create", "workstation_command_group", group.ID.String())
 }
 
 func (h *WorkstationsHandler) handleCGUpdate(w http.ResponseWriter, r *http.Request) {
@@ -876,6 +893,7 @@ func (h *WorkstationsHandler) handleCGUpdate(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+		emitAudit(h.msgBus, r, "cg_update", "workstation_command_group", id.String())
 }
 
 func (h *WorkstationsHandler) handleCGDelete(w http.ResponseWriter, r *http.Request) {
@@ -901,6 +919,7 @@ func (h *WorkstationsHandler) handleCGDelete(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+		emitAudit(h.msgBus, r, "cg_delete", "workstation_command_group", id.String())
 }
 
 func (h *WorkstationsHandler) requireGroupPermStore(w http.ResponseWriter, locale string) bool {
@@ -994,6 +1013,7 @@ func (h *WorkstationsHandler) handleCGApply(w http.ResponseWriter, r *http.Reque
 	}
 	h.emitPermChanged(wsID)
 	writeJSON(w, http.StatusOK, map[string]any{"linked": true, "group": group})
+		emitAudit(h.msgBus, r, "cg_apply", "workstation_command_group_link", link.ID.String())
 }
 
 func (h *WorkstationsHandler) handleCGRemove(w http.ResponseWriter, r *http.Request) {
@@ -1040,6 +1060,7 @@ func (h *WorkstationsHandler) handleCGRemove(w http.ResponseWriter, r *http.Requ
 	}
 	h.emitPermChanged(wsID)
 	writeJSON(w, http.StatusOK, map[string]any{"id": linkID})
+		emitAudit(h.msgBus, r, "cg_remove", "workstation_command_group_link", linkID.String())
 }
 
 func (h *WorkstationsHandler) handleCGToggle(w http.ResponseWriter, r *http.Request) {
@@ -1091,4 +1112,5 @@ func (h *WorkstationsHandler) handleCGToggle(w http.ResponseWriter, r *http.Requ
 	}
 	h.emitPermChanged(wsID)
 	writeJSON(w, http.StatusOK, map[string]any{"id": linkID, "enabled": body.Enabled})
+		emitAudit(h.msgBus, r, "cg_toggle", "workstation_command_group_link", linkID.String())
 }

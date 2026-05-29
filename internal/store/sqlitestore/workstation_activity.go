@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,9 +25,10 @@ const (
 // Uses the same buffered-flush pattern as the PG implementation, with smaller buffer
 // (SQLite write throughput is lower than PG in concurrent scenarios).
 type SQLiteWorkstationActivityStore struct {
-	db  *sql.DB
-	buf chan *store.WorkstationActivity
-	wg  sync.WaitGroup
+	db        *sql.DB
+	buf       chan *store.WorkstationActivity
+	wg        sync.WaitGroup
+	dropCount atomic.Int64
 }
 
 // NewSQLiteWorkstationActivityStore creates the store and starts the background flusher.
@@ -45,7 +47,7 @@ func (s *SQLiteWorkstationActivityStore) Insert(_ context.Context, row *store.Wo
 	select {
 	case s.buf <- row:
 	default:
-		slog.Warn("workstation.activity.buffer_full", "action", row.Action)
+		s.dropCount.Add(1); slog.Warn("workstation.activity.buffer_full", "action", row.Action, "total_drops", s.dropCount.Load())
 	}
 	return nil
 }
@@ -64,7 +66,7 @@ func (s *SQLiteWorkstationActivityStore) List(ctx context.Context, workstationID
 			        exit_code, duration_ms, deny_reason, created_at
 			 FROM workstation_activity
 			 WHERE workstation_id = ?
-			 ORDER BY created_at DESC
+			 ORDER BY created_at DESC, id DESC
 			 LIMIT ?`,
 			workstationID.String(), limit+1,
 		)
@@ -74,8 +76,8 @@ func (s *SQLiteWorkstationActivityStore) List(ctx context.Context, workstationID
 			        exit_code, duration_ms, deny_reason, created_at
 			 FROM workstation_activity
 			 WHERE workstation_id = ?
-			   AND created_at < (SELECT created_at FROM workstation_activity WHERE id = ?)
-			 ORDER BY created_at DESC
+			   AND (created_at, id) < (SELECT created_at, id FROM workstation_activity WHERE id = ?)
+			 ORDER BY created_at DESC, id DESC
 			 LIMIT ?`,
 			workstationID.String(), cursor.String(), limit+1,
 		)
@@ -142,7 +144,7 @@ func (s *SQLiteWorkstationActivityStore) ListAll(ctx context.Context, workstatio
 			        exit_code, duration_ms, deny_reason, created_at
 			 FROM workstation_activity
 			 ` + where + `
-			 ORDER BY created_at DESC
+			 ORDER BY created_at DESC, id DESC
 			 LIMIT ?`
 		args = append(args, limit+1)
 		rows, err = s.db.QueryContext(ctx, query, args...)
@@ -151,8 +153,8 @@ func (s *SQLiteWorkstationActivityStore) ListAll(ctx context.Context, workstatio
 			        exit_code, duration_ms, deny_reason, created_at
 			 FROM workstation_activity
 			 ` + where + `
-			   AND created_at < (SELECT created_at FROM workstation_activity WHERE id = ?)
-			 ORDER BY created_at DESC
+			   AND (created_at, id) < (SELECT created_at, id FROM workstation_activity WHERE id = ?)
+			 ORDER BY created_at DESC, id DESC
 			 LIMIT ?`
 		args = append(args, cursor.String(), limit+1)
 		rows, err = s.db.QueryContext(ctx, query, args...)
@@ -193,6 +195,9 @@ func (s *SQLiteWorkstationActivityStore) ListAll(ctx context.Context, workstatio
 }
 
 // Prune deletes rows older than before in batches.
+
+// DropCount returns the total number of rows silently dropped due to buffer full.
+func (s *SQLiteWorkstationActivityStore) DropCount() int64 { return s.dropCount.Load() }
 func (s *SQLiteWorkstationActivityStore) Prune(ctx context.Context, before time.Time) (int64, error) {
 	var total int64
 	ts := before.UTC().Format(time.RFC3339Nano)
@@ -219,19 +224,36 @@ func (s *SQLiteWorkstationActivityStore) Prune(ctx context.Context, before time.
 
 // flusher batches inserts from buf every 500ms or 50 rows.
 func (s *SQLiteWorkstationActivityStore) flusher() {
-	defer s.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("workstation.activity.flusher_panic", "error", r)
+			go s.flusher() // restart takes over the wg slot
+		} else {
+			s.wg.Done()
+		}
+	}()
 	ticker := time.NewTicker(sqliteActivityFlushPeriod)
 	defer ticker.Stop()
 
+	const maxFlushRetries = 10
 	var batch []*store.WorkstationActivity
+	var retryCount int
 	flush := func() {
 		if len(batch) == 0 {
 			return
 		}
 		if err := s.insertBatch(context.Background(), batch); err != nil {
-			slog.Warn("workstation.activity.flush_error", "error", err, "count", len(batch))
+			retryCount++
+			slog.Warn("workstation.activity.flush_error", "error", err, "count", len(batch), "retries", retryCount)
+			if retryCount >= maxFlushRetries {
+				slog.Error("workstation.activity.flush_discarded", "count", len(batch))
+				batch = batch[:0]
+				retryCount = 0
+			}
+			return
 		}
 		batch = batch[:0]
+		retryCount = 0
 	}
 
 	for {

@@ -410,6 +410,7 @@ func (d *gatewayDeps) wireHTTPHandlersOnServer(
 			if d.domainBus != nil {
 				wsH.SetEventBus(d.domainBus)
 			}
+			wsH.SetMsgBus(d.msgBus)
 			d.server.SetWorkstationsHandler(wsH)
 		}
 	}
