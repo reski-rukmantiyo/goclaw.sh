@@ -62,22 +62,21 @@ func CompactMessagesWithProvider(
 		keepLast = minKeep
 	}
 
-	// Find a clean split boundary, increasing keepLast if needed to avoid
-	// cutting inside tool_use → tool_result pairs.
+	// Find a clean split boundary. Walk forward from initial position to skip
+	// tool chains, ensuring the kept section starts on a user or clean assistant
+	// message. Must leave at least 2 messages to summarize.
 	splitIdx := len(messages) - keepLast
-	for splitIdx > 1 {
+	maxSplit := len(messages) - 2
+	for splitIdx <= maxSplit {
 		m := messages[splitIdx]
 		if m.Role == "tool" || (m.Role == "assistant" && len(m.ToolCalls) > 0) {
-			// Boundary lands on a tool message or assistant with tool calls —
-			// shift keepLast up by 1 and recalculate.
-			keepLast++
-			splitIdx = len(messages) - keepLast
+			splitIdx++
 			continue
 		}
 		break
 	}
-	if splitIdx <= 1 {
-		slog.Warn("compaction_split_boundary_failed", "key", logKey, "messages", len(messages), "keep_last", keepLast, "split_idx", splitIdx)
+	if splitIdx > maxSplit {
+		slog.Warn("compaction_split_boundary_failed", "key", logKey, "messages", len(messages), "keep_last", len(messages)-splitIdx, "split_idx", splitIdx)
 		return nil
 	}
 
@@ -134,6 +133,7 @@ func CompactMessagesWithProvider(
 		Content:   "[Summary of earlier conversation]\n" + summaryContent,
 		MediaRefs: preservedRefs,
 	}
+	keepLast = len(messages) - splitIdx
 	result := make([]providers.Message, 0, 1+keepLast)
 	result = append(result, summary)
 	result = append(result, messages[splitIdx:]...)
