@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"maps"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -369,7 +370,7 @@ func (t *WorkstationExecTool) streamAndCollect(
 			t.eventBus.Publish(eventbus.DomainEvent{
 				ID:       uuid.New().String(),
 				Type:     eventbus.EventType(protocol.EventWorkstationExecChunk),
-				SourceID: sessionKey,
+				SourceID: sessionKey + ":" + fmt.Sprintf("%x", sha256.Sum256([]byte(cmdFull)))[:12] + ":" + kind + ":" + strconv.FormatInt(s, 10),
 				TenantID: ws.TenantID.String(),
 				AgentID:  agentID,
 				Payload: map[string]any{
@@ -419,7 +420,7 @@ func (t *WorkstationExecTool) streamAndCollect(
 		t.eventBus.Publish(eventbus.DomainEvent{
 			ID:       uuid.New().String(),
 			Type:     eventbus.EventType(protocol.EventWorkstationExecDone),
-			SourceID: sessionKey,
+			SourceID: sessionKey + ":" + fmt.Sprintf("%x", sha256.Sum256([]byte(cmdFull)))[:12],
 			TenantID: ws.TenantID.String(),
 			AgentID:  agentID,
 			Payload: map[string]any{

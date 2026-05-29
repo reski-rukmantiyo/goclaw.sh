@@ -220,11 +220,11 @@ func (s *PGWorkstationActivityStore) flusher() {
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("workstation.activity.flusher_panic", "error", r)
-			s.wg.Add(1)
-			go s.flusher()
+			go s.flusher() // restart takes over the wg slot
+		} else {
+			s.wg.Done()
 		}
 	}()
-	defer s.wg.Done()
 	ticker := time.NewTicker(activityFlushPeriod)
 	defer ticker.Stop()
 
