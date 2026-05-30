@@ -4,8 +4,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/nextlevelbuilder/goclaw/internal/auth"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/permissions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
@@ -24,12 +26,13 @@ func NewUsersHandler(users store.UserStore) *UsersHandler {
 
 // RegisterRoutes registers all user management routes on the given mux.
 func (h *UsersHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/users/me", requireAuth("", h.handleGetMe))
-	mux.HandleFunc("PATCH /api/v1/users/me", requireAuth("", h.handleUpdateMe))
-	mux.HandleFunc("GET /api/v1/users", requireAuth(permissions.RoleAdmin, h.handleList))
-	mux.HandleFunc("GET /api/v1/users/{id}", requireAuth(permissions.RoleAdmin, h.handleGet))
-	mux.HandleFunc("PATCH /api/v1/users/{id}/status", requireAuth(permissions.RoleAdmin, h.handleStatusChange))
-	mux.HandleFunc("DELETE /api/v1/users/{id}", requireAuth(permissions.RoleAdmin, h.handleDelete))
+	mux.HandleFunc("GET /v1/users/me", requireAuth("", h.handleGetMe))
+	mux.HandleFunc("PATCH /v1/users/me", requireAuth("", h.handleUpdateMe))
+	mux.HandleFunc("GET /v1/users", requireAuth(permissions.RoleAdmin, h.handleList))
+	mux.HandleFunc("POST /v1/users", requireAuth(permissions.RoleAdmin, h.handleCreate))
+	mux.HandleFunc("GET /v1/users/{id}", requireAuth(permissions.RoleAdmin, h.handleGet))
+	mux.HandleFunc("PATCH /v1/users/{id}/status", requireAuth(permissions.RoleAdmin, h.handleStatusChange))
+	mux.HandleFunc("DELETE /v1/users/{id}", requireAuth(permissions.RoleAdmin, h.handleDelete))
 }
 
 // handleGetMe returns the current authenticated user's profile.
@@ -149,6 +152,69 @@ func (h *UsersHandler) handleList(w http.ResponseWriter, r *http.Request) {
 		"offset": result.Offset,
 		"limit":  result.Limit,
 	})
+}
+
+// handleCreate creates a new local user in the caller's tenant.
+func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
+	locale := extractLocale(r)
+	ctx := r.Context()
+	tenantID := store.TenantIDFromContext(ctx)
+
+	var input struct {
+		Email       string `json:"email"`
+		DisplayName string `json:"display_name"`
+		Password    string `json:"password"`
+	}
+	if !bindJSON(w, r, locale, &input) {
+		return
+	}
+
+	if input.Email == "" {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, "email is required"))
+		return
+	}
+	if input.Password == "" {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, "password is required"))
+		return
+	}
+
+	// Check for duplicate email within tenant.
+	existing, err := h.users.GetByEmail(ctx, tenantID, input.Email)
+	if err != nil && err.Error() != "not found" {
+		slog.Error("users.create check duplicate failed", "error", err)
+	}
+	if existing != nil {
+		writeError(w, http.StatusConflict, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, "email already exists"))
+		return
+	}
+
+	hash, err := auth.HashPassword(input.Password)
+	if err != nil {
+		slog.Error("users.create hash password failed", "error", err)
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToCreate, "user", "internal error"))
+		return
+	}
+
+	now := time.Now().UTC()
+	user := &store.UserData{
+		ID:           uuid.New(),
+		Email:        input.Email,
+		DisplayName:  input.DisplayName,
+		TenantID:     tenantID,
+		AuthProvider: store.AuthProviderLocal,
+		PasswordHash: &hash,
+		Status:       store.UserStatusActive,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+
+	if err := h.users.Create(ctx, user); err != nil {
+		slog.Error("users.create failed", "error", err, "email", input.Email)
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToCreate, "user", "internal error"))
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, user)
 }
 
 // handleGet returns a single user by ID.

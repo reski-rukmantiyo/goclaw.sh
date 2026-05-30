@@ -28,6 +28,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/shared/page-header";
@@ -386,6 +387,9 @@ function GroupsAdminPage() {
             <DialogTitle>
               {editTarget ? t("editGroup") : t("createGroup")}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              {editTarget ? t("editGroup") : t("createGroup")}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
@@ -492,6 +496,7 @@ function GroupsAdminPage() {
         <DialogContent className="max-sm:inset-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("members.title")}</DialogTitle>
+            <DialogDescription className="sr-only">{t("members.title")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             {/* Add member form */}
@@ -652,6 +657,7 @@ function GroupsAdminPage() {
         <DialogContent className="max-sm:inset-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("joinRequests.title")}</DialogTitle>
+            <DialogDescription className="sr-only">{t("joinRequests.title")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">
             {requestsLoading ? (

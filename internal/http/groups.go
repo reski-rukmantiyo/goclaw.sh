@@ -26,17 +26,17 @@ func NewGroupsHandler(groups store.GroupStore) *GroupsHandler {
 
 // RegisterRoutes registers all group management routes on the given mux.
 func (h *GroupsHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/v1/groups", requireAuth(permissions.RoleAdmin, h.handleCreate))
-	mux.HandleFunc("GET /api/v1/groups", requireAuth("", h.handleList))
-	mux.HandleFunc("GET /api/v1/groups/{id}", requireAuth("", h.handleGet))
-	mux.HandleFunc("PATCH /api/v1/groups/{id}", requireAuth(permissions.RoleAdmin, h.handleUpdate))
-	mux.HandleFunc("DELETE /api/v1/groups/{id}", requireAuth(permissions.RoleAdmin, h.handleDelete))
-	mux.HandleFunc("GET /api/v1/groups/{id}/members", requireAuth("", h.handleListMembers))
-	mux.HandleFunc("POST /api/v1/groups/{id}/members", requireAuth(permissions.RoleAdmin, h.handleAddMember))
-	mux.HandleFunc("DELETE /api/v1/groups/{id}/members/{userId}", requireAuth(permissions.RoleAdmin, h.handleRemoveMember))
-	mux.HandleFunc("PATCH /api/v1/groups/{id}/members/{userId}/role", requireAuth(permissions.RoleAdmin, h.handleRoleChange))
-	mux.HandleFunc("GET /api/v1/groups/{id}/join-requests", requireAuth(permissions.RoleAdmin, h.handleListJoinRequests))
-	mux.HandleFunc("PATCH /api/v1/groups/{id}/join-requests/{reqId}", requireAuth(permissions.RoleAdmin, h.handleReviewJoinRequest))
+	mux.HandleFunc("POST /v1/groups", requireAuth(permissions.RoleAdmin, h.handleCreate))
+	mux.HandleFunc("GET /v1/groups", requireAuth("", h.handleList))
+	mux.HandleFunc("GET /v1/groups/{id}", requireAuth("", h.handleGet))
+	mux.HandleFunc("PATCH /v1/groups/{id}", requireAuth(permissions.RoleAdmin, h.handleUpdate))
+	mux.HandleFunc("DELETE /v1/groups/{id}", requireAuth(permissions.RoleAdmin, h.handleDelete))
+	mux.HandleFunc("GET /v1/groups/{id}/members", requireAuth("", h.handleListMembers))
+	mux.HandleFunc("POST /v1/groups/{id}/members", requireAuth(permissions.RoleAdmin, h.handleAddMember))
+	mux.HandleFunc("DELETE /v1/groups/{id}/members/{userId}", requireAuth(permissions.RoleAdmin, h.handleRemoveMember))
+	mux.HandleFunc("PATCH /v1/groups/{id}/members/{userId}/role", requireAuth(permissions.RoleAdmin, h.handleRoleChange))
+	mux.HandleFunc("GET /v1/groups/{id}/join-requests", requireAuth(permissions.RoleAdmin, h.handleListJoinRequests))
+	mux.HandleFunc("PATCH /v1/groups/{id}/join-requests/{reqId}", requireAuth(permissions.RoleAdmin, h.handleReviewJoinRequest))
 }
 
 // handleCreate creates a new group.

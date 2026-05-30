@@ -27,7 +27,7 @@ export function useUsersAdmin(params: UserListParams = {}) {
 
   const { data, isLoading: loading } = useQuery({
     queryKey,
-    queryFn: () => http.get<PaginatedResult<User>>("/api/v1/users", queryParams),
+    queryFn: () => http.get<PaginatedResult<User>>("/v1/users", queryParams),
     staleTime: 30_000,
   });
 
@@ -41,7 +41,7 @@ export function useUsersAdmin(params: UserListParams = {}) {
 
   const changeStatus = useMutation({
     mutationFn: async ({ userId, status }: { userId: string; status: string }) => {
-      await http.patch(`/api/v1/users/${userId}/status`, { status });
+      await http.patch(`/v1/users/${userId}/status`, { status });
     },
     onSuccess: () => {
       invalidate();
@@ -54,7 +54,7 @@ export function useUsersAdmin(params: UserListParams = {}) {
 
   const deactivateUser = useMutation({
     mutationFn: async (userId: string) => {
-      await http.delete(`/api/v1/users/${userId}`);
+      await http.delete(`/v1/users/${userId}`);
     },
     onSuccess: () => {
       invalidate();
@@ -67,7 +67,7 @@ export function useUsersAdmin(params: UserListParams = {}) {
 
   const createUser = useMutation({
     mutationFn: async (input: { email: string; display_name: string; password: string }) => {
-      return http.post<User>("/api/v1/users", input);
+      return http.post<User>("/v1/users", input);
     },
     onSuccess: () => {
       invalidate();

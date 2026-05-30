@@ -71,7 +71,7 @@ export function AuditLogPage() {
         actions={
           <div className="flex gap-2">
             <Button variant="outline" size="sm" asChild className="gap-1">
-              <a href="/api/v1/audit/export" download>
+              <a href="/v1/audit/export" download>
                 <Download className="h-3.5 w-3.5" /> {t("export")}
               </a>
             </Button>

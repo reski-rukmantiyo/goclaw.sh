@@ -11,6 +11,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/shared/page-header";
@@ -127,6 +128,7 @@ export function TenantsAdminPage() {
         <DialogContent className="max-sm:inset-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{t("createTenant")}</DialogTitle>
+            <DialogDescription className="sr-only">{t("createTenant")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">

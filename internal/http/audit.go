@@ -52,7 +52,7 @@ func NewAuditHandler(audit store.AuditStore) *AuditHandler {
 
 // RegisterRoutes registers all audit log routes on the given mux.
 func (h *AuditHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/audit", requireAuth(permissions.RoleAdmin, h.handleList))
+	mux.HandleFunc("GET /v1/audit", requireAuth(permissions.RoleAdmin, h.handleList))
 }
 
 // handleList returns a paginated list of audit log entries.

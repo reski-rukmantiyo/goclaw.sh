@@ -31,7 +31,7 @@ export function useGroupsAdmin(params: GroupListParams = {}) {
   const { data, isLoading: loading } = useQuery({
     queryKey,
     queryFn: () =>
-      http.get<PaginatedResult<Group>>("/api/v1/groups", queryParams),
+      http.get<PaginatedResult<Group>>("/v1/groups", queryParams),
     staleTime: 30_000,
   });
 
@@ -52,7 +52,7 @@ export function useGroupsAdmin(params: GroupListParams = {}) {
       visibility?: string;
       parent_group_id?: string;
     }) => {
-      return http.post<Group>("/api/v1/groups", input);
+      return http.post<Group>("/v1/groups", input);
     },
     onSuccess: () => {
       invalidate();
@@ -73,7 +73,7 @@ export function useGroupsAdmin(params: GroupListParams = {}) {
       description?: string;
       visibility?: string;
     }) => {
-      return http.patch<Group>(`/api/v1/groups/${id}`, input);
+      return http.patch<Group>(`/v1/groups/${id}`, input);
     },
     onSuccess: () => {
       invalidate();
@@ -86,7 +86,7 @@ export function useGroupsAdmin(params: GroupListParams = {}) {
 
   const deleteGroup = useMutation({
     mutationFn: async (id: string) => {
-      await http.delete(`/api/v1/groups/${id}`);
+      await http.delete(`/v1/groups/${id}`);
     },
     onSuccess: () => {
       invalidate();
@@ -122,7 +122,7 @@ export function useGroupMembers(groupId: string | null) {
   const { data, isLoading: loading } = useQuery({
     queryKey,
     queryFn: () =>
-      http.get<GroupMember[]>(`/api/v1/groups/${groupId}/members`),
+      http.get<GroupMember[]>(`/v1/groups/${groupId}/members`),
     enabled: !!groupId,
     staleTime: 30_000,
   });
@@ -145,7 +145,7 @@ export function useGroupMembers(groupId: string | null) {
       userId: string;
       role: string;
     }) => {
-      await http.post(`/api/v1/groups/${groupId}/members`, {
+      await http.post(`/v1/groups/${groupId}/members`, {
         user_id: userId,
         role,
       });
@@ -164,7 +164,7 @@ export function useGroupMembers(groupId: string | null) {
 
   const removeMember = useMutation({
     mutationFn: async (userId: string) => {
-      await http.delete(`/api/v1/groups/${groupId}/members/${userId}`);
+      await http.delete(`/v1/groups/${groupId}/members/${userId}`);
     },
     onSuccess: () => {
       invalidate();
@@ -186,7 +186,7 @@ export function useGroupMembers(groupId: string | null) {
       userId: string;
       role: string;
     }) => {
-      await http.patch(`/api/v1/groups/${groupId}/members/${userId}`, {
+      await http.patch(`/v1/groups/${groupId}/members/${userId}`, {
         role,
       });
     },
@@ -225,7 +225,7 @@ export function useJoinRequests(groupId: string | null) {
   const { data, isLoading: loading } = useQuery({
     queryKey,
     queryFn: () =>
-      http.get<JoinRequest[]>(`/api/v1/groups/${groupId}/join-requests`),
+      http.get<JoinRequest[]>(`/v1/groups/${groupId}/join-requests`),
     enabled: !!groupId,
     staleTime: 30_000,
   });
@@ -249,7 +249,7 @@ export function useJoinRequests(groupId: string | null) {
       action: "approved" | "rejected";
     }) => {
       await http.patch(
-        `/api/v1/groups/${groupId}/join-requests/${requestId}`,
+        `/v1/groups/${groupId}/join-requests/${requestId}`,
         { status: action },
       );
     },
