@@ -31,6 +31,8 @@ type whatsappInstanceConfig struct {
 	ListenMinConf   float64  `json:"listen_min_conf,omitempty"`
 	ListenExtractPollSec int `json:"listen_extract_poll_sec,omitempty"`
 	MediaCaptionDelayMs  int `json:"media_caption_delay_ms,omitempty"`
+
+	GroupJoinRules []config.WhatsAppGroupJoinRule `json:"group_join_rules,omitempty"`
 }
 
 // FactoryWithDB returns a ChannelFactory with DB access for whatsmeow auth state.
@@ -86,6 +88,7 @@ func FactoryWithDBAudio(db *sql.DB, pendingStore store.PendingMessageStore, dial
 			ListenMinConf:  ic.ListenMinConf,
 			ListenExtractPollSec: ic.ListenExtractPollSec,
 		MediaCaptionDelayMs:  ic.MediaCaptionDelayMs,
+		GroupJoinRules:       ic.GroupJoinRules,
 		}
 
 		// Parse per-group overrides from config JSONB.

@@ -402,6 +402,18 @@ func (l *InstanceLoader) loadInstance(ctx context.Context, inst store.ChannelIns
 		}
 	}
 
+	// Wire config persister so channels can persist runtime config changes back to DB.
+	if base, ok := ch.(interface{ SetConfigPersister(func(ctx context.Context, config any) error) }); ok {
+		instID := inst.ID // capture for closure
+		base.SetConfigPersister(func(ctx context.Context, config any) error {
+			configJSON, err := json.Marshal(config)
+			if err != nil {
+				return fmt.Errorf("marshal config: %w", err)
+			}
+			return l.store.Update(ctx, instID, map[string]any{"config": configJSON})
+		})
+	}
+
 	// Wire exec approval manager for channel-based approval.
 	if l.execApprovalMgr != nil {
 		if eam, ok := ch.(interface{ SetExecApprovalManager(any) }); ok {

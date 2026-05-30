@@ -211,8 +211,13 @@
     }
   },
   "fieldConfig": {
-    "token": { "label": "Bot Token", "help": "From @BotFather" },
-    "bot_token": { "label": "Bot Token" },
+    "token": {
+      "label": "Bot Token",
+      "help": "From @BotFather"
+    },
+    "bot_token": {
+      "label": "Bot Token"
+    },
     "app_token": {
       "label": "App-Level Token",
       "help": "App-Level Token with connections:write scope (required for Socket Mode)"
@@ -221,14 +226,23 @@
       "label": "User Token (Optional)",
       "help": "Optional: User OAuth Token for custom bot identity. Leave empty to use default bot identity."
     },
-    "app_id": { "label": "App ID" },
-    "app_secret": { "label": "App Secret" },
-    "encrypt_key": { "label": "Encrypt Key", "help": "For webhook mode" },
+    "app_id": {
+      "label": "App ID"
+    },
+    "app_secret": {
+      "label": "App Secret"
+    },
+    "encrypt_key": {
+      "label": "Encrypt Key",
+      "help": "For webhook mode"
+    },
     "verification_token": {
       "label": "Verification Token",
       "help": "For webhook mode"
     },
-    "webhook_secret": { "label": "Webhook Secret" },
+    "webhook_secret": {
+      "label": "Webhook Secret"
+    },
     "api_server": {
       "label": "API Server URL",
       "help": "Custom Telegram Bot API server for large file uploads (up to 2GB). Leave empty for default."
@@ -237,8 +251,12 @@
       "label": "HTTP Proxy",
       "help": "Route bot traffic through an HTTP proxy"
     },
-    "dm_policy": { "label": "DM Policy" },
-    "group_policy": { "label": "Group Policy" },
+    "dm_policy": {
+      "label": "DM Policy"
+    },
+    "group_policy": {
+      "label": "Group Policy"
+    },
     "require_mention": {
       "label": "Require @mention in groups",
       "disabledHint": "Multi-bot mode always listens to all messages"
@@ -267,15 +285,25 @@
       "label": "Show Reasoning",
       "help": "Display AI thinking as a separate message before the answer (requires streaming)"
     },
-    "reaction_level": { "label": "Reaction Level" },
-    "media_max_mb": { "label": "Max Media Size (MB)" },
-    "link_preview": { "label": "Link Preview" },
-    "allow_from": { "label": "Allowed Users" },
+    "reaction_level": {
+      "label": "Reaction Level"
+    },
+    "media_max_mb": {
+      "label": "Max Media Size (MB)"
+    },
+    "link_preview": {
+      "label": "Link Preview"
+    },
+    "allow_from": {
+      "label": "Allowed Users"
+    },
     "block_reply": {
       "label": "Block Reply",
       "help": "Deliver intermediate text during tool iterations"
     },
-    "domain": { "label": "Domain" },
+    "domain": {
+      "label": "Domain"
+    },
     "connection_mode": {
       "label": "Connection Mode",
       "help": "WebSocket needs no public IP — outbound connection only"
@@ -288,12 +316,16 @@
       "label": "Webhook Path",
       "help": "Path on main server for Lark events"
     },
-    "webhook_url": { "label": "Webhook URL" },
+    "webhook_url": {
+      "label": "Webhook URL"
+    },
     "topic_session_mode": {
       "label": "Topic Session Mode",
       "help": "Use thread root_id for session isolation"
     },
-    "render_mode": { "label": "Render Mode" },
+    "render_mode": {
+      "label": "Render Mode"
+    },
     "text_chunk_limit": {
       "label": "Text Chunk Limit",
       "help": "Max characters per message"
@@ -322,9 +354,17 @@
       "label": "Tool Allowlist",
       "help": "Restrict which tools the agent can use in this group"
     },
-    "system_prompt": { "label": "System Prompt" },
-    "platform": { "label": "Platform", "help": "Select the platform this Pancake page serves." },
-    "tiktok_type": { "label": "TikTok Type", "help": "Select the TikTok account type for this page" },
+    "system_prompt": {
+      "label": "System Prompt"
+    },
+    "platform": {
+      "label": "Platform",
+      "help": "Select the platform this Pancake page serves."
+    },
+    "tiktok_type": {
+      "label": "TikTok Type",
+      "help": "Select the TikTok account type for this page"
+    },
     "features.private_reply": {
       "label": "Private Reply (Comment → DM)",
       "help": "Send a one-time DM to commenters after the public reply. Facebook/Instagram only. Meta allows DM within 7 days of the comment."
@@ -379,17 +419,17 @@
       "card": "Card"
     },
     "platform": {
-      "facebook":    "Facebook",
-      "instagram":   "Instagram",
-      "threads":     "Threads (Beta)",
-      "tiktok":      "TikTok",
-      "youtube":     "YouTube (Beta)",
-      "shopee":      "Shopee",
-      "line":        "Line",
-      "google":      "Google",
+      "facebook": "Facebook",
+      "instagram": "Instagram",
+      "threads": "Threads (Beta)",
+      "tiktok": "TikTok",
+      "youtube": "YouTube (Beta)",
+      "shopee": "Shopee",
+      "line": "Line",
+      "google": "Google",
       "chat_plugin": "Chat Plugin",
-      "lazada":      "Lazada",
-      "tokopedia":   "Tokopedia"
+      "lazada": "Lazada",
+      "tokopedia": "Tokopedia"
     }
   },
   "groupOverrides": {
@@ -562,5 +602,30 @@
     "cronExprHint": "Standard 5-field cron expression (e.g. 0 0,6,12,18 * * *).",
     "timezoneLabel": "Timezone",
     "timezoneHint": "IANA timezone (e.g. Asia/Ho_Chi_Minh). Defaults to UTC."
+  },
+  "whatsappGroupJoinRules": {
+    "title": "Auto-Config Rules",
+    "hint": "Rules that automatically configure groups when the bot is added. First matching rule wins.",
+    "ruleNameLabel": "Rule Name",
+    "ruleNamePlaceholder": "e.g. Reski's groups",
+    "addedByLabel": "Added By (Phone/JID)",
+    "addedByPlaceholder": "e.g. 081511488487",
+    "addedByHint": "Phone number or WhatsApp JID of the person who adds the bot.",
+    "policyLabel": "Auto-Approve Policy",
+    "policyOpen": "Open (auto-approve)",
+    "policyPairing": "Pairing (require approval)",
+    "agentLabel": "Agent",
+    "selectAgent": "Use channel default",
+    "listenOnlyLabel": "Listen-Only Mode",
+    "listenOnlyHint": "Collect messages silently for knowledge graph extraction.",
+    "graphIdLabel": "Graph ID",
+    "graphIdPlaceholder": "e.g. project-alpha",
+    "graphIdHint": "Groups sharing the same Graph ID will share a knowledge graph.",
+    "requireMentionLabel": "Require @Mention",
+    "requireMentionInherit": "Inherit",
+    "requireMentionYes": "Enabled",
+    "requireMentionNo": "Disabled",
+    "addRule": "Add Rule",
+    "noRules": "No join rules configured. Groups will use the channel's default group policy."
   }
 }

@@ -187,6 +187,9 @@ type BaseChannel struct {
 	approvedGroups  sync.Map // chatID → true (in-memory cache for paired group approval)
 	pairingDebounce sync.Map // senderID → time.Time (debounce pairing reply sends)
 	requireMention  bool
+
+	// configPersister persists runtime config changes back to the DB.
+	configPersister func(ctx context.Context, config any) error
 }
 
 // NewBaseChannel creates a new BaseChannel with the given parameters.
@@ -254,6 +257,16 @@ func (c *BaseChannel) HistoryLimit() int { return c.historyLimit }
 
 // SetRequireMention sets whether @mention is required in group chats.
 func (c *BaseChannel) SetRequireMention(b bool) { c.requireMention = b }
+
+// SetConfigPersister sets the callback used to persist runtime config changes back to the DB.
+func (c *BaseChannel) SetConfigPersister(fn func(ctx context.Context, config any) error) {
+	c.configPersister = fn
+}
+
+// ConfigPersister returns the config persistence callback, or nil if not set.
+func (c *BaseChannel) ConfigPersister() func(ctx context.Context, config any) error {
+	return c.configPersister
+}
 
 // RequireMention returns whether @mention is required in group chats.
 func (c *BaseChannel) RequireMention() bool { return c.requireMention }

@@ -9,6 +9,7 @@ import { TelegramGroupOverrides } from "../telegram-group-overrides";
 import type { TelegramGroupConfigValues } from "../telegram-group-fields";
 import type { TelegramTopicConfigValues } from "../telegram-topic-overrides";
 import { WhatsAppGroupOverrides } from "../whatsapp-group-overrides";
+import { WhatsAppGroupJoinRules, type WhatsAppGroupJoinRuleValues } from "../whatsapp-group-join-rules";
 import type { GroupManagerGroupInfo } from "../hooks/use-channel-detail";
 
 interface GroupConfigWithTopics extends TelegramGroupConfigValues {
@@ -143,11 +144,18 @@ function WhatsAppGroupsContent({
   const [groups, setGroups] = useState<
     Record<string, { name?: string; agent_id?: string; enabled?: boolean; listen_only?: boolean; listen_graph_id?: string; require_mention?: boolean }>
   >((config.groups as Record<string, { name?: string; agent_id?: string; enabled?: boolean; listen_only?: boolean; listen_graph_id?: string; require_mention?: boolean }>) ?? {});
+  const [joinRules, setJoinRules] = useState<WhatsAppGroupJoinRuleValues[]>(
+    (config.group_join_rules as WhatsAppGroupJoinRuleValues[]) ?? [],
+  );
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
     const hasGroups = Object.keys(groups).length > 0;
-    const updatedConfig = { ...config, groups: hasGroups ? groups : undefined };
+    const updatedConfig = {
+      ...config,
+      groups: hasGroups ? groups : undefined,
+      group_join_rules: joinRules.length > 0 ? joinRules : undefined,
+    };
     const cleanConfig = Object.fromEntries(
       Object.entries(updatedConfig).filter(([, v]) => v !== undefined),
     );
@@ -166,6 +174,12 @@ function WhatsAppGroupsContent({
 
   return (
     <div className="space-y-6">
+      <WhatsAppGroupJoinRules
+        rules={joinRules}
+        onChange={setJoinRules}
+        agents={agents}
+      />
+
       <WhatsAppGroupOverrides
         groups={groups}
         onChange={setGroups}
