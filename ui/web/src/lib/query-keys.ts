@@ -127,4 +127,22 @@ export const queryKeys = {
     graph: (agentId: string, userId?: string) => ["kg", "graph", agentId, userId] as const,
     dedup: (agentId: string, userId?: string) => ["kg", "dedup", agentId, userId] as const,
   },
+  userMgmt: {
+    all: ["userMgmt"] as const,
+    list: (params: Record<string, unknown>) => ["userMgmt", "list", params] as const,
+    detail: (id: string) => ["userMgmt", id] as const,
+    me: ["userMgmt", "me"] as const,
+  },
+  groups: {
+    all: ["groups"] as const,
+    list: (params: Record<string, unknown>) => ["groups", "list", params] as const,
+    detail: (id: string) => ["groups", id] as const,
+    tree: ["groups", "tree"] as const,
+    members: (groupId: string) => ["groups", groupId, "members"] as const,
+    joinRequests: (groupId: string) => ["groups", groupId, "join-requests"] as const,
+  },
+  auditLog: {
+    all: ["auditLog"] as const,
+    list: (params: Record<string, unknown>) => ["auditLog", "list", params] as const,
+  },
 };

@@ -126,6 +126,15 @@ const WorkstationsPage = lazyWithRetry(() =>
 const TenantSelectorPage = lazyWithRetry(() =>
   import("@/pages/login/tenant-selector").then((m) => ({ default: m.TenantSelectorPage })),
 );
+const UsersAdminPage = lazyWithRetry(() =>
+  import("@/pages/users-admin/users-admin-page"),
+);
+const GroupsAdminPage = lazyWithRetry(() =>
+  import("@/pages/groups-admin/groups-admin-page"),
+);
+const AuditLogPage = lazyWithRetry(() =>
+  import("@/pages/audit-log/audit-log-page"),
+);
 
 function PageLoader() {
   return (
@@ -201,6 +210,11 @@ export function AppRoutes() {
           <Route path={ROUTES.PACKAGES} element={<RequireAdmin><PackagesPage /></RequireAdmin>} />
           <Route path={ROUTES.TENANTS} element={<RequireCrossTenant><TenantsAdminPage /></RequireCrossTenant>} />
           <Route path={ROUTES.TENANT_DETAIL} element={<RequireCrossTenant><TenantDetailPage /></RequireCrossTenant>} />
+          <Route path={ROUTES.USER_MGMT} element={<RequireAdmin><UsersAdminPage /></RequireAdmin>} />
+          <Route path={ROUTES.USER_MGMT_DETAIL} element={<RequireAdmin><UsersAdminPage /></RequireAdmin>} />
+          <Route path={ROUTES.GROUPS} element={<RequireAdmin><GroupsAdminPage /></RequireAdmin>} />
+          <Route path={ROUTES.GROUP_DETAIL} element={<RequireAdmin><GroupsAdminPage /></RequireAdmin>} />
+          <Route path={ROUTES.AUDIT_LOG} element={<RequireAdmin><AuditLogPage /></RequireAdmin>} />
 
           {/* Operator+ pages */}
           <Route path={ROUTES.TRACES} element={<TracesPage key="list" />} />

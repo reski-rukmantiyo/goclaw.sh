@@ -22,7 +22,36 @@
   "subtitle": "Đăng nhập vào bảng điều khiển gateway",
   "tabs": {
     "pairing": "Ghép nối",
-    "token": "Token"
+    "token": "Token",
+    "email": "Email"
+  },
+  "email": {
+    "email": "Email",
+    "emailPlaceholder": "you@example.com",
+    "password": "Mật khẩu",
+    "passwordPlaceholder": "Mật khẩu của bạn",
+    "forgotPassword": "Quên mật khẩu?",
+    "signIn": "Đăng nhập",
+    "signingIn": "Đang đăng nhập...",
+    "signInWith": "Đăng nhập bằng {{provider}}",
+    "orContinueWith": "hoặc tiếp tục bằng",
+    "errorInvalidCredentials": "Email hoặc mật khẩu không hợp lệ.",
+    "errorServer": "Server trả về {{status}}. Vui lòng thử lại.",
+    "errorCannotConnect": "Không thể kết nối đến server. Kiểm tra gateway đã chạy chưa."
+  },
+  "passwordChange": {
+    "title": "Đổi mật khẩu",
+    "description": "Nhập mật khẩu hiện tại và chọn mật khẩu mới.",
+    "currentPassword": "Mật khẩu hiện tại",
+    "newPassword": "Mật khẩu mới",
+    "confirmPassword": "Xác nhận mật khẩu mới",
+    "cancel": "Hủy",
+    "change": "Đổi mật khẩu",
+    "changing": "Đang đổi...",
+    "successTitle": "Đã đổi mật khẩu",
+    "successMessage": "Mật khẩu đã được cập nhật thành công.",
+    "errorTitle": "Đổi mật khẩu thất bại",
+    "errorNetwork": "Không thể kết nối đến server."
   },
   "token": {
     "connect": "Kết nối",

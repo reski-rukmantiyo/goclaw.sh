@@ -8,7 +8,36 @@
   "noAccessDescription": "You don't have access to any tenant. Contact your administrator.",
   "tabs": {
     "token": "Token",
-    "pairing": "Pairing"
+    "pairing": "Pairing",
+    "email": "Email"
+  },
+  "email": {
+    "email": "Email",
+    "emailPlaceholder": "you@example.com",
+    "password": "Password",
+    "passwordPlaceholder": "Your password",
+    "forgotPassword": "Forgot password?",
+    "signIn": "Sign In",
+    "signingIn": "Signing in...",
+    "signInWith": "Sign in with {{provider}}",
+    "orContinueWith": "or continue with",
+    "errorInvalidCredentials": "Invalid email or password.",
+    "errorServer": "Server returned {{status}}. Please try again.",
+    "errorCannotConnect": "Cannot connect to server. Check if the gateway is running."
+  },
+  "passwordChange": {
+    "title": "Change Password",
+    "description": "Enter your current password and choose a new one.",
+    "currentPassword": "Current Password",
+    "newPassword": "New Password",
+    "confirmPassword": "Confirm New Password",
+    "cancel": "Cancel",
+    "change": "Change Password",
+    "changing": "Changing...",
+    "successTitle": "Password Changed",
+    "successMessage": "Your password has been updated successfully.",
+    "errorTitle": "Password Change Failed",
+    "errorNetwork": "Cannot connect to server."
   },
   "token": {
     "userId": "User ID",

@@ -45,6 +45,9 @@
     "apiDocs": "API Docs",
     "packages": "Packages",
     "tenants": "Tenants",
+    "userMgmt": "Users",
+    "groups": "Groups",
+    "auditLog": "Audit Log",
     "backupRestore": "Backup & Restore",
     "workstations": "Workstations"
   }

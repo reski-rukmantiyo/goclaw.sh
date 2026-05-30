@@ -22,7 +22,36 @@
   "subtitle": "登录网关控制面板",
   "tabs": {
     "pairing": "配对",
-    "token": "令牌"
+    "token": "令牌",
+    "email": "邮箱"
+  },
+  "email": {
+    "email": "邮箱",
+    "emailPlaceholder": "you@example.com",
+    "password": "密码",
+    "passwordPlaceholder": "您的密码",
+    "forgotPassword": "忘记密码？",
+    "signIn": "登录",
+    "signingIn": "正在登录...",
+    "signInWith": "使用 {{provider}} 登录",
+    "orContinueWith": "或使用其他方式",
+    "errorInvalidCredentials": "邮箱或密码无效。",
+    "errorServer": "服务器返回 {{status}}，请重试。",
+    "errorCannotConnect": "无法连接到服务器。请检查 Gateway 是否在运行。"
+  },
+  "passwordChange": {
+    "title": "修改密码",
+    "description": "输入当前密码并选择新密码。",
+    "currentPassword": "当前密码",
+    "newPassword": "新密码",
+    "confirmPassword": "确认新密码",
+    "cancel": "取消",
+    "change": "修改密码",
+    "changing": "正在修改...",
+    "successTitle": "密码已修改",
+    "successMessage": "密码已成功更新。",
+    "errorTitle": "密码修改失败",
+    "errorNetwork": "无法连接到服务器。"
   },
   "token": {
     "connect": "连接",

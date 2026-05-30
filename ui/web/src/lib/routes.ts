@@ -51,4 +51,9 @@ export const ROUTES = {
   HOOK_DETAIL: "/hooks/:id",
   WORKSTATIONS: "/workstations",
   WORKSTATION_DETAIL: "/workstations/:id",
+  USER_MGMT: "/admin/users",
+  USER_MGMT_DETAIL: "/admin/users/:id",
+  GROUPS: "/admin/groups",
+  GROUP_DETAIL: "/admin/groups/:id",
+  AUDIT_LOG: "/admin/audit",
 } as const;

@@ -33,6 +33,7 @@ import {
   Webhook,
   Layers,
   MonitorCog,
+  FolderTree,
 
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -137,6 +138,9 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
 
         {isAdmin && (
         <SidebarGroup label={t("groups.system")} collapsed={collapsed}>
+          <SidebarItem to={ROUTES.USER_MGMT} icon={Users} label={t("nav.userMgmt")} collapsed={collapsed} />
+          <SidebarItem to={ROUTES.GROUPS} icon={FolderTree} label={t("nav.groups")} collapsed={collapsed} />
+          <SidebarItem to={ROUTES.AUDIT_LOG} icon={FileText} label={t("nav.auditLog")} collapsed={collapsed} />
           {isOwner && (
             <SidebarItem to={ROUTES.TENANTS} icon={Building2} label={t("nav.tenants")} collapsed={collapsed} />
           )}

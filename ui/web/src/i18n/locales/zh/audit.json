@@ -1,0 +1,21 @@
+{
+  "title": "审计日志",
+  "description": "查看系统活动和合规记录",
+  "time": "时间",
+  "actor": "操作者",
+  "action": "操作",
+  "resourceType": "资源类型",
+  "resourceId": "资源 ID",
+  "group": "群组",
+  "ipAddress": "IP 地址",
+  "detail": "详情",
+  "viewDetail": "查看",
+  "export": "导出",
+  "filterAction": "按操作筛选...",
+  "allTypes": "所有类型",
+  "user": "用户",
+  "membership": "成员资格",
+  "permission": "权限",
+  "system": "系统",
+  "noEntries": "未找到审计记录"
+}
