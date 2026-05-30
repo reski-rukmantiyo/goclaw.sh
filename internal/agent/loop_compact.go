@@ -57,28 +57,35 @@ func CompactMessagesWithProvider(
 	if keepLast <= 0 {
 		keepLast = 4
 	}
+	// Cap keepLast so splitIdx stays non-negative (need at least 2 messages to summarize).
+	if keepLast > len(messages)-2 {
+		keepLast = len(messages) - 2
+	}
 	// Ensure we keep at least 30% of messages.
 	if minKeep := len(messages) * 3 / 10; minKeep > keepLast {
 		keepLast = minKeep
 	}
 
-	// Find a clean split boundary, increasing keepLast if needed to avoid
-	// cutting inside tool_use → tool_result pairs.
+	// Find a clean split boundary. Walk forward from initial position to skip
+	// tool result messages, ensuring the kept section starts on a non-tool message.
+	// assistant+tool_calls is a valid start — LLMs handle assistant messages at any
+	// context position. Only tool results are problematic (orphaned without preceding
+	// assistant+tool_calls). Must leave at least 2 messages to summarize.
 	splitIdx := len(messages) - keepLast
-	for splitIdx > 1 {
-		m := messages[splitIdx]
-		if m.Role == "tool" || (m.Role == "assistant" && len(m.ToolCalls) > 0) {
-			// Boundary lands on a tool message or assistant with tool calls —
-			// shift keepLast up by 1 and recalculate.
-			keepLast++
-			splitIdx = len(messages) - keepLast
+	maxSplit := len(messages) - 2
+	initialSplit := splitIdx
+	for splitIdx <= maxSplit {
+		if messages[splitIdx].Role == "tool" {
+			splitIdx++
 			continue
 		}
 		break
 	}
-	if splitIdx <= 1 {
-		slog.Warn("compaction_split_boundary_failed", "key", logKey, "messages", len(messages), "keep_last", keepLast, "split_idx", splitIdx)
-		return nil
+	if splitIdx > maxSplit {
+		// Fallback: force initial position. Summary builder already skips tool
+		// messages; most LLMs tolerate orphaned tool results in context.
+		slog.Warn("compaction_forced_split", "key", logKey, "messages", len(messages), "split_idx", initialSplit)
+		splitIdx = initialSplit
 	}
 
 	// Build summary input (same pattern as maybeSummarize in loop_history.go).
@@ -134,6 +141,7 @@ func CompactMessagesWithProvider(
 		Content:   "[Summary of earlier conversation]\n" + summaryContent,
 		MediaRefs: preservedRefs,
 	}
+	keepLast = len(messages) - splitIdx
 	result := make([]providers.Message, 0, 1+keepLast)
 	result = append(result, summary)
 	result = append(result, messages[splitIdx:]...)

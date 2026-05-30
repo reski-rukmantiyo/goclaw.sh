@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
@@ -11,18 +12,20 @@ import (
 	httpapi "github.com/nextlevelbuilder/goclaw/internal/http"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/tools"
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
 
 // SessionsMethods handles sessions.list, sessions.preview, sessions.patch, sessions.delete, sessions.reset.
 type SessionsMethods struct {
-	sessions store.SessionStore
-	eventBus bus.EventPublisher
-	cfg      *config.Config
+	sessions         store.SessionStore
+	eventBus         bus.EventPublisher
+	cfg              *config.Config
+	channelInstances store.ChannelInstanceStore
 }
 
-func NewSessionsMethods(sess store.SessionStore, eventBus bus.EventPublisher, cfg *config.Config) *SessionsMethods {
-	return &SessionsMethods{sessions: sess, eventBus: eventBus, cfg: cfg}
+func NewSessionsMethods(sess store.SessionStore, eventBus bus.EventPublisher, cfg *config.Config, channelInstances store.ChannelInstanceStore) *SessionsMethods {
+	return &SessionsMethods{sessions: sess, eventBus: eventBus, cfg: cfg, channelInstances: channelInstances}
 }
 
 func (m *SessionsMethods) Register(router *gateway.MethodRouter) {
@@ -64,8 +67,9 @@ func (m *SessionsMethods) handleList(ctx context.Context, client *gateway.Client
 		opts.UserID = client.UserID()
 	}
 
-	result := m.sessions.ListPagedRich(ctx, opts)
-	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
+		result := m.sessions.ListPagedRich(ctx, opts)
+		m.enrichWhatsAppGroupNames(ctx, result.Sessions)
+		client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
 		"sessions": result.Sessions,
 		"total":    result.Total,
 		"limit":    params.Limit,
@@ -301,4 +305,102 @@ func (m *SessionsMethods) handleCompact(ctx context.Context, client *gateway.Cli
 		"kept":     keepLast,
 	}))
 	emitAudit(m.eventBus, client, "session.compacted", "session", params.Key)
+}
+
+// enrichWhatsAppGroupNames resolves WhatsApp group JIDs to human-readable names
+// from channel instance configs. Skips sessions that already have chat_title metadata.
+func (m *SessionsMethods) enrichWhatsAppGroupNames(ctx context.Context, sessions []store.SessionInfoRich) {
+	if m.channelInstances == nil || len(sessions) == 0 {
+		return
+	}
+
+	// Collect unique WhatsApp channel instance names from session keys.
+	channelNames := make(map[string]bool)
+	for _, s := range sessions {
+		if s.Metadata != nil && s.Metadata[tools.MetaChatTitle] != "" {
+			continue
+		}
+		chName, groupJID := parseWhatsAppGroupKey(s.Key)
+		if chName != "" && groupJID != "" {
+			channelNames[chName] = true
+		}
+	}
+	if len(channelNames) == 0 {
+		return
+	}
+
+	// Load configs for those channel instances.
+	groupMap := make(map[string]map[string]string) // channelName → jid → name
+	for chName := range channelNames {
+		inst, err := m.channelInstances.GetByName(ctx, chName)
+		if err != nil || inst == nil {
+			continue
+		}
+		groups := parseWhatsAppGroupsFromConfig(inst.Config)
+		if len(groups) > 0 {
+			groupMap[chName] = groups
+		}
+	}
+	if len(groupMap) == 0 {
+		return
+	}
+
+	// Enrich sessions.
+	for i := range sessions {
+		s := &sessions[i]
+		if s.Metadata != nil && s.Metadata[tools.MetaChatTitle] != "" {
+			continue
+		}
+		chName, groupJID := parseWhatsAppGroupKey(s.Key)
+		if chName == "" || groupJID == "" {
+			continue
+		}
+		if groups, ok := groupMap[chName]; ok {
+			if name, ok := groups[groupJID]; ok && name != "" {
+				if s.Metadata == nil {
+					s.Metadata = make(map[string]string)
+				}
+				s.Metadata[tools.MetaChatTitle] = name
+			}
+		}
+	}
+}
+
+// parseWhatsAppGroupKey extracts channel instance name and group JID from a session key.
+// Returns ("", "") if not a WhatsApp group session.
+// Key format: agent:{agentId}:{channelName}:group:{jid}
+func parseWhatsAppGroupKey(key string) (channelName, groupJID string) {
+	// Split: agent:{agentId}:{scope...}
+	parts := strings.SplitN(key, ":", 3)
+	if len(parts) < 3 || parts[0] != "agent" {
+		return "", ""
+	}
+	scope := parts[2]
+	// Split scope: {channelName}:group:{jid}
+	scopeParts := strings.SplitN(scope, ":", 3)
+	if len(scopeParts) < 3 || scopeParts[1] != "group" {
+		return "", ""
+	}
+	chName := scopeParts[0]
+	if !strings.HasPrefix(chName, "whatsapp") {
+		return "", ""
+	}
+	return chName, scopeParts[2]
+}
+
+// parseWhatsAppGroupsFromConfig extracts group JID→name mappings from a channel instance config JSONB.
+func parseWhatsAppGroupsFromConfig(raw json.RawMessage) map[string]string {
+	var wrapper struct {
+		Groups map[string]*config.WhatsAppGroupConfig `json:"groups"`
+	}
+	if err := json.Unmarshal(raw, &wrapper); err != nil || len(wrapper.Groups) == 0 {
+		return nil
+	}
+	result := make(map[string]string, len(wrapper.Groups))
+	for jid, grp := range wrapper.Groups {
+		if grp != nil && grp.Name != "" {
+			result[jid] = grp.Name
+		}
+	}
+	return result
 }

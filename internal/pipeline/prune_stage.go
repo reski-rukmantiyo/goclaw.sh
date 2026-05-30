@@ -6,12 +6,13 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/eventbus"
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
 )
 
 // PruneStage runs every iteration. 2-phase pruning:
-//   - Phase 1 (70% budget): soft trim via PruneMessages callback
+//   - Phase 1 (threshold% budget): soft trim via PruneMessages callback
 //   - Phase 2 (100% budget): memory flush + LLM compaction
 //
 // Implements StageWithResult — returns AbortRun if still over budget after compaction.
@@ -73,7 +74,7 @@ func (s *PruneStage) Execute(ctx context.Context, state *RunState) error {
 	state.Prune.HistoryTokens = historyTokens
 	tokensBefore := historyTokens
 
-	softThreshold := budget * 70 / 100
+	softThreshold := int(float64(budget) * config.EffectiveAutoCompactThreshold(s.deps.Config.Compaction))
 	if historyTokens <= softThreshold {
 		return nil // under budget, no action needed
 	}
@@ -107,7 +108,7 @@ func (s *PruneStage) Execute(ctx context.Context, state *RunState) error {
 		}
 	}
 
-	// Phase 1: soft prune at 70% budget (unless TTL gate routed to compact-only).
+	// Phase 1: soft prune at threshold% budget (unless TTL gate routed to compact-only).
 	var pruneStats PruneStats
 	if !skipSoftPrune && s.deps.PruneMessages != nil {
 		var pruned []providers.Message

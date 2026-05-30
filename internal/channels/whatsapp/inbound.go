@@ -16,6 +16,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/channels/media"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/tools"
 )
 
 const emptyMessageSentinel = "[empty message]"
@@ -125,6 +126,11 @@ func (c *Channel) handleIncomingMessage(evt *events.Message) {
 	}
 	if evt.Info.PushName != "" {
 		metadata["user_name"] = evt.Info.PushName
+	}
+	if peerKind == "group" && c.config.Groups != nil {
+		if grp, ok := c.config.Groups[chatID]; ok && grp != nil && grp.Name != "" {
+			metadata[tools.MetaChatTitle] = grp.Name
+		}
 	}
 
 	// STT: transcribe audio items (opt-in via builtin_tools[stt].settings.whatsapp_enabled,

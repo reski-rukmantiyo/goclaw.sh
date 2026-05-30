@@ -17,6 +17,7 @@ import { useChatSend } from "./hooks/use-chat-send";
 import { isOwnSession, parseSessionKey } from "@/lib/session-key";
 import { useVirtualKeyboard } from "@/hooks/use-virtual-keyboard";
 import { TaskPanel } from "@/components/chat/task-panel";
+import { useConfig } from "@/pages/config/hooks/use-config";
 
 export function ChatPage() {
   const { t } = useTranslation("chat");
@@ -53,6 +54,10 @@ export function ChatPage() {
     buildNewSessionKey,
     deleteSession,
   } = useChatSessions(agentId);
+
+  const { config } = useConfig();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const compactThreshold = (config?.agents as any)?.defaults?.compaction?.autoCompactThreshold as number | undefined;
 
   const {
     messages,
@@ -243,6 +248,7 @@ export function ChatPage() {
             onToggleTaskPanel={() => setTaskPanelOpen((v) => !v)}
             taskPanelOpen={taskPanelOpen}
             session={sessions.find((s) => s.key === sessionKey) ?? null}
+            compactThreshold={compactThreshold}
           />
         </div>
 

@@ -17,6 +17,8 @@ interface ChatTopBarProps {
   taskPanelOpen?: boolean;
   /** Current session — when provided, the bar renders a context-usage badge. */
   session?: SessionInfo | null;
+  /** Auto-compact threshold from config (0-1). Used to align usage badge with compaction trigger. */
+  compactThreshold?: number;
 }
 
 const phaseLabels: Record<RunActivity["phase"], string> = {
@@ -28,7 +30,7 @@ const phaseLabels: Record<RunActivity["phase"], string> = {
   leader_processing: "Processing team results…",
 };
 
-export function ChatTopBar({ agentId, isRunning, isBusy, activity, teamTasks, onToggleTaskPanel, taskPanelOpen, session }: ChatTopBarProps) {
+export function ChatTopBar({ agentId, isRunning, isBusy, activity, teamTasks, onToggleTaskPanel, taskPanelOpen, session, compactThreshold }: ChatTopBarProps) {
   const http = useHttp();
   const { t } = useTranslation("chat");
   const connected = useAuthStore((s) => s.connected);
@@ -58,16 +60,19 @@ export function ChatTopBar({ agentId, isRunning, isBusy, activity, teamTasks, on
 
   // Context-usage badge: only renders when the caller passes a session with
   // both estimatedTokens (Phase 4 ContextStage output) and contextWindow.
-  // `percent` drives the color ramp so operators spot near-limit sessions.
+  // `percent` is relative to the compaction threshold (not raw context window)
+  // so colors warn before compaction actually fires.
   const usage = (() => {
     if (!session || !session.contextWindow || session.contextWindow <= 0) {
       return null;
     }
+    const threshold = compactThreshold ?? 0.75;
     const used = session.estimatedTokens ?? 0;
     const max = session.contextWindow;
-    const percent = Math.min(100, Math.round((used / max) * 100));
+    const effectiveLimit = Math.round(max * threshold);
+    const percent = Math.min(100, Math.round((used / effectiveLimit) * 100));
     const color =
-      percent >= 90 ? "text-destructive" : percent >= 75 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground";
+      percent >= 90 ? "text-destructive" : percent >= 70 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground";
     return { used, max, percent, color };
   })();
 
