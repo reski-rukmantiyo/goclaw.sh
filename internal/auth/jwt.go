@@ -87,15 +87,16 @@ func (m *JWTManager) ValidateToken(tokenStr string) (*Claims, error) {
 	return claims, nil
 }
 
-// sha256Hex returns the hex-encoded SHA-256 hash of a string.
-func sha256Hex(s string) string {
+// SHA256Hex returns the hex-encoded SHA-256 hash of a string.
+// Exported for use by auth handlers that need to hash refresh tokens.
+func SHA256Hex(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
 }
 
 // VerifyTokenHash checks a raw token against its stored SHA-256 hex hash.
 func VerifyTokenHash(raw, storedHash string) bool {
-	return subtle.ConstantTimeCompare([]byte(sha256Hex(raw)), []byte(storedHash)) == 1
+	return subtle.ConstantTimeCompare([]byte(SHA256Hex(raw)), []byte(storedHash)) == 1
 }
 
 // SigningKeyPublicKey returns the public key for external verification (e.g. JWKS endpoint).

@@ -274,5 +274,14 @@ func init() {
 
 		// Message tool cross-target forward notice
 		MessageCrossTargetForwarded: "📤 Forwarded to %s as requested: %q",
+
+		// Multi-auth
+		MsgAuthInvalidCredentials:  "invalid email or password",
+		MsgAuthAccountSuspended:    "account is suspended",
+		MsgAuthRefreshTokenInvalid: "invalid or expired refresh token",
+		MsgAuthPasswordMismatch:    "current password is incorrect",
+		MsgAuthPasswordTooShort:    "password must be at least %d characters",
+		MsgAuthOIDCFailed:          "OIDC authentication failed: %s",
+		MsgAuthStateInvalid:        "invalid or expired OAuth state",
 	})
 }

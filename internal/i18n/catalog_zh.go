@@ -274,5 +274,14 @@ func init() {
 
 		// Message tool cross-target forward notice
 		MessageCrossTargetForwarded: "📤 已按请求转发至 %s:%q",
+
+		// Multi-auth
+		MsgAuthInvalidCredentials:  "邮箱或密码无效",
+		MsgAuthAccountSuspended:    "账户已被暂停",
+		MsgAuthRefreshTokenInvalid: "刷新令牌无效或已过期",
+		MsgAuthPasswordMismatch:    "当前密码不正确",
+		MsgAuthPasswordTooShort:    "密码至少需要 %d 个字符",
+		MsgAuthOIDCFailed:          "OIDC 认证失败：%s",
+		MsgAuthStateInvalid:        "无效或过期的 OAuth 状态",
 	})
 }

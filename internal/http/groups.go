@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
-	"github.com/nextlevelbuilder/goclaw/internal/permissions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
@@ -26,17 +25,17 @@ func NewGroupsHandler(groups store.GroupStore) *GroupsHandler {
 
 // RegisterRoutes registers all group management routes on the given mux.
 func (h *GroupsHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /v1/groups", requireAuth(permissions.RoleAdmin, h.handleCreate))
+	mux.HandleFunc("POST /v1/groups", requireAuthAction("group.create", h.handleCreate))
 	mux.HandleFunc("GET /v1/groups", requireAuth("", h.handleList))
 	mux.HandleFunc("GET /v1/groups/{id}", requireAuth("", h.handleGet))
-	mux.HandleFunc("PATCH /v1/groups/{id}", requireAuth(permissions.RoleAdmin, h.handleUpdate))
-	mux.HandleFunc("DELETE /v1/groups/{id}", requireAuth(permissions.RoleAdmin, h.handleDelete))
+	mux.HandleFunc("PATCH /v1/groups/{id}", requireAuthAction("group.update", h.handleUpdate))
+	mux.HandleFunc("DELETE /v1/groups/{id}", requireAuthAction("group.delete", h.handleDelete))
 	mux.HandleFunc("GET /v1/groups/{id}/members", requireAuth("", h.handleListMembers))
-	mux.HandleFunc("POST /v1/groups/{id}/members", requireAuth(permissions.RoleAdmin, h.handleAddMember))
-	mux.HandleFunc("DELETE /v1/groups/{id}/members/{userId}", requireAuth(permissions.RoleAdmin, h.handleRemoveMember))
-	mux.HandleFunc("PATCH /v1/groups/{id}/members/{userId}/role", requireAuth(permissions.RoleAdmin, h.handleRoleChange))
-	mux.HandleFunc("GET /v1/groups/{id}/join-requests", requireAuth(permissions.RoleAdmin, h.handleListJoinRequests))
-	mux.HandleFunc("PATCH /v1/groups/{id}/join-requests/{reqId}", requireAuth(permissions.RoleAdmin, h.handleReviewJoinRequest))
+	mux.HandleFunc("POST /v1/groups/{id}/members", requireAuthAction("group.manage_members", h.handleAddMember))
+	mux.HandleFunc("DELETE /v1/groups/{id}/members/{userId}", requireAuthAction("group.manage_members", h.handleRemoveMember))
+	mux.HandleFunc("PATCH /v1/groups/{id}/members/{userId}/role", requireAuthAction("group.assign_admin", h.handleRoleChange))
+	mux.HandleFunc("GET /v1/groups/{id}/join-requests", requireAuthAction("group.manage_members", h.handleListJoinRequests))
+	mux.HandleFunc("PATCH /v1/groups/{id}/join-requests/{reqId}", requireAuthAction("group.manage_members", h.handleReviewJoinRequest))
 }
 
 // handleCreate creates a new group.

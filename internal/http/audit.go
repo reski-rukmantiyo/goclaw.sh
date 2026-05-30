@@ -9,7 +9,6 @@ import (
 
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
-	"github.com/nextlevelbuilder/goclaw/internal/permissions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
@@ -52,7 +51,7 @@ func NewAuditHandler(audit store.AuditStore) *AuditHandler {
 
 // RegisterRoutes registers all audit log routes on the given mux.
 func (h *AuditHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/audit", requireAuth(permissions.RoleAdmin, h.handleList))
+	mux.HandleFunc("GET /v1/audit", requireAuthAction("audit.view_all", h.handleList))
 }
 
 // handleList returns a paginated list of audit log entries.

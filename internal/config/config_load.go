@@ -228,6 +228,14 @@ func (c *Config) applyEnvOverrides() {
 		c.Gateway.AllowedOrigins = origins
 	}
 
+	// Multi-auth secrets (never stored in config.json)
+	if c.Auth.Providers.EntraID != nil {
+		envStr("GOCLAW_ENTRA_CLIENT_SECRET", &c.Auth.Providers.EntraID.ClientSecret)
+	}
+	if c.Auth.Providers.Google != nil {
+		envStr("GOCLAW_GOOGLE_CLIENT_SECRET", &c.Auth.Providers.Google.ClientSecret)
+	}
+
 	// Tailscale (tsnet)
 	envStr("GOCLAW_TSNET_HOSTNAME", &c.Tailscale.Hostname)
 	envStr("GOCLAW_TSNET_AUTH_KEY", &c.Tailscale.AuthKey)

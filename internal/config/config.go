@@ -57,6 +57,7 @@ type Config struct {
 	Bindings  []AgentBinding  `json:"bindings,omitempty"`
 	Hooks     HooksConfig     `json:"hooks"`
 	Packages  PackagesConfig  `json:"packages"` // runtime package mgmt (GitHub updater)
+	Auth      AuthConfig      `json:"auth"`
 	mu        sync.RWMutex
 }
 
@@ -488,6 +489,7 @@ func (c *Config) ReplaceFrom(src *Config) {
 	c.Telemetry = src.Telemetry
 	c.Tailscale = src.Tailscale
 	c.Bindings = src.Bindings
+	c.Auth = src.Auth
 }
 
 // AddExecAlwaysAllow appends a binary to the exec approval allowlist (deduped).

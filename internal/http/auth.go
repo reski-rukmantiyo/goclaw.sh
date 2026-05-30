@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nextlevelbuilder/goclaw/internal/auth"
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/crypto"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
@@ -83,6 +84,7 @@ var pkgAPIKeyCache *apiKeyCache
 var pkgPairingStore store.PairingStore
 var pkgTenantCache *tenantCache
 var pkgOwnerIDs []string
+var pkgJWTManager *auth.JWTManager
 
 // InitGatewayToken sets the gateway bearer token for HTTP auth.
 // Must be called once during server startup before handling requests.
@@ -113,6 +115,11 @@ func InitPairingAuth(ps store.PairingStore) {
 // Owners get RoleOwner with gateway token; others get RoleAdmin scoped to their tenant.
 func InitOwnerIDs(ids []string) {
 	pkgOwnerIDs = ids
+}
+
+// InitJWTManager sets the JWT manager for multi-auth session token validation.
+func InitJWTManager(m *auth.JWTManager) {
+	pkgJWTManager = m
 }
 
 // isHTTPOwnerID checks if the user ID is a configured owner.
@@ -157,6 +164,7 @@ type authResult struct {
 	KeyData       *store.APIKeyData // non-nil when authenticated via API key
 	TenantID      uuid.UUID         // resolved tenant; always concrete after resolution
 	TenantSlug    string            // resolved tenant slug for filesystem paths
+	UserID        string            // resolved user ID from multi-auth JWT (empty for other auth methods)
 }
 
 // resolveAuth determines the caller's role from the request.
@@ -211,6 +219,22 @@ func resolveAuthWithBearer(r *http.Request, bearer string) authResult {
 			res.TenantSlug = resolveTenantSlug(r.Context(), keyData.TenantID)
 		}
 		return res
+	}
+	// Multi-auth JWT session token
+	if pkgJWTManager != nil && bearer != "" {
+		if claims, err := pkgJWTManager.ValidateToken(bearer); err == nil {
+			tenantID, _ := uuid.Parse(claims.TID)
+			if tenantID == uuid.Nil {
+				tenantID = store.MasterTenantID
+			}
+			return authResult{
+				Role:          permissions.RoleAdmin,
+				Authenticated: true,
+				TenantID:      tenantID,
+				TenantSlug:    resolveTenantSlug(r.Context(), tenantID),
+				UserID:        claims.Subject,
+			}
+		}
 	}
 	// Browser pairing → operator (via X-GoClaw-Sender-Id header)
 	if senderID := r.Header.Get("X-GoClaw-Sender-Id"); senderID != "" && pkgPairingStore != nil {
@@ -334,6 +358,10 @@ func enrichContext(ctx context.Context, r *http.Request, auth authResult) contex
 			)
 		}
 		userID = auth.KeyData.OwnerID
+	}
+	// Multi-auth JWT provides user ID directly from token claims.
+	if auth.UserID != "" {
+		userID = auth.UserID
 	}
 	if userID != "" {
 		ctx = store.WithUserID(ctx, userID)

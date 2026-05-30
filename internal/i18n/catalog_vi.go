@@ -274,5 +274,14 @@ func init() {
 
 		// Message tool cross-target forward notice
 		MessageCrossTargetForwarded: "📤 Đã forward sang %s theo yêu cầu: %q",
+
+		// Multi-auth
+		MsgAuthInvalidCredentials:  "email hoặc mật khẩu không hợp lệ",
+		MsgAuthAccountSuspended:    "tài khoản đã bị tạm khóa",
+		MsgAuthRefreshTokenInvalid: "refresh token không hợp lệ hoặc đã hết hạn",
+		MsgAuthPasswordMismatch:    "mật khẩu hiện tại không chính xác",
+		MsgAuthPasswordTooShort:    "mật khẩu phải có ít nhất %d ký tự",
+		MsgAuthOIDCFailed:          "xác thực OIDC thất bại: %s",
+		MsgAuthStateInvalid:        "OAuth state không hợp lệ hoặc đã hết hạn",
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nextlevelbuilder/goclaw/internal/auth"
 	"github.com/nextlevelbuilder/goclaw/internal/audio"
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/edition"
@@ -206,6 +207,45 @@ func (d *gatewayDeps) wireHTTPHandlersOnServer(
 		d.server.SetUsersHandler(httpapi.NewUsersHandler(d.pgStores.Users))
 		d.server.SetGroupsHandler(httpapi.NewGroupsHandler(d.pgStores.Groups))
 		d.server.SetAuditHandler(httpapi.NewAuditHandler(d.pgStores.Audit))
+
+		// Multi-auth session + OIDC handlers
+		if d.pgStores.Users != nil {
+			jwtManager, err := auth.NewJWTManager("goclaw", "goclaw-session", time.Duration(d.cfg.Auth.Session.SessionTimeout())*time.Minute)
+			if err != nil {
+				slog.Error("auth.jwt_init_failed", "error", err)
+			} else {
+				httpapi.InitJWTManager(jwtManager)
+
+				authH := httpapi.NewAuthHandler(d.pgStores.Users, jwtManager, &d.cfg.Auth)
+				d.server.SetAuthHandler(authH)
+
+				// Permission cache for RBAC
+				permCache := httpapi.NewPermissionCache(d.pgStores.Users, d.pgStores.Groups, 5*time.Minute)
+				httpapi.InitPermCache(permCache)
+
+				// OIDC handler (only if providers configured)
+				var oidcProviders []*auth.OIDCProvider
+				if d.cfg.Auth.EntraIDEnabled() {
+					oidcProviders = append(oidcProviders, auth.NewEntraIDProvider(
+						d.cfg.Auth.Providers.EntraID.ClientID,
+						d.cfg.Auth.Providers.EntraID.ClientSecret,
+						d.cfg.Auth.Providers.EntraID.RedirectURI,
+					))
+				}
+				if d.cfg.Auth.GoogleEnabled() {
+					oidcProviders = append(oidcProviders, auth.NewGoogleProvider(
+						d.cfg.Auth.Providers.Google.ClientID,
+						d.cfg.Auth.Providers.Google.ClientSecret,
+						d.cfg.Auth.Providers.Google.RedirectURI,
+					))
+				}
+				if len(oidcProviders) > 0 {
+					validator := auth.NewOIDCValidator(oidcProviders)
+					oidcH := httpapi.NewOIDCHandler(d.pgStores.Users, d.pgStores.Groups, validator, jwtManager, oidcProviders)
+					d.server.SetOIDCHandler(oidcH)
+				}
+			}
+		}
 	}
 
 	// K10: single shared webhookLimiter — one per process enforces per-tenant RPM cap across

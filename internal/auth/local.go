@@ -32,6 +32,6 @@ func GenerateRefreshToken() (raw string, hash string, err error) {
 	}
 	raw = hex.EncodeToString(b)
 	// Hash with same method as API keys for consistency
-	hash = sha256Hex(raw)
+	hash = SHA256Hex(raw)
 	return raw, hash, nil
 }

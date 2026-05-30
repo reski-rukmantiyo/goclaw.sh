@@ -298,4 +298,13 @@ const (
 	MsgGrantEnvValueInvalid = "error.grant_env_value_invalid" // "invalid env value: %s"
 	MsgGrantEnvTooManyKeys  = "error.grant_env_too_many_keys" // "too many env keys: max 50"
 	MsgGrantEnvRevealLimit  = "error.grant_env_reveal_limit"  // "rate limit exceeded for env reveal"
+
+	// --- Multi-auth ---
+	MsgAuthInvalidCredentials  = "error.auth_invalid_credentials"   // "invalid email or password"
+	MsgAuthAccountSuspended    = "error.auth_account_suspended"     // "account is suspended"
+	MsgAuthRefreshTokenInvalid = "error.auth_refresh_token_invalid" // "invalid or expired refresh token"
+	MsgAuthPasswordMismatch    = "error.auth_password_mismatch"     // "current password is incorrect"
+	MsgAuthPasswordTooShort    = "error.auth_password_too_short"    // "password must be at least %d characters"
+	MsgAuthOIDCFailed          = "error.auth_oidc_failed"           // "OIDC authentication failed: %s"
+	MsgAuthStateInvalid        = "error.auth_state_invalid"         // "invalid or expired OAuth state"
 )

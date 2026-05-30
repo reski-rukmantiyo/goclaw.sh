@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/nextlevelbuilder/goclaw/internal/auth"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
-	"github.com/nextlevelbuilder/goclaw/internal/permissions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
@@ -28,11 +27,11 @@ func NewUsersHandler(users store.UserStore) *UsersHandler {
 func (h *UsersHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/users/me", requireAuth("", h.handleGetMe))
 	mux.HandleFunc("PATCH /v1/users/me", requireAuth("", h.handleUpdateMe))
-	mux.HandleFunc("GET /v1/users", requireAuth(permissions.RoleAdmin, h.handleList))
-	mux.HandleFunc("POST /v1/users", requireAuth(permissions.RoleAdmin, h.handleCreate))
-	mux.HandleFunc("GET /v1/users/{id}", requireAuth(permissions.RoleAdmin, h.handleGet))
-	mux.HandleFunc("PATCH /v1/users/{id}/status", requireAuth(permissions.RoleAdmin, h.handleStatusChange))
-	mux.HandleFunc("DELETE /v1/users/{id}", requireAuth(permissions.RoleAdmin, h.handleDelete))
+	mux.HandleFunc("GET /v1/users", requireAuthAction("user.list", h.handleList))
+	mux.HandleFunc("POST /v1/users", requireAuthAction("user.pre_provision", h.handleCreate))
+	mux.HandleFunc("GET /v1/users/{id}", requireAuthAction("user.get", h.handleGet))
+	mux.HandleFunc("PATCH /v1/users/{id}/status", requireAuthAction("user.suspend", h.handleStatusChange))
+	mux.HandleFunc("DELETE /v1/users/{id}", requireAuthAction("user.deactivate", h.handleDelete))
 }
 
 // handleGetMe returns the current authenticated user's profile.
