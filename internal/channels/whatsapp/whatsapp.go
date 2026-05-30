@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -318,6 +319,10 @@ func (c *Channel) handleEvent(evt any) {
 		c.MarkDegraded("WhatsApp CAT refresh failed", v.Error.Error(),
 			channels.ChannelFailureKindNetwork, true)
 		c.startReconnectWatchdog()
+	case *events.JoinedGroup:
+		c.handleJoinedGroup(v)
+	case *events.GroupInfo:
+		c.handleGroupInfoChange(v)
 	}
 }
 
@@ -360,6 +365,152 @@ func (c *Channel) handleLoggedOut(evt *events.LoggedOut) {
 
 	c.MarkDegraded("WhatsApp logged out", "Re-scan QR to reconnect",
 		channels.ChannelFailureKindAuth, false)
+}
+
+// handleJoinedGroup processes JoinedGroup events emitted when the bot joins
+// or is added to a group. It matches the adder against configured join rules
+// and auto-creates per-group overrides.
+func (c *Channel) handleJoinedGroup(evt *events.JoinedGroup) {
+	groupJID := evt.JID
+	groupJIDStr := groupJID.String()
+	groupName := evt.GroupName.Name
+
+	// Prefer SenderPN (phone number) over Sender (may be LID).
+	var adderJID types.JID
+	if evt.SenderPN != nil {
+		adderJID = *evt.SenderPN
+	} else if evt.Sender != nil {
+		adderJID = *evt.Sender
+	}
+
+	slog.Info("whatsapp: joined group",
+		"group_jid", groupJIDStr, "group_name", groupName,
+		"added_by", adderJID.String(), "reason", evt.Reason, "type", evt.Type)
+
+	c.applyJoinRules(groupJID, groupName, adderJID)
+}
+
+// handleGroupInfoChange processes GroupInfo events. When the bot is in the
+// Join list (someone added us to an existing group), it applies join rules.
+func (c *Channel) handleGroupInfoChange(evt *events.GroupInfo) {
+	if len(evt.Join) == 0 {
+		return
+	}
+
+	c.lastQRMu.RLock()
+	myJID := c.myJID
+	c.lastQRMu.RUnlock()
+
+	var wasMeAdded bool
+	for _, jid := range evt.Join {
+		if !myJID.IsEmpty() && jid.User == myJID.User {
+			wasMeAdded = true
+			break
+		}
+	}
+	if !wasMeAdded {
+		return
+	}
+
+	var adderJID types.JID
+	if evt.SenderPN != nil {
+		adderJID = *evt.SenderPN
+	} else if evt.Sender != nil {
+		adderJID = *evt.Sender
+	}
+
+	groupName := ""
+	if evt.Name != nil {
+		groupName = evt.Name.Name
+	}
+
+	slog.Info("whatsapp: added to existing group",
+		"group_jid", evt.JID.String(), "added_by", adderJID.String())
+
+	c.applyJoinRules(evt.JID, groupName, adderJID)
+}
+
+// applyJoinRules matches the adder against configured GroupJoinRules.
+// First matching rule wins. If matched, auto-creates a per-group override
+// and auto-approves the group if the rule policy is "open".
+func (c *Channel) applyJoinRules(groupJID types.JID, groupName string, adderJID types.JID) {
+	ctx := context.Background()
+	if tid := c.TenantID(); tid != uuid.Nil {
+		ctx = store.WithTenantID(ctx, tid)
+	}
+	groupJIDStr := groupJID.String()
+
+	// Ensure group contact exists.
+	if cc := c.ContactCollector(); cc != nil {
+		cc.EnsureContact(ctx, c.Type(), c.Name(), groupJIDStr, "", groupName, "", "group", "group", "", "")
+	}
+
+	rule := c.matchJoinRule(adderJID)
+	if rule == nil {
+		slog.Info("whatsapp: no join rule matched, using default group policy",
+			"group_jid", groupJIDStr, "added_by", adderJID.String())
+		return
+	}
+
+	slog.Info("whatsapp: join rule matched",
+		"group_jid", groupJIDStr, "rule_name", rule.Name, "added_by", adderJID.String())
+
+	grpCfg := &config.WhatsAppGroupConfig{
+		Name:           groupName,
+		AgentID:        rule.AgentID,
+		ListenOnly:     rule.ListenOnly,
+		ListenGraphID:  rule.ListenGraphID,
+		RequireMention: rule.RequireMention,
+	}
+
+	c.mu.Lock()
+	if c.config.Groups == nil {
+		c.config.Groups = make(map[string]*config.WhatsAppGroupConfig)
+	}
+	c.config.Groups[groupJIDStr] = grpCfg
+	c.mu.Unlock()
+
+	// Auto-approve if rule says "open" (default for matched rules).
+	policy := rule.Policy
+	if policy == "" {
+		policy = "open"
+	}
+	if policy == "open" {
+		c.MarkGroupApproved(groupJIDStr)
+	}
+
+	// Persist updated config to DB.
+	if persist := c.ConfigPersister(); persist != nil {
+		if err := persist(ctx, c.config); err != nil {
+			slog.Error("whatsapp: failed to persist auto-configured group",
+				"group_jid", groupJIDStr, "error", err)
+		}
+	}
+
+	slog.Info("whatsapp: group auto-configured by join rule",
+		"group_jid", groupJIDStr, "group_name", groupName,
+		"rule_name", rule.Name, "agent_id", rule.AgentID,
+		"listen_only", rule.ListenOnly, "policy", policy)
+}
+
+// matchJoinRule returns the first join rule matching the adder's JID.
+// Matching is by phone number (user portion of the JID).
+func (c *Channel) matchJoinRule(adderJID types.JID) *config.WhatsAppGroupJoinRule {
+	if adderJID.IsEmpty() {
+		return nil
+	}
+	adderUser := adderJID.User
+	for i := range c.config.GroupJoinRules {
+		rule := &c.config.GroupJoinRules[i]
+		ruleUser := rule.AddedBy
+		if idx := strings.IndexByte(ruleUser, '@'); idx > 0 {
+			ruleUser = ruleUser[:idx]
+		}
+		if ruleUser == adderUser {
+			return rule
+		}
+	}
+	return nil
 }
 
 // startReconnectWatchdog starts a background goroutine that periodically

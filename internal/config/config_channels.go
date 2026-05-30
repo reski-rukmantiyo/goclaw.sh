@@ -142,6 +142,19 @@ type WhatsAppGroupConfig struct {
 	RequireMention  *bool  `json:"require_mention,omitempty"`  // override channel-level require_mention (nil = inherit)
 }
 
+// WhatsAppGroupJoinRule defines automatic behavior when the bot is added to a group.
+// Rules are evaluated in order; first match wins. If no rule matches, the channel's
+// existing GroupPolicy applies.
+type WhatsAppGroupJoinRule struct {
+	Name           string `json:"name,omitempty"`             // human-readable label (e.g. "reski's groups")
+	AddedBy        string `json:"added_by"`                   // phone number or JID to match (e.g. "081511488487")
+	Policy         string `json:"policy,omitempty"`           // "open" (auto-approve) or "pairing". Default "open".
+	AgentID        string `json:"agent_id,omitempty"`         // agent_key to route to
+	ListenOnly     *bool  `json:"listen_only,omitempty"`      // enable listen-only mode
+	ListenGraphID  string `json:"listen_graph_id,omitempty"`  // shared graph scope
+	RequireMention *bool  `json:"require_mention,omitempty"`  // override channel-level require_mention
+}
+
 type WhatsAppConfig struct {
 	Enabled        bool                             `json:"enabled"`
 	AuthDir        string                           `json:"auth_dir,omitempty"`        // optional: SQLite auth dir override (desktop)
@@ -153,6 +166,7 @@ type WhatsAppConfig struct {
 	BlockReply     *bool                            `json:"block_reply,omitempty"`     // override gateway block_reply (nil = inherit)
 	TableMode      string                           `json:"table_mode,omitempty"`      // "auto" (default), "ascii", "cards", "list", "off"
 	Groups         map[string]*WhatsAppGroupConfig  `json:"groups,omitempty"`          // per-group overrides, keyed by group JID
+	GroupJoinRules []WhatsAppGroupJoinRule          `json:"group_join_rules,omitempty"` // auto-config rules when bot joins a group
 
 	// Listen-only mode: silently collect messages for KG extraction.
 	ListenOnly      *bool    `json:"listen_only,omitempty"`       // global listen-only for DMs
