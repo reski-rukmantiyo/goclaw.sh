@@ -57,6 +57,10 @@ func CompactMessagesWithProvider(
 	if keepLast <= 0 {
 		keepLast = 4
 	}
+	// Cap keepLast so splitIdx stays non-negative (need at least 2 messages to summarize).
+	if keepLast > len(messages)-2 {
+		keepLast = len(messages) - 2
+	}
 	// Ensure we keep at least 30% of messages.
 	if minKeep := len(messages) * 3 / 10; minKeep > keepLast {
 		keepLast = minKeep
