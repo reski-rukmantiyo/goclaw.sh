@@ -1,0 +1,74 @@
+{
+  "title": "组",
+  "description": "管理组织组和成员",
+  "createGroup": "创建组",
+  "editGroup": "编辑组",
+  "saveChanges": "保存更改",
+  "noParent": "无父级（顶级）",
+  "slugHelp": "从名称自动生成",
+  "searchPlaceholder": "搜索组...",
+  "emptyTitle": "未找到组",
+  "emptyDescription": "创建组以组织用户",
+  "columns": {
+    "name": "名称",
+    "slug": "标识",
+    "visibility": "可见性",
+    "parent": "父组",
+    "status": "状态",
+    "actions": "操作"
+  },
+  "visibility": {
+    "open": "开放",
+    "closed": "封闭"
+  },
+  "form": {
+    "description": "描述",
+    "descriptionPlaceholder": "可选的组描述"
+  },
+  "actions": {
+    "manageMembers": "管理成员",
+    "viewRequests": "加入请求",
+    "edit": "编辑",
+    "delete": "删除"
+  },
+  "delete": {
+    "title": "删除组",
+    "description": "确定要删除 {{name}} 吗？成员将被移除。"
+  },
+  "members": {
+    "title": "组成员",
+    "addPlaceholder": "输入用户ID...",
+    "empty": "该组没有成员",
+    "remove": "移除",
+    "promoteToAdmin": "提升为管理员",
+    "demoteToMember": "降为成员",
+    "columns": {
+      "name": "名称",
+      "role": "角色"
+    },
+    "role": {
+      "admin": "管理员",
+      "member": "成员"
+    }
+  },
+  "joinRequests": {
+    "title": "加入请求",
+    "empty": "没有待处理的请求",
+    "approve": "批准",
+    "reject": "拒绝",
+    "columns": {
+      "user": "用户",
+      "message": "留言",
+      "status": "状态"
+    }
+  },
+  "toast": {
+    "created": "组已创建",
+    "updated": "组已更新",
+    "deleted": "组已删除",
+    "memberAdded": "成员已添加",
+    "memberRemoved": "成员已移除",
+    "roleUpdated": "角色已更新",
+    "requestReviewed": "请求已审核"
+  }
+}

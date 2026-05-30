@@ -1,0 +1,74 @@
+{
+  "title": "Nhóm",
+  "description": "Quản lý nhóm tổ chức và thành viên",
+  "createGroup": "Tạo nhóm",
+  "editGroup": "Sửa nhóm",
+  "saveChanges": "Lưu thay đổi",
+  "noParent": "Không có nhóm cha (Cấp cao nhất)",
+  "slugHelp": "Tự tạo từ tên",
+  "searchPlaceholder": "Tìm kiếm nhóm...",
+  "emptyTitle": "Không tìm thấy nhóm",
+  "emptyDescription": "Tạo nhóm để tổ chức người dùng",
+  "columns": {
+    "name": "Tên",
+    "slug": "Slug",
+    "visibility": "Hiển thị",
+    "parent": "Nhóm cha",
+    "status": "Trạng thái",
+    "actions": "Thao tác"
+  },
+  "visibility": {
+    "open": "Mở",
+    "closed": "Đóng"
+  },
+  "form": {
+    "description": "Mô tả",
+    "descriptionPlaceholder": "Mô tả nhóm (tùy chọn)"
+  },
+  "actions": {
+    "manageMembers": "Quản lý thành viên",
+    "viewRequests": "Yêu cầu tham gia",
+    "edit": "Sửa",
+    "delete": "Xóa"
+  },
+  "delete": {
+    "title": "Xóa nhóm",
+    "description": "Bạn có chắc muốn xóa {{name}}? Thành viên sẽ bị loại bỏ."
+  },
+  "members": {
+    "title": "Thành viên nhóm",
+    "addPlaceholder": "ID người dùng cần thêm...",
+    "empty": "Không có thành viên",
+    "remove": "Xóa",
+    "promoteToAdmin": "Nâng lên Quản trị",
+    "demoteToMember": "Hạ xuống Thành viên",
+    "columns": {
+      "name": "Tên",
+      "role": "Vai trò"
+    },
+    "role": {
+      "admin": "Quản trị",
+      "member": "Thành viên"
+    }
+  },
+  "joinRequests": {
+    "title": "Yêu cầu tham gia",
+    "empty": "Không có yêu cầu nào",
+    "approve": "Chấp nhận",
+    "reject": "Từ chối",
+    "columns": {
+      "user": "Người dùng",
+      "message": "Tin nhắn",
+      "status": "Trạng thái"
+    }
+  },
+  "toast": {
+    "created": "Đã tạo nhóm",
+    "updated": "Đã cập nhật nhóm",
+    "deleted": "Đã xóa nhóm",
+    "memberAdded": "Đã thêm thành viên",
+    "memberRemoved": "Đã xóa thành viên",
+    "roleUpdated": "Đã cập nhật vai trò",
+    "requestReviewed": "Đã xem xét yêu cầu"
+  }
+}

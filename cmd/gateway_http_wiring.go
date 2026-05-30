@@ -201,6 +201,13 @@ func (d *gatewayDeps) wireHTTPHandlersOnServer(
 		httpapi.InitAPIKeyCache(d.pgStores.APIKeys, d.msgBus)
 	}
 
+	// Multi-auth module handlers (user, group, audit)
+	if d.pgStores != nil {
+		d.server.SetUsersHandler(httpapi.NewUsersHandler(d.pgStores.Users))
+		d.server.SetGroupsHandler(httpapi.NewGroupsHandler(d.pgStores.Groups))
+		d.server.SetAuditHandler(httpapi.NewAuditHandler(d.pgStores.Audit))
+	}
+
 	// K10: single shared webhookLimiter — one per process enforces per-tenant RPM cap across
 	// both LLM and message endpoints. Two separate instances would double the effective cap.
 	webhookEncKey := os.Getenv("GOCLAW_ENCRYPTION_KEY")

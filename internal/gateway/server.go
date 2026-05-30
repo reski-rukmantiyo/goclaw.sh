@@ -482,6 +482,10 @@ func (s *Server) SetAPIKeysHandler(h *httpapi.APIKeysHandler) {
 	s.handlers = append(s.handlers, h)
 }
 
+func (s *Server) SetUsersHandler(h *httpapi.UsersHandler)  { s.handlers = append(s.handlers, h) }
+func (s *Server) SetGroupsHandler(h *httpapi.GroupsHandler) { s.handlers = append(s.handlers, h) }
+func (s *Server)
+
 // SetWebhooksAdminHandler registers the webhook admin CRUD handler.
 func (s *Server) SetWebhooksAdminHandler(h *httpapi.WebhooksAdminHandler) {
 	s.handlers = append(s.handlers, h)

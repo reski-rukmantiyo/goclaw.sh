@@ -1,0 +1,74 @@
+{
+  "title": "Groups",
+  "description": "Manage organizational groups and membership",
+  "createGroup": "Create Group",
+  "editGroup": "Edit Group",
+  "saveChanges": "Save Changes",
+  "noParent": "No Parent (Top Level)",
+  "slugHelp": "Auto-generated from name",
+  "searchPlaceholder": "Search groups...",
+  "emptyTitle": "No groups found",
+  "emptyDescription": "Create a group to organize users",
+  "columns": {
+    "name": "Name",
+    "slug": "Slug",
+    "visibility": "Visibility",
+    "parent": "Parent",
+    "status": "Status",
+    "actions": "Actions"
+  },
+  "visibility": {
+    "open": "Open",
+    "closed": "Closed"
+  },
+  "form": {
+    "description": "Description",
+    "descriptionPlaceholder": "Optional group description"
+  },
+  "actions": {
+    "manageMembers": "Manage Members",
+    "viewRequests": "Join Requests",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "delete": {
+    "title": "Delete Group",
+    "description": "Are you sure you want to delete {{name}}? Members will be removed."
+  },
+  "members": {
+    "title": "Group Members",
+    "addPlaceholder": "User ID to add...",
+    "empty": "No members in this group",
+    "remove": "Remove",
+    "promoteToAdmin": "Promote to Admin",
+    "demoteToMember": "Demote to Member",
+    "columns": {
+      "name": "Name",
+      "role": "Role"
+    },
+    "role": {
+      "admin": "Admin",
+      "member": "Member"
+    }
+  },
+  "joinRequests": {
+    "title": "Join Requests",
+    "empty": "No pending requests",
+    "approve": "Approve",
+    "reject": "Reject",
+    "columns": {
+      "user": "User",
+      "message": "Message",
+      "status": "Status"
+    }
+  },
+  "toast": {
+    "created": "Group created",
+    "updated": "Group updated",
+    "deleted": "Group deleted",
+    "memberAdded": "Member added",
+    "memberRemoved": "Member removed",
+    "roleUpdated": "Role updated",
+    "requestReviewed": "Request reviewed"
+  }
+}

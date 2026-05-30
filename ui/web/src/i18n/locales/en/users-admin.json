@@ -1,0 +1,48 @@
+{
+  "title": "User Management",
+  "description": "Manage users and their access",
+  "addUser": "Add User",
+  "password": "Password",
+  "passwordPlaceholder": "Min. 12 characters",
+  "searchPlaceholder": "Search users...",
+  "filterStatus": "Filter status",
+  "emptyTitle": "No users found",
+  "emptyDescription": "Add a user to get started",
+  "never": "Never",
+  "columns": {
+    "displayName": "Display Name",
+    "email": "Email",
+    "provider": "Provider",
+    "status": "Status",
+    "role": "Role",
+    "lastLogin": "Last Login",
+    "actions": "Actions"
+  },
+  "status": {
+    "all": "All Status",
+    "active": "Active",
+    "suspended": "Suspended",
+    "deactivated": "Deactivated"
+  },
+  "role": {
+    "admin": "Admin",
+    "member": "Member"
+  },
+  "actions": {
+    "suspend": "Suspend",
+    "reactivate": "Reactivate",
+    "deactivate": "Deactivate"
+  },
+  "deactivate": {
+    "title": "Deactivate User",
+    "description": "Are you sure you want to deactivate {{name}}? This cannot be undone after 30 days."
+  },
+  "toast": {
+    "statusChanged": "User status updated",
+    "failedStatusChange": "Failed to change status",
+    "deactivated": "User deactivated",
+    "failedDeactivate": "Failed to deactivate user",
+    "created": "User created",
+    "failedCreate": "Failed to create user"
+  }
+}

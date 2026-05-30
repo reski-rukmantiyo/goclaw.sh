@@ -1,0 +1,48 @@
+{
+  "title": "Quản lý người dùng",
+  "description": "Quản lý người dùng và quyền truy cập",
+  "addUser": "Thêm người dùng",
+  "password": "Mật khẩu",
+  "passwordPlaceholder": "Tối thiểu 12 ký tự",
+  "searchPlaceholder": "Tìm kiếm người dùng...",
+  "filterStatus": "Lọc trạng thái",
+  "emptyTitle": "Không tìm thấy người dùng",
+  "emptyDescription": "Thêm người dùng để bắt đầu",
+  "never": "Chưa đăng nhập",
+  "columns": {
+    "displayName": "Tên hiển thị",
+    "email": "Email",
+    "provider": "Nhà cung cấp",
+    "status": "Trạng thái",
+    "role": "Vai trò",
+    "lastLogin": "Đăng nhập cuối",
+    "actions": "Thao tác"
+  },
+  "status": {
+    "all": "Tất cả",
+    "active": "Hoạt động",
+    "suspended": "Tạm khóa",
+    "deactivated": "Đã vô hiệu"
+  },
+  "role": {
+    "admin": "Quản trị",
+    "member": "Thành viên"
+  },
+  "actions": {
+    "suspend": "Tạm khóa",
+    "reactivate": "Kích hoạt lại",
+    "deactivate": "Vô hiệu hóa"
+  },
+  "deactivate": {
+    "title": "Vô hiệu hóa người dùng",
+    "description": "Bạn có chắc muốn vô hiệu hóa {{name}}? Không thể hoàn tác sau 30 ngày."
+  },
+  "toast": {
+    "statusChanged": "Đã cập nhật trạng thái",
+    "failedStatusChange": "Không thể thay đổi trạng thái",
+    "deactivated": "Đã vô hiệu hóa người dùng",
+    "failedDeactivate": "Không thể vô hiệu hóa",
+    "created": "Đã tạo người dùng",
+    "failedCreate": "Không thể tạo người dùng"
+  }
+}
