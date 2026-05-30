@@ -94,10 +94,9 @@ func (t *SessionCompactionTicker) compactOverThreshold() {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	sessions, err := t.sessions.ListOverThreshold(ctx, threshold, defaultIdleGuard)
+	listCtx, listCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	sessions, err := t.sessions.ListOverThreshold(listCtx, threshold, defaultIdleGuard)
+	listCancel()
 	if err != nil {
 		slog.Warn("session_compaction_ticker: list over threshold failed", "error", err)
 		return
@@ -110,19 +109,22 @@ func (t *SessionCompactionTicker) compactOverThreshold() {
 	tokenCounter := tokencount.NewTiktokenCounter()
 
 	for _, info := range sessions {
-		history := t.sessions.GetHistory(ctx, info.Key)
+		// Fresh context per session — isolates config resolve + LLM call from other sessions.
+		sctx, scancel := context.WithTimeout(context.Background(), 60*time.Second)
+		history := t.sessions.GetHistory(sctx, info.Key)
 		if len(history) < minMessagesToCompact {
+			scancel()
 			continue
 		}
 
-		// Resolve background provider for the session's tenant.
-		provider, model := providerresolve.ResolveBackgroundProvider(ctx, info.TenantID, t.registry, t.systemConfigs)
+		provider, model := providerresolve.ResolveBackgroundProvider(sctx, info.TenantID, t.registry, t.systemConfigs)
 		if provider == nil || model == "" {
 			slog.Warn("session_compaction_ticker: no provider resolved", "key", info.Key, "tenant", info.TenantID)
+			scancel()
 			continue
 		}
 
-		compacted := agent.CompactMessagesWithProvider(ctx, provider, model, history, keepLast, tokenCounter, info.Key)
+		compacted := agent.CompactMessagesWithProvider(sctx, provider, model, history, keepLast, tokenCounter, info.Key)
 		if compacted == nil {
 			slog.Warn("session_compaction_ticker: compaction failed",
 				"key", info.Key,
@@ -131,13 +133,15 @@ func (t *SessionCompactionTicker) compactOverThreshold() {
 				"provider", provider.Name(),
 				"model", model,
 			)
+			scancel()
 			continue
 		}
 
-		t.sessions.SetHistory(ctx, info.Key, compacted)
-		t.sessions.IncrementCompaction(ctx, info.Key)
-		if err := t.sessions.Save(ctx, info.Key); err != nil {
+		t.sessions.SetHistory(sctx, info.Key, compacted)
+		t.sessions.IncrementCompaction(sctx, info.Key)
+		if err := t.sessions.Save(sctx, info.Key); err != nil {
 			slog.Warn("session_compaction_ticker: save failed", "key", info.Key, "error", err)
+			scancel()
 			continue
 		}
 
@@ -151,6 +155,7 @@ func (t *SessionCompactionTicker) compactOverThreshold() {
 			"provider", provider.Name(),
 			"model", model,
 		)
+		scancel()
 	}
 }
 
