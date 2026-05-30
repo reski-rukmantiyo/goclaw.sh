@@ -52,6 +52,10 @@ const (
 	SenderNameKey contextKey = "goclaw_sender_name"
 	// AgentAudioKey carries the immutable agent audio snapshot for TTS tool dispatch.
 	AgentAudioKey contextKey = "goclaw_agent_audio"
+	// GroupIDKey is the context key for the current group UUID (multi-auth module).
+	GroupIDKey contextKey = "goclaw_group_id"
+	// GroupRoleKey is the context key for the user's role in the current group.
+	GroupRoleKey contextKey = "goclaw_group_role"
 )
 
 // AgentAudioSnapshot is an immutable snapshot of agent audio config carried through
@@ -432,6 +436,32 @@ func WithRole(ctx context.Context, role string) context.Context {
 // RoleFromContext extracts the permission role from context. Returns "" if not set.
 func RoleFromContext(ctx context.Context) string {
 	if v, ok := ctx.Value(RoleKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// WithGroupID returns a new context with the current group UUID.
+func WithGroupID(ctx context.Context, id uuid.UUID) context.Context {
+	return context.WithValue(ctx, GroupIDKey, id)
+}
+
+// GroupIDFromContext extracts the group UUID from context. Returns uuid.Nil if not set.
+func GroupIDFromContext(ctx context.Context) uuid.UUID {
+	if v, ok := ctx.Value(GroupIDKey).(uuid.UUID); ok {
+		return v
+	}
+	return uuid.Nil
+}
+
+// WithGroupRole returns a new context with the user's role in the current group.
+func WithGroupRole(ctx context.Context, role string) context.Context {
+	return context.WithValue(ctx, GroupRoleKey, role)
+}
+
+// GroupRoleFromContext extracts the group role from context. Returns "" if not set.
+func GroupRoleFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(GroupRoleKey).(string); ok {
 		return v
 	}
 	return ""
