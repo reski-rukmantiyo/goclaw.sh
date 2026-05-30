@@ -63,21 +63,25 @@ func CompactMessagesWithProvider(
 	}
 
 	// Find a clean split boundary. Walk forward from initial position to skip
-	// tool chains, ensuring the kept section starts on a user or clean assistant
-	// message. Must leave at least 2 messages to summarize.
+	// tool result messages, ensuring the kept section starts on a non-tool message.
+	// assistant+tool_calls is a valid start — LLMs handle assistant messages at any
+	// context position. Only tool results are problematic (orphaned without preceding
+	// assistant+tool_calls). Must leave at least 2 messages to summarize.
 	splitIdx := len(messages) - keepLast
 	maxSplit := len(messages) - 2
+	initialSplit := splitIdx
 	for splitIdx <= maxSplit {
-		m := messages[splitIdx]
-		if m.Role == "tool" || (m.Role == "assistant" && len(m.ToolCalls) > 0) {
+		if messages[splitIdx].Role == "tool" {
 			splitIdx++
 			continue
 		}
 		break
 	}
 	if splitIdx > maxSplit {
-		slog.Warn("compaction_split_boundary_failed", "key", logKey, "messages", len(messages), "keep_last", len(messages)-splitIdx, "split_idx", splitIdx)
-		return nil
+		// Fallback: force initial position. Summary builder already skips tool
+		// messages; most LLMs tolerate orphaned tool results in context.
+		slog.Warn("compaction_forced_split", "key", logKey, "messages", len(messages), "split_idx", initialSplit)
+		splitIdx = initialSplit
 	}
 
 	// Build summary input (same pattern as maybeSummarize in loop_history.go).
