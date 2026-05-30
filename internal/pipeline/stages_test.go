@@ -738,9 +738,9 @@ func TestBuildRecentContext_TruncatesLongMessages(t *testing.T) {
 func TestPruneStage_ReserveTokens_BuffersBudget(t *testing.T) {
 	t.Parallel()
 	pruneCallCount := 0
-	// Without reserve: budget = 10000 - 0 - 1000 = 9000, softThreshold 6300
-	// With reserve=2000: budget = 10000 - 0 - 1000 - 2000 = 7000, softThreshold 4900
-	// 50 msgs * 100 = 5000 tokens — crosses the 4900 soft threshold only when reserve is set.
+	// Without reserve: budget = 10000 - 0 - 1000 = 9000, softThreshold 6750
+	// With reserve=2000: budget = 10000 - 0 - 1000 - 2000 = 7000, softThreshold 5250
+	// 53 msgs * 100 = 5300 tokens — crosses the 5250 soft threshold only when reserve is set.
 	deps := &PipelineDeps{
 		Config: PipelineConfig{
 			ContextWindow: 10_000,
@@ -755,7 +755,7 @@ func TestPruneStage_ReserveTokens_BuffersBudget(t *testing.T) {
 	}
 	stage := NewPruneStage(deps, nil)
 	state := defaultState()
-	history := make([]providers.Message, 50)
+	history := make([]providers.Message, 53)
 	for i := range history {
 		history[i] = providers.Message{Role: "user", Content: "msg"}
 	}

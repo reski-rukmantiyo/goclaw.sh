@@ -194,12 +194,7 @@ func (l *Loop) maybeSummarize(ctx context.Context, sessionKey string) {
 
 	// Resolve compaction threshold from config: token-only (no message count guard).
 	// Industry standard — Claude Code, Anthropic API, LangChain all use token-based thresholds.
-	historyShare := config.DefaultHistoryShare
-	if l.compactionCfg != nil && l.compactionCfg.MaxHistoryShare > 0 {
-		historyShare = l.compactionCfg.MaxHistoryShare
-	}
-
-	threshold := int(float64(l.contextWindow) * historyShare)
+	threshold := int(float64(l.contextWindow) * config.EffectiveHistoryShare(l.compactionCfg))
 	if tokenEstimate <= threshold {
 		return
 	}

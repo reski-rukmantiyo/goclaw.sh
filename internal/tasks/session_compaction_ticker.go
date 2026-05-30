@@ -160,10 +160,11 @@ func (t *SessionCompactionTicker) compactOverThreshold() {
 }
 
 func (t *SessionCompactionTicker) effectiveThreshold() float64 {
-	if t.cfg != nil && t.cfg.Agents.Defaults.Compaction != nil && t.cfg.Agents.Defaults.Compaction.AutoCompactThreshold > 0 {
-		return t.cfg.Agents.Defaults.Compaction.AutoCompactThreshold
+	var cfg *config.CompactionConfig
+	if t.cfg != nil && t.cfg.Agents.Defaults.Compaction != nil {
+		cfg = t.cfg.Agents.Defaults.Compaction
 	}
-	return config.DefaultAutoCompactThreshold
+	return config.EffectiveAutoCompactThreshold(cfg)
 }
 
 func (t *SessionCompactionTicker) effectiveKeepLast() int {
