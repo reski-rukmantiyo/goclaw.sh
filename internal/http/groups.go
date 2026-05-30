@@ -84,10 +84,10 @@ func (h *GroupsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve created_by from user context.
-	var createdBy uuid.UUID
+	var createdBy *uuid.UUID
 	if userIDStr := store.UserIDFromContext(ctx); userIDStr != "" {
 		if parsed, err := uuid.Parse(userIDStr); err == nil {
-			createdBy = parsed
+			createdBy = &parsed
 		}
 	}
 

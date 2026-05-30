@@ -57,7 +57,7 @@ func (s *PGGroupStore) CreateGroup(ctx context.Context, group *store.GroupData) 
 		nilStr(derefStrPtr(group.Description)),
 		nilUUID(group.ParentGroupID),
 		group.TenantID, group.Visibility, group.MaxMembers,
-		group.CreatedBy, group.Status, now, now,
+		nilUUID(group.CreatedBy), group.Status, now, now,
 	)
 	return err
 }
@@ -579,10 +579,10 @@ func (s *PGGroupStore) ReviewJoinRequest(ctx context.Context, reqID uuid.UUID, a
 func scanGroupRow(row *sql.Row) (*store.GroupData, error) {
 	var g store.GroupData
 	var description sql.NullString
-	var parentGroupID uuid.NullUUID
+	var parentGroupID, createdBy uuid.NullUUID
 	err := row.Scan(
 		&g.ID, &g.Name, &g.Slug, &description, &parentGroupID,
-		&g.TenantID, &g.Visibility, &g.MaxMembers, &g.CreatedBy,
+		&g.TenantID, &g.Visibility, &g.MaxMembers, &createdBy,
 		&g.Status, &g.CreatedAt, &g.UpdatedAt,
 	)
 	if err != nil {
@@ -593,6 +593,9 @@ func scanGroupRow(row *sql.Row) (*store.GroupData, error) {
 	}
 	if parentGroupID.Valid {
 		g.ParentGroupID = &parentGroupID.UUID
+	}
+	if createdBy.Valid {
+		g.CreatedBy = &createdBy.UUID
 	}
 	return &g, nil
 }
@@ -600,10 +603,10 @@ func scanGroupRow(row *sql.Row) (*store.GroupData, error) {
 func scanGroupRowFromRows(rows *sql.Rows) (*store.GroupData, error) {
 	var g store.GroupData
 	var description sql.NullString
-	var parentGroupID uuid.NullUUID
+	var parentGroupID, createdBy uuid.NullUUID
 	err := rows.Scan(
 		&g.ID, &g.Name, &g.Slug, &description, &parentGroupID,
-		&g.TenantID, &g.Visibility, &g.MaxMembers, &g.CreatedBy,
+		&g.TenantID, &g.Visibility, &g.MaxMembers, &createdBy,
 		&g.Status, &g.CreatedAt, &g.UpdatedAt,
 	)
 	if err != nil {
@@ -614,6 +617,9 @@ func scanGroupRowFromRows(rows *sql.Rows) (*store.GroupData, error) {
 	}
 	if parentGroupID.Valid {
 		g.ParentGroupID = &parentGroupID.UUID
+	}
+	if createdBy.Valid {
+		g.CreatedBy = &createdBy.UUID
 	}
 	return &g, nil
 }
@@ -622,10 +628,10 @@ func scanGroupRowWithTotal(rows *sql.Rows) (*store.GroupData, int, error) {
 	var g store.GroupData
 	var total int
 	var description sql.NullString
-	var parentGroupID uuid.NullUUID
+	var parentGroupID, createdBy uuid.NullUUID
 	err := rows.Scan(
 		&g.ID, &g.Name, &g.Slug, &description, &parentGroupID,
-		&g.TenantID, &g.Visibility, &g.MaxMembers, &g.CreatedBy,
+		&g.TenantID, &g.Visibility, &g.MaxMembers, &createdBy,
 		&g.Status, &g.CreatedAt, &g.UpdatedAt, &total,
 	)
 	if err != nil {
@@ -636,6 +642,9 @@ func scanGroupRowWithTotal(rows *sql.Rows) (*store.GroupData, int, error) {
 	}
 	if parentGroupID.Valid {
 		g.ParentGroupID = &parentGroupID.UUID
+	}
+	if createdBy.Valid {
+		g.CreatedBy = &createdBy.UUID
 	}
 	return &g, total, nil
 }

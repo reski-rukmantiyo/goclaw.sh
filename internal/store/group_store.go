@@ -58,7 +58,7 @@ type GroupData struct {
 	TenantID      uuid.UUID  `json:"tenant_id" db:"tenant_id"`
 	Visibility    string     `json:"visibility" db:"visibility"`
 	MaxMembers    int        `json:"max_members" db:"max_members"`
-	CreatedBy     uuid.UUID  `json:"created_by" db:"created_by"`
+	CreatedBy     *uuid.UUID `json:"created_by,omitempty" db:"created_by"`
 	Status        string     `json:"status" db:"status"`
 	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at" db:"updated_at"`
@@ -90,7 +90,7 @@ type JoinRequestData struct {
 type AuditLogEntry struct {
 	ID           uuid.UUID  `json:"id" db:"id"`
 	TenantID     uuid.UUID  `json:"tenant_id" db:"tenant_id"`
-	ActorID      uuid.UUID  `json:"actor_id" db:"actor_id"`
+	ActorID      *uuid.UUID `json:"actor_id,omitempty" db:"actor_id"`
 	Action       string     `json:"action" db:"action"`
 	ResourceType string     `json:"resource_type" db:"resource_type"`
 	ResourceID   uuid.UUID  `json:"resource_id" db:"resource_id"`

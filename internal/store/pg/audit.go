@@ -42,7 +42,7 @@ func (s *PGAuditStore) Log(ctx context.Context, entry *store.AuditLogEntry) erro
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO audit_log (id, tenant_id, actor_id, action, resource_type, resource_id, group_id, detail, ip_address, user_agent, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		entry.ID, entry.TenantID, entry.ActorID, entry.Action,
+		entry.ID, entry.TenantID, nilUUID(entry.ActorID), entry.Action,
 		entry.ResourceType, entry.ResourceID,
 		nilUUID(entry.GroupID), detail,
 		nilStr(derefStrPtr(entry.IPAddress)),
@@ -132,16 +132,20 @@ func (s *PGAuditStore) List(ctx context.Context, tenantID uuid.UUID, params stor
 	var total int
 	for rows.Next() {
 		var e store.AuditLogEntry
+		var actorID uuid.NullUUID
 		var groupID sql.NullString
 		var detailJSON []byte
 		var ipAddress sql.NullString
 		var userAgent sql.NullString
 		if err := rows.Scan(
-			&e.ID, &e.TenantID, &e.ActorID, &e.Action,
+			&e.ID, &e.TenantID, &actorID, &e.Action,
 			&e.ResourceType, &e.ResourceID, &groupID, &detailJSON,
 			&ipAddress, &userAgent, &e.CreatedAt, &total,
 		); err != nil {
 			return nil, 0, err
+		}
+		if actorID.Valid {
+			e.ActorID = &actorID.UUID
 		}
 		if groupID.Valid {
 			id, err := uuid.Parse(groupID.String)
