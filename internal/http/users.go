@@ -163,10 +163,10 @@ func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	tenantID := store.TenantIDFromContext(ctx)
 
 	var input struct {
-		Email         string `json:"email"`
-		DisplayName   string `json:"display_name"`
-		Password      string `json:"password"`
-		IsTenantAdmin bool   `json:"is_tenant_admin"`
+		Email       string `json:"email"`
+		DisplayName string `json:"display_name"`
+		Password    string `json:"password"`
+		Role        string `json:"role"` // tenant_users role: owner/admin/operator/member/viewer
 	}
 	if !bindJSON(w, r, locale, &input) {
 		return
@@ -187,6 +187,16 @@ func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if !hasUpper || !hasSymbol {
 		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgAuthPasswordComplexity))
+		return
+	}
+
+	// Validate role
+	if input.Role == "" {
+		input.Role = "member"
+	}
+	validRoles := map[string]bool{"owner": true, "admin": true, "operator": true, "member": true, "viewer": true}
+	if !validRoles[input.Role] {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, "invalid role"))
 		return
 	}
 
@@ -213,9 +223,8 @@ func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		Email:        input.Email,
 		DisplayName:  input.DisplayName,
 		TenantID:     tenantID,
-		AuthProvider:  store.AuthProviderLocal,
-		PasswordHash:  &hash,
-		IsTenantAdmin: input.IsTenantAdmin,
+		AuthProvider: store.AuthProviderLocal,
+		PasswordHash: &hash,
 		Status:        store.UserStatusActive,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -228,11 +237,7 @@ func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.tenants != nil && tenantID != uuid.Nil {
-		role := "member"
-		if user.IsTenantAdmin {
-			role = "admin"
-		}
-		if err := h.tenants.AddUser(ctx, tenantID, user.ID.String(), role); err != nil {
+		if err := h.tenants.AddUser(ctx, tenantID, user.ID.String(), input.Role); err != nil {
 			slog.Warn("users.create: failed to add tenant membership", "error", err, "user_id", user.ID)
 		}
 	}
@@ -361,10 +366,11 @@ func (h *UsersHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// handleToggleAdmin toggles a user's tenant admin status.
+// handleToggleAdmin toggles a user's role between admin and member in tenant_users.
 func (h *UsersHandler) handleToggleAdmin(w http.ResponseWriter, r *http.Request) {
 	locale := extractLocale(r)
 	ctx := r.Context()
+	tenantID := store.TenantIDFromContext(ctx)
 
 	idStr := r.PathValue("id")
 	id, err := uuid.Parse(idStr)
@@ -378,12 +384,20 @@ func (h *UsersHandler) handleToggleAdmin(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	user.IsTenantAdmin = !user.IsTenantAdmin
-	if err := h.users.Update(ctx, user); err != nil {
-		slog.Error("users.toggle_admin failed", "error", err, "id", idStr)
-		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToUpdate, "user admin status", "internal error"))
-		return
+	// Toggle role in tenant_users
+	if h.tenants != nil && tenantID != uuid.Nil {
+		currentRole, _ := h.tenants.GetUserRole(ctx, tenantID, idStr)
+		newRole := "member"
+		if currentRole != "admin" {
+			newRole = "admin"
+		}
+		if err := h.tenants.AddUser(ctx, tenantID, idStr, newRole); err != nil {
+			slog.Error("users.toggle_admin failed", "error", err, "id", idStr)
+			writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToUpdate, "user role", "internal error"))
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"role": newRole})
+	} else {
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgInternalError, "tenant store unavailable"))
 	}
-
-	writeJSON(w, http.StatusOK, map[string]bool{"is_tenant_admin": user.IsTenantAdmin})
 }

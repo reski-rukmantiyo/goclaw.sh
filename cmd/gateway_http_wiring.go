@@ -217,11 +217,11 @@ func (d *gatewayDeps) wireHTTPHandlersOnServer(
 				httpapi.InitJWTManager(jwtManager)
 					d.server.Router().SetJWTManager(jwtManager)
 
-				authH := httpapi.NewAuthHandler(d.pgStores.Users, jwtManager, &d.cfg.Auth)
+				authH := httpapi.NewAuthHandler(d.pgStores.Users, d.pgStores.Tenants, jwtManager, &d.cfg.Auth)
 				d.server.SetAuthHandler(authH)
 
 				// Permission cache for RBAC
-				permCache := httpapi.NewPermissionCache(d.pgStores.Users, d.pgStores.Groups, 5*time.Minute)
+				permCache := httpapi.NewPermissionCache(d.pgStores.Users, d.pgStores.Groups, d.pgStores.Tenants, 5*time.Minute)
 				httpapi.InitPermCache(permCache)
 
 				// OIDC handler (only if providers configured)
@@ -242,7 +242,7 @@ func (d *gatewayDeps) wireHTTPHandlersOnServer(
 				}
 				if len(oidcProviders) > 0 {
 					validator := auth.NewOIDCValidator(oidcProviders)
-					oidcH := httpapi.NewOIDCHandler(d.pgStores.Users, d.pgStores.Groups, validator, jwtManager, oidcProviders)
+					oidcH := httpapi.NewOIDCHandler(d.pgStores.Users, d.pgStores.Groups, d.pgStores.Tenants, validator, jwtManager, oidcProviders)
 					d.server.SetOIDCHandler(oidcH)
 				}
 			}

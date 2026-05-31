@@ -246,6 +246,8 @@ func (r *MethodRouter) handleConnect(ctx context.Context, client *Client, req *p
 
 			// Map JWT role to permission role
 			switch claims.Role {
+			case "owner":
+				client.role = permissions.RoleOwner
 			case "tenant_admin":
 				client.role = permissions.RoleAdmin
 			default:
@@ -259,7 +261,7 @@ func (r *MethodRouter) handleConnect(ctx context.Context, client *Client, req *p
 				}
 			}
 
-			// Owner check: owner IDs get elevated to RoleOwner
+			// Config-based owner IDs still override (backward compat)
 			if isOwnerID(claims.Subject, r.server.cfg.Gateway.OwnerIDs) {
 				client.role = permissions.RoleOwner
 			}

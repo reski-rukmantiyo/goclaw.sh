@@ -25,14 +25,16 @@ type permissionCache struct {
 	ttl     time.Duration
 	users   store.UserStore
 	groups  store.GroupStore
+	tenants store.TenantStore
 }
 
-func NewPermissionCache(users store.UserStore, groups store.GroupStore, ttl time.Duration) *permissionCache {
+func NewPermissionCache(users store.UserStore, groups store.GroupStore, tenants store.TenantStore, ttl time.Duration) *permissionCache {
 	return &permissionCache{
 		entries: make(map[string]permCacheEntry),
 		ttl:     ttl,
 		users:   users,
 		groups:  groups,
+		tenants: tenants,
 	}
 }
 
@@ -67,9 +69,14 @@ func (c *permissionCache) resolveUserRole(ctx context.Context, userIDStr, tenant
 	}
 
 	var role permissions.UserRole
-	if user.IsTenantAdmin {
-		role = permissions.UserRoleTenantAdmin
-	} else if c.groups != nil {
+	// Resolve role from tenant_users membership
+	if c.tenants != nil && tenantID != uuid.Nil {
+		tuRole, err := c.tenants.GetUserRole(ctx, tenantID, userIDStr)
+		if err == nil && (tuRole == "owner" || tuRole == "admin") {
+			role = permissions.UserRoleTenantAdmin
+		}
+	}
+	if role == "" && c.groups != nil {
 		// Check if user is admin of any group
 		groups, err := c.groups.GetUserGroups(ctx, userID)
 		if err == nil {

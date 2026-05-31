@@ -16,14 +16,15 @@ import (
 
 // AuthHandler handles authentication session endpoints.
 type AuthHandler struct {
-	users store.UserStore
-	jwt   *auth.JWTManager
-	cfg   *config.AuthConfig
+	users   store.UserStore
+	tenants store.TenantStore
+	jwt     *auth.JWTManager
+	cfg     *config.AuthConfig
 }
 
 // NewAuthHandler creates a handler for auth session endpoints.
-func NewAuthHandler(users store.UserStore, jwt *auth.JWTManager, cfg *config.AuthConfig) *AuthHandler {
-	return &AuthHandler{users: users, jwt: jwt, cfg: cfg}
+func NewAuthHandler(users store.UserStore, tenants store.TenantStore, jwt *auth.JWTManager, cfg *config.AuthConfig) *AuthHandler {
+	return &AuthHandler{users: users, tenants: tenants, jwt: jwt, cfg: cfg}
 }
 
 // RegisterRoutes registers all auth session routes on the given mux.
@@ -83,11 +84,8 @@ func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine role for JWT claims
-	role := "member"
-	if user.IsTenantAdmin {
-		role = "tenant_admin"
-	}
+	// Determine role for JWT claims from tenant_users membership
+	role := resolveUserRoleForJWT(ctx, h.tenants, user.TenantID, user.ID.String())
 
 	// Issue access token
 	accessToken, err := h.jwt.IssueAccessToken(user.ID, user.Email, user.TenantID, role)
@@ -169,10 +167,7 @@ func (h *AuthHandler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	role := "member"
-	if user.IsTenantAdmin {
-		role = "tenant_admin"
-	}
+	role := resolveUserRoleForJWT(ctx, h.tenants, user.TenantID, user.ID.String())
 
 	accessToken, err := h.jwt.IssueAccessToken(user.ID, user.Email, user.TenantID, role)
 	if err != nil {
@@ -297,4 +292,23 @@ func parseJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 		return false
 	}
 	return true
+}
+
+// resolveUserRoleForJWT reads the user's role from tenant_users for JWT claims.
+// Maps: owner -> "owner", admin -> "tenant_admin", else -> "member".
+func resolveUserRoleForJWT(ctx context.Context, tenants store.TenantStore, tenantID uuid.UUID, userID string) string {
+	if tenants != nil && tenantID != uuid.Nil && userID != "" {
+		role, err := tenants.GetUserRole(ctx, tenantID, userID)
+		if err == nil && role != "" {
+			switch role {
+			case "owner":
+				return "owner"
+			case "admin":
+				return "tenant_admin"
+			default:
+				return "member"
+			}
+		}
+	}
+	return "member"
 }

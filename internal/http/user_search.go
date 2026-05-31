@@ -118,9 +118,6 @@ func (h *ChannelInstancesHandler) handleSearchUsers(w http.ResponseWriter, r *ht
 				}
 				displayName := u.DisplayName
 				role := "member"
-				if u.IsTenantAdmin {
-					role = "admin"
-				}
 				results = append(results, UserSearchResult{
 					ID:          u.Email,
 					UUID:        u.ID.String(),

@@ -17,6 +17,7 @@ import (
 type OIDCHandler struct {
 	users     store.UserStore
 	groups    store.GroupStore
+	tenants   store.TenantStore
 	validator *auth.OIDCValidator
 	jwt       *auth.JWTManager
 	providers map[string]*auth.OIDCProvider
@@ -25,7 +26,7 @@ type OIDCHandler struct {
 }
 
 // NewOIDCHandler creates a handler for OIDC endpoints.
-func NewOIDCHandler(users store.UserStore, groups store.GroupStore, validator *auth.OIDCValidator, jwt *auth.JWTManager, providers []*auth.OIDCProvider) *OIDCHandler {
+func NewOIDCHandler(users store.UserStore, groups store.GroupStore, tenants store.TenantStore, validator *auth.OIDCValidator, jwt *auth.JWTManager, providers []*auth.OIDCProvider) *OIDCHandler {
 	pMap := make(map[string]*auth.OIDCProvider, len(providers))
 	for _, p := range providers {
 		pMap[p.Name] = p
@@ -33,6 +34,7 @@ func NewOIDCHandler(users store.UserStore, groups store.GroupStore, validator *a
 	return &OIDCHandler{
 		users:     users,
 		groups:    groups,
+		tenants:   tenants,
 		validator: validator,
 		jwt:       jwt,
 		providers: pMap,
@@ -157,11 +159,8 @@ func (h *OIDCHandler) handleCallback(providerName string) http.HandlerFunc {
 			return
 		}
 
-		// Determine role
-		role := "member"
-		if user.IsTenantAdmin {
-			role = "tenant_admin"
-		}
+		// Determine role from tenant_users membership
+		role := resolveUserRoleForJWT(r.Context(), h.tenants, user.TenantID, user.ID.String())
 
 		// Issue JWT session token
 		accessToken, err := h.jwt.IssueAccessToken(user.ID, user.Email, user.TenantID, role)
