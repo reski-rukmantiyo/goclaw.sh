@@ -5,6 +5,7 @@
   "password": "Mật khẩu",
   "passwordPlaceholder": "Tối thiểu 8 ký tự",
   "passwordHint": "Phải chứa chữ hoa và ký tự đặc biệt",
+  "isAdmin": "Quản trị viên",
   "searchPlaceholder": "Tìm kiếm người dùng...",
   "filterStatus": "Lọc trạng thái",
   "emptyTitle": "Không tìm thấy người dùng",
@@ -15,7 +16,7 @@
     "email": "Email",
     "provider": "Nhà cung cấp",
     "status": "Trạng thái",
-    "role": "Vai trò",
+    "role": "Quản trị viên",
     "lastLogin": "Đăng nhập cuối",
     "actions": "Thao tác"
   },
@@ -32,7 +33,9 @@
   "actions": {
     "suspend": "Tạm khóa",
     "reactivate": "Kích hoạt lại",
-    "deactivate": "Vô hiệu hóa"
+    "deactivate": "Vô hiệu hóa",
+    "makeAdmin": "Cấp quyền quản trị",
+    "removeAdmin": "Thu hồi quyền quản trị"
   },
   "deactivate": {
     "title": "Vô hiệu hóa người dùng",
@@ -44,6 +47,8 @@
     "deactivated": "Đã vô hiệu hóa người dùng",
     "failedDeactivate": "Không thể vô hiệu hóa",
     "created": "Đã tạo người dùng",
-    "failedCreate": "Không thể tạo người dùng"
+    "failedCreate": "Không thể tạo người dùng",
+    "adminToggled": "Đã cập nhật quyền quản trị",
+    "failedAdminToggle": "Không thể thay đổi quyền quản trị"
   }
 }

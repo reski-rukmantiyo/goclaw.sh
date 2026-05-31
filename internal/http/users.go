@@ -32,6 +32,7 @@ func (h *UsersHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/users", requireAuthAction("user.pre_provision", h.handleCreate))
 	mux.HandleFunc("GET /v1/users/{id}", requireAuthAction("user.get", h.handleGet))
 	mux.HandleFunc("PATCH /v1/users/{id}/status", requireAuthAction("user.suspend", h.handleStatusChange))
+	mux.HandleFunc("PATCH /v1/users/{id}/admin", requireAuthAction("user.pre_provision", h.handleToggleAdmin))
 	mux.HandleFunc("DELETE /v1/users/{id}", requireAuthAction("user.deactivate", h.handleDelete))
 }
 
@@ -161,9 +162,10 @@ func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	tenantID := store.TenantIDFromContext(ctx)
 
 	var input struct {
-		Email       string `json:"email"`
-		DisplayName string `json:"display_name"`
-		Password    string `json:"password"`
+		Email         string `json:"email"`
+		DisplayName   string `json:"display_name"`
+		Password      string `json:"password"`
+		IsTenantAdmin bool   `json:"is_tenant_admin"`
 	}
 	if !bindJSON(w, r, locale, &input) {
 		return
@@ -210,9 +212,10 @@ func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		Email:        input.Email,
 		DisplayName:  input.DisplayName,
 		TenantID:     tenantID,
-		AuthProvider: store.AuthProviderLocal,
-		PasswordHash: &hash,
-		Status:       store.UserStatusActive,
+		AuthProvider:  store.AuthProviderLocal,
+		PasswordHash:  &hash,
+		IsTenantAdmin: input.IsTenantAdmin,
+		Status:        store.UserStatusActive,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -234,6 +237,10 @@ func (h *UsersHandler) checkUserTenantScope(w http.ResponseWriter, r *http.Reque
 
 	user, err := h.users.GetByID(ctx, id)
 	if err != nil {
+		writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "user", id.String()))
+		return nil
+	}
+	if user == nil {
 		writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "user", id.String()))
 		return nil
 	}
@@ -341,4 +348,31 @@ func (h *UsersHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// handleToggleAdmin toggles a user's tenant admin status.
+func (h *UsersHandler) handleToggleAdmin(w http.ResponseWriter, r *http.Request) {
+	locale := extractLocale(r)
+	ctx := r.Context()
+
+	idStr := r.PathValue("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidID, "user"))
+		return
+	}
+
+	user := h.checkUserTenantScope(w, r, id)
+	if user == nil {
+		return
+	}
+
+	user.IsTenantAdmin = !user.IsTenantAdmin
+	if err := h.users.Update(ctx, user); err != nil {
+		slog.Error("users.toggle_admin failed", "error", err, "id", idStr)
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToUpdate, "user admin status", "internal error"))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"is_tenant_admin": user.IsTenantAdmin})
 }

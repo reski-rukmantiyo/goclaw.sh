@@ -5,6 +5,7 @@
   "password": "Password",
   "passwordPlaceholder": "Min. 8 characters",
   "passwordHint": "Must contain uppercase letter and symbol",
+  "isAdmin": "Tenant Admin",
   "searchPlaceholder": "Search users...",
   "filterStatus": "Filter status",
   "emptyTitle": "No users found",
@@ -15,7 +16,7 @@
     "email": "Email",
     "provider": "Provider",
     "status": "Status",
-    "role": "Role",
+    "role": "Tenant Admin",
     "lastLogin": "Last Login",
     "actions": "Actions"
   },
@@ -32,7 +33,9 @@
   "actions": {
     "suspend": "Suspend",
     "reactivate": "Reactivate",
-    "deactivate": "Deactivate"
+    "deactivate": "Deactivate",
+    "makeAdmin": "Grant Tenant Admin",
+    "removeAdmin": "Revoke Tenant Admin"
   },
   "deactivate": {
     "title": "Deactivate User",
@@ -44,6 +47,8 @@
     "deactivated": "User deactivated",
     "failedDeactivate": "Failed to deactivate user",
     "created": "User created",
-    "failedCreate": "Failed to create user"
+    "failedCreate": "Failed to create user",
+    "adminToggled": "Admin status updated",
+    "failedAdminToggle": "Failed to toggle admin status"
   }
 }

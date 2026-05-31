@@ -124,8 +124,8 @@ func (s *SQLiteUserStore) Update(ctx context.Context, user *store.UserData) erro
 	user.UpdatedAt = now
 
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE users SET display_name = ?, avatar_url = ?, updated_at = ? WHERE id = ?`,
-		user.DisplayName, user.AvatarURL, now, user.ID.String(),
+		`UPDATE users SET display_name = ?, avatar_url = ?, is_tenant_admin = ?, updated_at = ? WHERE id = ?`,
+		user.DisplayName, user.AvatarURL, user.IsTenantAdmin, now, user.ID.String(),
 	)
 	if err != nil {
 		return err

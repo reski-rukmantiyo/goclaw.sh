@@ -50,7 +50,7 @@
     "demoteToMember": "Hạ xuống Thành viên",
     "columns": {
       "name": "Tên",
-      "role": "Vai trò"
+      "role": "Vai trò nhóm"
     },
     "role": {
       "admin": "Quản trị",

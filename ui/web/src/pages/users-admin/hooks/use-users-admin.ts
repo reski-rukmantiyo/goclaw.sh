@@ -66,7 +66,7 @@ export function useUsersAdmin(params: UserListParams = {}) {
   });
 
   const createUser = useMutation({
-    mutationFn: async (input: { email: string; display_name: string; password: string }) => {
+    mutationFn: async (input: { email: string; display_name: string; password: string; is_tenant_admin?: boolean }) => {
       return http.post<User>("/v1/users", input);
     },
     onSuccess: () => {
@@ -78,6 +78,19 @@ export function useUsersAdmin(params: UserListParams = {}) {
     },
   });
 
+  const toggleAdmin = useMutation({
+    mutationFn: async (userId: string) => {
+      return http.patch<{ is_tenant_admin: boolean }>(`/v1/users/${userId}/admin`, {});
+    },
+    onSuccess: () => {
+      invalidate();
+      toast.success(i18next.t("users-admin:toast.adminToggled"));
+    },
+    onError: (err: Error) => {
+      toast.error(i18next.t("users-admin:toast.failedAdminToggle"), err.message);
+    },
+  });
+
   return {
     users,
     total,
@@ -86,8 +99,10 @@ export function useUsersAdmin(params: UserListParams = {}) {
     changeStatus: changeStatus.mutateAsync,
     deactivateUser: deactivateUser.mutateAsync,
     createUser: createUser.mutateAsync,
+    toggleAdmin: toggleAdmin.mutateAsync,
     isStatusChanging: changeStatus.isPending,
     isDeactivating: deactivateUser.isPending,
     isCreating: createUser.isPending,
+    isTogglingAdmin: toggleAdmin.isPending,
   };
 }

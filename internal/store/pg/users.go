@@ -70,9 +70,10 @@ func (s *PGUserStore) GetByEmail(ctx context.Context, tenantID uuid.UUID, email 
 
 func (s *PGUserStore) Update(ctx context.Context, user *store.UserData) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE users SET display_name = $1, avatar_url = $2, updated_at = NOW() WHERE id = $3`,
+		`UPDATE users SET display_name = $1, avatar_url = $2, is_tenant_admin = $3, updated_at = NOW() WHERE id = $4`,
 		user.DisplayName,
 		sql.NullString{String: derefStr(user.AvatarURL), Valid: user.AvatarURL != nil && *user.AvatarURL != ""},
+		user.IsTenantAdmin,
 		user.ID,
 	)
 	return err

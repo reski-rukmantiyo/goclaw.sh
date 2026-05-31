@@ -194,6 +194,10 @@ func (h *GroupsHandler) checkGroupTenantScope(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "group", id.String()))
 		return nil
 	}
+	if group == nil {
+		writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "group", id.String()))
+		return nil
+	}
 	if tid := store.TenantIDFromContext(ctx); tid != uuid.Nil && group.TenantID != tid {
 		writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "group", id.String()))
 		return nil
@@ -463,6 +467,11 @@ func (h *GroupsHandler) handleRoleChange(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := h.groups.UpdateMemberRole(ctx, groupID, userID, input.Role); err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "last admin") {
+			writeError(w, http.StatusConflict, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, errMsg))
+			return
+		}
 		slog.Error("groups.role_change failed", "error", err, "group_id", groupID, "user_id", userID)
 		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToUpdate, "member role", "internal error"))
 		return

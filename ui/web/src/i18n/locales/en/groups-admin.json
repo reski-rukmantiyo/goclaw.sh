@@ -50,7 +50,7 @@
     "demoteToMember": "Demote to Member",
     "columns": {
       "name": "Name",
-      "role": "Role"
+      "role": "Group Role"
     },
     "role": {
       "admin": "Admin",

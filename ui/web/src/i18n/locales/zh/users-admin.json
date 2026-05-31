@@ -5,6 +5,7 @@
   "password": "密码",
   "passwordPlaceholder": "至少8个字符",
   "passwordHint": "必须包含大写字母和特殊字符",
+  "isAdmin": "租户管理员",
   "searchPlaceholder": "搜索用户...",
   "filterStatus": "筛选状态",
   "emptyTitle": "未找到用户",
@@ -15,7 +16,7 @@
     "email": "邮箱",
     "provider": "认证方式",
     "status": "状态",
-    "role": "角色",
+    "role": "租户管理员",
     "lastLogin": "最后登录",
     "actions": "操作"
   },
@@ -32,7 +33,9 @@
   "actions": {
     "suspend": "暂停",
     "reactivate": "重新激活",
-    "deactivate": "停用"
+    "deactivate": "停用",
+    "makeAdmin": "授予租户管理员",
+    "removeAdmin": "撤销租户管理员"
   },
   "deactivate": {
     "title": "停用用户",
@@ -44,6 +47,8 @@
     "deactivated": "用户已停用",
     "failedDeactivate": "停用失败",
     "created": "用户已创建",
-    "failedCreate": "创建用户失败"
+    "failedCreate": "创建用户失败",
+    "adminToggled": "管理员状态已更新",
+    "failedAdminToggle": "切换管理员状态失败"
   }
 }

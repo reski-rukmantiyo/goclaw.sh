@@ -50,7 +50,7 @@
     "demoteToMember": "降为成员",
     "columns": {
       "name": "名称",
-      "role": "角色"
+      "role": "组角色"
     },
     "role": {
       "admin": "管理员",
