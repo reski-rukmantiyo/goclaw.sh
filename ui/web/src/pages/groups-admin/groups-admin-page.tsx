@@ -46,6 +46,7 @@ import {
   useGroupsTree,
 } from "./hooks/use-groups-admin";
 import { GroupTreeView } from "./group-tree-view";
+import { UserPickerCombobox } from "@/components/shared/user-picker-combobox";
 import type { Group, GroupMember, JoinRequest } from "@/types/user-mgmt";
 
 function visibilityBadge(visibility: string) {
@@ -134,6 +135,7 @@ function GroupsAdminPage() {
     setFormSlug(group.slug);
     setFormDescription(group.description ?? "");
     setFormVisibility(group.visibility);
+    setFormParentGroupId(group.parent_group_id ?? "none");
     setFormOpen(true);
   };
 
@@ -147,6 +149,7 @@ function GroupsAdminPage() {
           name: formName.trim(),
           description: formDescription.trim() || undefined,
           visibility: formVisibility,
+          parent_group_id: formParentGroupId !== "none" ? formParentGroupId : null,
         });
       } else {
         await createGroup({
@@ -154,7 +157,7 @@ function GroupsAdminPage() {
           slug: formSlug.trim(),
           description: formDescription.trim() || undefined,
           visibility: formVisibility,
-          parent_group_id: formParentGroupId !== "none" ? formParentGroupId : undefined,
+          parent_group_id: formParentGroupId !== "none" ? formParentGroupId : null,
         });
       }
       setFormOpen(false);
@@ -493,26 +496,26 @@ function GroupsAdminPage() {
                 </SelectContent>
               </Select>
             </div>
-            {!editTarget && (
-              <div className="space-y-1.5">
-                <Label>{t("form.parentGroup")}</Label>
-                <Select value={formParentGroupId} onValueChange={setFormParentGroupId}>
-                  <SelectTrigger size="sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">
-                      {t("form.parentGroupNone")}
-                    </SelectItem>
-                    {groups.map((g) => (
+            <div className="space-y-1.5">
+              <Label>{t("form.parentGroup")}</Label>
+              <Select value={formParentGroupId} onValueChange={setFormParentGroupId}>
+                <SelectTrigger size="sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">
+                    {t("form.parentGroupNone")}
+                  </SelectItem>
+                  {groups
+                    .filter((g) => g.id !== editTarget?.id)
+                    .map((g) => (
                       <SelectItem key={g.id} value={g.id}>
                         {g.name}
                       </SelectItem>
                     ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -568,11 +571,13 @@ function GroupsAdminPage() {
           <div className="space-y-4 py-2">
             {/* Add member form */}
             <div className="flex gap-2">
-              <Input
+              <UserPickerCombobox
                 value={addMemberUserId}
-                onChange={(e) => setAddMemberUserId(e.target.value)}
+                onChange={setAddMemberUserId}
+                source="tenant_user"
+                valueMode="uuid"
                 placeholder={t("members.addPlaceholder")}
-                className="flex-1 text-base md:text-sm"
+                className="flex-1"
               />
               <Select
                 value={addMemberRole}

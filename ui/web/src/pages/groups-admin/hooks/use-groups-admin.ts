@@ -51,7 +51,7 @@ export function useGroupsAdmin(params: GroupListParams = {}) {
       slug: string;
       description?: string;
       visibility?: string;
-      parent_group_id?: string;
+      parent_group_id?: string | null;
     }) => {
       return http.post<Group>("/v1/groups", input);
     },
@@ -73,6 +73,7 @@ export function useGroupsAdmin(params: GroupListParams = {}) {
       name?: string;
       description?: string;
       visibility?: string;
+      parent_group_id?: string | null;
     }) => {
       return http.patch<Group>(`/v1/groups/${id}`, input);
     },

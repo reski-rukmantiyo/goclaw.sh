@@ -226,17 +226,26 @@ func (s *PGGroupStore) GetGroupTree(ctx context.Context, tenantID uuid.UUID) ([]
 		}
 	}
 
-	// Build tree: attach children to parents, collect roots.
+	// Build tree: attach children to parents.
+	for i := range allGroups {
+		if allGroups[i].ParentGroupID == nil || *allGroups[i].ParentGroupID == uuid.Nil {
+			continue
+		}
+		node := nodeMap[allGroups[i].ID]
+		if parent, ok := nodeMap[*allGroups[i].ParentGroupID]; ok {
+			parent.Children = append(parent.Children, *node)
+		}
+		// Parent not found (orphaned) — stays as root via nodeMap.
+	}
+
+	// Collect roots (no parent) from nodeMap after all children attached.
 	var roots []store.GroupTreeNode
 	for i := range allGroups {
-		node := nodeMap[allGroups[i].ID]
 		if allGroups[i].ParentGroupID == nil || *allGroups[i].ParentGroupID == uuid.Nil {
-			roots = append(roots, *node)
-		} else if parent, ok := nodeMap[*allGroups[i].ParentGroupID]; ok {
-			parent.Children = append(parent.Children, *node)
-		} else {
-			// Parent not found (orphaned) — treat as root.
-			roots = append(roots, *node)
+			roots = append(roots, *nodeMap[allGroups[i].ID])
+		} else if _, ok := nodeMap[*allGroups[i].ParentGroupID]; !ok {
+			// Orphaned — treat as root.
+			roots = append(roots, *nodeMap[allGroups[i].ID])
 		}
 	}
 

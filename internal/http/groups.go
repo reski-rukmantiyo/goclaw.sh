@@ -27,6 +27,7 @@ func NewGroupsHandler(groups store.GroupStore) *GroupsHandler {
 func (h *GroupsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/groups", requireAuthAction("group.create", h.handleCreate))
 	mux.HandleFunc("GET /v1/groups", requireAuth("", h.handleList))
+	mux.HandleFunc("GET /v1/groups/tree", requireAuth("", h.handleTree))
 	mux.HandleFunc("GET /v1/groups/{id}", requireAuth("", h.handleGet))
 	mux.HandleFunc("PATCH /v1/groups/{id}", requireAuthAction("group.update", h.handleUpdate))
 	mux.HandleFunc("DELETE /v1/groups/{id}", requireAuthAction("group.delete", h.handleDelete))
@@ -160,6 +161,26 @@ func (h *GroupsHandler) handleList(w http.ResponseWriter, r *http.Request) {
 		"offset": result.Offset,
 		"limit":  result.Limit,
 	})
+}
+
+// handleTree returns the group hierarchy tree for the caller's tenant.
+func (h *GroupsHandler) handleTree(w http.ResponseWriter, r *http.Request) {
+	locale := extractLocale(r)
+	ctx := r.Context()
+	tenantID := store.TenantIDFromContext(ctx)
+
+	tree, err := h.groups.GetGroupTree(ctx, tenantID)
+	if err != nil {
+		slog.Error("groups.tree failed", "error", err)
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToList, "groups"))
+		return
+	}
+
+	if tree == nil {
+		tree = []store.GroupTreeNode{}
+	}
+
+	writeJSON(w, http.StatusOK, tree)
 }
 
 // handleGet returns a single group by ID.
