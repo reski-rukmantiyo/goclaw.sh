@@ -7,7 +7,7 @@ import { useTenants } from "@/hooks/use-tenants";
 import { useIsMobile } from "@/hooks/use-media-query";
 import { useEmbeddingStatus } from "@/hooks/use-embedding-status";
 
-import { ROUTES, SUPPORTED_LANGUAGES, LANGUAGE_LABELS, TIMEZONE_OPTIONS, LOCAL_STORAGE_KEYS, type Language } from "@/lib/constants";
+import { ROUTES, route, SUPPORTED_LANGUAGES, LANGUAGE_LABELS, TIMEZONE_OPTIONS, LOCAL_STORAGE_KEYS, type Language } from "@/lib/constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover } from "radix-ui";
 import { useState } from "react";
@@ -127,7 +127,7 @@ function UserMenu() {
   const { t: tt } = useTranslation("tenants");
   const logout = useAuthStore((s) => s.logout);
   const userId = useAuthStore((s) => s.userId);
-  const { currentTenant, currentTenantName, tenants, isOwner, isMultiTenant, currentTenantId } = useTenants();
+  const { currentTenant, currentTenantName, tenants, isOwner, isMultiTenant, currentTenantId, currentTenantSlug } = useTenants();
   const [open, setOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
@@ -204,7 +204,7 @@ function UserMenu() {
           {/* Tenants */}
           {isMultiTenant && (
             <button
-              onClick={() => { setOpen(false); navigate(ROUTES.TENANTS); }}
+              onClick={() => { setOpen(false); navigate(route(currentTenantSlug, ROUTES.TENANTS)); }}
               className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
             >
               <Building2 className="h-3.5 w-3.5 shrink-0" />
@@ -214,7 +214,7 @@ function UserMenu() {
 
           {/* Profile */}
           <button
-            onClick={() => { setOpen(false); navigate(ROUTES.PROFILE); }}
+            onClick={() => { setOpen(false); navigate(route(currentTenantSlug, ROUTES.PROFILE)); }}
             className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
           >
             <UserCircle className="h-3.5 w-3.5 shrink-0" />
@@ -223,7 +223,7 @@ function UserMenu() {
 
           {/* API Keys shortcut */}
           <button
-            onClick={() => { setOpen(false); navigate(ROUTES.API_KEYS); }}
+            onClick={() => { setOpen(false); navigate(route(currentTenantSlug, ROUTES.API_KEYS)); }}
             className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
           >
             <KeyRound className="h-3.5 w-3.5 shrink-0" />

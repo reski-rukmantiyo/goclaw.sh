@@ -167,77 +167,80 @@ export function AppRoutes() {
           }
         />
 
-        {/* Main app — requires auth + setup complete */}
-        <Route
-          element={
-            <RequireAuth>
-              <RequireSetup>
-                <AppLayout />
-              </RequireSetup>
-            </RequireAuth>
-          }
-        >
-          <Route index element={<Navigate to={ROUTES.OVERVIEW} replace />} />
-          <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
-          <Route path={ROUTES.OVERVIEW} element={<OverviewPage />} />
-          <Route path={ROUTES.CHAT_PATTERN} element={<ChatPage />} />
-          <Route path={ROUTES.AGENTS} element={<AgentsPage key="list" />} />
-          <Route path={ROUTES.IMPORT_EXPORT} element={<RequireAdmin><ImportExportPage /></RequireAdmin>} />
-          <Route path={ROUTES.BACKUP_RESTORE} element={<RequireAdmin><BackupRestorePage /></RequireAdmin>} />
-          <Route path={ROUTES.AGENT_CODEX_POOL} element={<RequireAdmin><AgentCodexPoolPage /></RequireAdmin>} />
-          <Route path={ROUTES.AGENT_DETAIL} element={<AgentsPage key="detail" />} />
-          <Route path={ROUTES.TEAMS} element={<TeamsPage key="list" />} />
-          <Route path={ROUTES.TEAM_DETAIL} element={<TeamsPage key="detail" />} />
-          <Route path={ROUTES.SESSIONS} element={<SessionsPage key="list" />} />
-          <Route path={ROUTES.SESSION_DETAIL} element={<SessionsPage key="detail" />} />
-          <Route path={ROUTES.SKILLS} element={<SkillsPage key="list" />} />
-          <Route path={ROUTES.SKILL_DETAIL} element={<SkillsPage key="detail" />} />
-          <Route path={ROUTES.CRON} element={<CronPage key="list" />} />
-          <Route path={ROUTES.CRON_DETAIL} element={<CronPage key="detail" />} />
-          <Route path={ROUTES.HOOKS} element={<HooksPage key="list" />} />
-          <Route path={ROUTES.HOOK_DETAIL} element={<HooksPage key="detail" />} />
-          {/* Admin-only pages */}
-          <Route path={ROUTES.CONFIG} element={<RequireCrossTenant><ConfigPage /></RequireCrossTenant>} />
-          <Route path={ROUTES.PROVIDERS} element={<RequireAdmin><ProvidersPage key="list" /></RequireAdmin>} />
-          <Route path={ROUTES.PROVIDER_DETAIL} element={<RequireAdmin><ProvidersPage key="detail" /></RequireAdmin>} />
-          <Route path={ROUTES.CLI_CREDENTIALS} element={<Navigate to="/packages?tab=cli-credentials" replace />} />
-          <Route path={ROUTES.API_KEYS} element={<RequireAdmin><ApiKeysPage /></RequireAdmin>} />
-          <Route path={ROUTES.CHANNELS} element={<RequireAdmin><ChannelsPage key="list" /></RequireAdmin>} />
-          <Route path={ROUTES.CHANNEL_DETAIL} element={<RequireAdmin><ChannelsPage key="detail" /></RequireAdmin>} />
-          <Route path={ROUTES.NODES} element={<RequireAdmin><NodesPage /></RequireAdmin>} />
-          <Route path={ROUTES.WORKSTATIONS} element={<RequireAdmin><WorkstationsPage /></RequireAdmin>} />
-          <Route path={ROUTES.LOGS} element={<RequireAdmin><LogsPage /></RequireAdmin>} />
-          <Route path={ROUTES.BUILTIN_TOOLS} element={<RequireAdmin><BuiltinToolsPage /></RequireAdmin>} />
-          <Route path={ROUTES.MCP} element={<RequireAdmin><MCPPage /></RequireAdmin>} />
-          <Route path={ROUTES.TTS} element={<RequireCrossTenant><TtsPage /></RequireCrossTenant>} />
-          <Route path={ROUTES.STORAGE} element={<RequireAdmin><StoragePage /></RequireAdmin>} />
-          <Route path={ROUTES.PACKAGES} element={<RequireAdmin><PackagesPage /></RequireAdmin>} />
-          <Route path={ROUTES.TENANTS} element={<RequireCrossTenant><TenantsAdminPage /></RequireCrossTenant>} />
-          <Route path={ROUTES.TENANT_DETAIL} element={<RequireCrossTenant><TenantDetailPage /></RequireCrossTenant>} />
-          <Route path={ROUTES.USER_MGMT} element={<RequireAdmin><UsersAdminPage /></RequireAdmin>} />
-          <Route path={ROUTES.USER_MGMT_DETAIL} element={<RequireAdmin><UsersAdminPage /></RequireAdmin>} />
-          <Route path={ROUTES.GROUPS} element={<RequireAdmin><GroupsAdminPage /></RequireAdmin>} />
-          <Route path={ROUTES.GROUP_DETAIL} element={<RequireAdmin><GroupsAdminPage /></RequireAdmin>} />
-          <Route path={ROUTES.AUDIT_LOG} element={<RequireAdmin><AuditLogPage /></RequireAdmin>} />
+        {/* Tenant-scoped app routes */}
+        <Route path="/t/:slug">
+          <Route
+            element={
+              <RequireAuth>
+                <RequireSetup>
+                  <AppLayout />
+                </RequireSetup>
+              </RequireAuth>
+            }
+          >
+            <Route index element={<Navigate to="overview" replace />} />
+            <Route path="profile" element={<ProfilePage />} />
+            <Route path="overview" element={<OverviewPage />} />
+            <Route path="chat/:sessionKey?" element={<ChatPage />} />
+            <Route path="agents" element={<AgentsPage key="list" />} />
+            <Route path="import-export" element={<RequireAdmin><ImportExportPage /></RequireAdmin>} />
+            <Route path="backup-restore" element={<RequireAdmin><BackupRestorePage /></RequireAdmin>} />
+            <Route path="agents/:id/codex-pool" element={<RequireAdmin><AgentCodexPoolPage /></RequireAdmin>} />
+            <Route path="agents/:id" element={<AgentsPage key="detail" />} />
+            <Route path="teams" element={<TeamsPage key="list" />} />
+            <Route path="teams/:id" element={<TeamsPage key="detail" />} />
+            <Route path="sessions" element={<SessionsPage key="list" />} />
+            <Route path="sessions/:key" element={<SessionsPage key="detail" />} />
+            <Route path="skills" element={<SkillsPage key="list" />} />
+            <Route path="skills/:id" element={<SkillsPage key="detail" />} />
+            <Route path="cron" element={<CronPage key="list" />} />
+            <Route path="cron/:id" element={<CronPage key="detail" />} />
+            <Route path="hooks" element={<HooksPage key="list" />} />
+            <Route path="hooks/:id" element={<HooksPage key="detail" />} />
+            {/* Admin-only pages */}
+            <Route path="config" element={<RequireCrossTenant><ConfigPage /></RequireCrossTenant>} />
+            <Route path="providers" element={<RequireAdmin><ProvidersPage key="list" /></RequireAdmin>} />
+            <Route path="providers/:id" element={<RequireAdmin><ProvidersPage key="detail" /></RequireAdmin>} />
+            <Route path="cli-credentials" element={<Navigate to="packages?tab=cli-credentials" replace />} />
+            <Route path="api-keys" element={<RequireAdmin><ApiKeysPage /></RequireAdmin>} />
+            <Route path="channels" element={<RequireAdmin><ChannelsPage key="list" /></RequireAdmin>} />
+            <Route path="channels/:id" element={<RequireAdmin><ChannelsPage key="detail" /></RequireAdmin>} />
+            <Route path="nodes" element={<RequireAdmin><NodesPage /></RequireAdmin>} />
+            <Route path="workstations" element={<RequireAdmin><WorkstationsPage /></RequireAdmin>} />
+            <Route path="logs" element={<RequireAdmin><LogsPage /></RequireAdmin>} />
+            <Route path="builtin-tools" element={<RequireAdmin><BuiltinToolsPage /></RequireAdmin>} />
+            <Route path="mcp" element={<RequireAdmin><MCPPage /></RequireAdmin>} />
+            <Route path="tts" element={<RequireCrossTenant><TtsPage /></RequireCrossTenant>} />
+            <Route path="storage" element={<RequireAdmin><StoragePage /></RequireAdmin>} />
+            <Route path="packages" element={<RequireAdmin><PackagesPage /></RequireAdmin>} />
+            <Route path="admin/tenants" element={<RequireCrossTenant><TenantsAdminPage /></RequireCrossTenant>} />
+            <Route path="admin/tenants/:id" element={<RequireCrossTenant><TenantDetailPage /></RequireCrossTenant>} />
+            <Route path="admin/users" element={<RequireAdmin><UsersAdminPage /></RequireAdmin>} />
+            <Route path="admin/users/:id" element={<RequireAdmin><UsersAdminPage /></RequireAdmin>} />
+            <Route path="admin/groups" element={<RequireAdmin><GroupsAdminPage /></RequireAdmin>} />
+            <Route path="admin/groups/:id" element={<RequireAdmin><GroupsAdminPage /></RequireAdmin>} />
+            <Route path="admin/audit" element={<RequireAdmin><AuditLogPage /></RequireAdmin>} />
 
-          {/* Operator+ pages */}
-          <Route path={ROUTES.TRACES} element={<TracesPage key="list" />} />
-          <Route path={ROUTES.TRACE_DETAIL} element={<TracesPage key="detail" />} />
-          <Route path={ROUTES.EVENTS} element={<EventsPage />} />
-          <Route path={ROUTES.USAGE} element={<Navigate to={ROUTES.OVERVIEW} replace />} />
-          <Route path={ROUTES.ACTIVITY} element={<ActivityPage />} />
-          <Route path={ROUTES.CONTACTS} element={<ContactsPage />} />
-          <Route path={ROUTES.APPROVALS} element={<ApprovalsPage />} />
-          <Route path={ROUTES.PENDING_MESSAGES} element={<PendingMessagesPage />} />
-          <Route path={ROUTES.RAW_MESSAGES} element={<RawMessagesPage />} />
-          <Route path={ROUTES.EMBEDDINGS} element={<EmbeddingsPage />} />
-          <Route path={ROUTES.MEMORY} element={<MemoryPage />} />
-          <Route path={ROUTES.VAULT} element={<VaultPage />} />
-          <Route path={ROUTES.KNOWLEDGE_GRAPH} element={<KnowledgeGraphPage />} />
+            {/* Operator+ pages */}
+            <Route path="traces" element={<TracesPage key="list" />} />
+            <Route path="traces/:id" element={<TracesPage key="detail" />} />
+            <Route path="events" element={<EventsPage />} />
+            <Route path="usage" element={<Navigate to="overview" replace />} />
+            <Route path="activity" element={<ActivityPage />} />
+            <Route path="contacts" element={<ContactsPage />} />
+            <Route path="approvals" element={<ApprovalsPage />} />
+            <Route path="pending-messages" element={<PendingMessagesPage />} />
+            <Route path="raw-messages" element={<RawMessagesPage />} />
+            <Route path="embeddings" element={<EmbeddingsPage />} />
+            <Route path="memory" element={<MemoryPage />} />
+            <Route path="vault" element={<VaultPage />} />
+            <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
+          </Route>
         </Route>
 
-        {/* Catch-all → overview */}
-        <Route path="*" element={<Navigate to={ROUTES.OVERVIEW} replace />} />
+        {/* Legacy routes — redirect to tenant-scoped */}
+        <Route path={ROUTES.OVERVIEW} element={<Navigate to="/t/master/overview" replace />} />
+        <Route path="*" element={<Navigate to={ROUTES.LOGIN} replace />} />
       </Routes>
     </Suspense>
     </ErrorBoundary>

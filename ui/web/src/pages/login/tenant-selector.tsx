@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ShieldAlert, LogOut } from "lucide-react";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { LoginLayout } from "./login-layout";
-import { ROUTES, LOCAL_STORAGE_KEYS } from "@/lib/constants";
+import { ROUTES, route, LOCAL_STORAGE_KEYS } from "@/lib/constants";
 
 export function TenantSelectorPage() {
   const { t } = useTranslation("login");
@@ -19,7 +19,7 @@ export function TenantSelectorPage() {
     localStorage.setItem(LOCAL_STORAGE_KEYS.TENANT_ID, slug);
     useAuthStore.getState().setTenantSelected(true);
     // Reload to reconnect WS with the new tenant_scope
-    window.location.replace(from || ROUTES.OVERVIEW);
+    window.location.replace(from || route(slug, ROUTES.OVERVIEW));
   };
 
   const handleLogout = () => {

@@ -1,6 +1,6 @@
 // Barrel re-exports for backward compatibility.
 // Import directly from sub-modules for new code.
-export { ROUTES } from "./routes";
+export { ROUTES, route } from "./routes";
 export {
   TIMEZONE_OPTIONS,
   getAllIanaTimezones,
