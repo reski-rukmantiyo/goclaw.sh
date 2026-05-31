@@ -3,7 +3,8 @@ import { ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ROUTES } from "@/lib/constants";
+import { ROUTES, route } from "@/lib/constants";
+import { useTenants } from "@/hooks/use-tenants";
 
  
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 
 export function TtsSection({ data }: Props) {
   const { t } = useTranslation("config");
+  const { currentTenantSlug } = useTenants();
 
   if (!data) return null;
 
@@ -35,7 +37,7 @@ export function TtsSection({ data }: Props) {
       </CardHeader>
       <CardContent>
         <Link
-          to={ROUTES.TTS}
+          to={route(currentTenantSlug, ROUTES.TTS)}
           className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
         >
           {t("tts.manageLink")} <ExternalLink className="h-3.5 w-3.5" />

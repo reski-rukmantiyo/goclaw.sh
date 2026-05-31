@@ -30,7 +30,8 @@ import { formatUserLabel } from "@/lib/format-user-label";
 import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { useMinLoading } from "@/hooks/use-min-loading";
 import { useTenantDetail } from "./hooks/use-tenant-detail";
-import { ROUTES } from "@/lib/constants";
+import { ROUTES, route } from "@/lib/constants";
+import { useTenants } from "@/hooks/use-tenants";
 
 const TENANT_ROLES = ["owner", "admin", "operator", "member", "viewer"] as const;
 
@@ -52,6 +53,8 @@ export function TenantDetailPage() {
   const navigate = useNavigate();
   const { t } = useTranslation("tenants");
   const { t: tc } = useTranslation("common");
+
+  const { currentTenantSlug } = useTenants();
 
   const { tenant, tenantLoading, users, usersLoading, usersRefreshing, refreshUsers, addUser, removeUser } =
     useTenantDetail(id);
@@ -104,7 +107,7 @@ export function TenantDetailPage() {
         title={tenant?.name ?? t("detail")}
         description=""
         actions={
-          <Button variant="outline" size="sm" onClick={() => navigate(ROUTES.TENANTS)} className="gap-1">
+          <Button variant="outline" size="sm" onClick={() => navigate(route(currentTenantSlug, ROUTES.TENANTS))} className="gap-1">
             <ArrowLeft className="h-3.5 w-3.5" /> {t("back")}
           </Button>
         }

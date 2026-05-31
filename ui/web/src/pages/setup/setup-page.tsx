@@ -10,7 +10,7 @@ import { StepAgent } from "./step-agent";
 import { StepChannel } from "./step-channel";
 import { SetupCompleteModal } from "./setup-complete-modal";
 import { Building2 } from "lucide-react";
-import { ROUTES, SUPPORTED_LANGUAGES, LANGUAGE_LABELS, LOCAL_STORAGE_KEYS } from "@/lib/constants";
+import { ROUTES, route, SUPPORTED_LANGUAGES, LANGUAGE_LABELS, LOCAL_STORAGE_KEYS } from "@/lib/constants";
 import { markSetupSkipped } from "@/lib/setup-skip";
 import { useChatGPTOAuthProviderStatuses } from "@/pages/providers/hooks/use-chatgpt-oauth-provider-statuses";
 import { useAuthStore } from "@/stores/use-auth-store";
@@ -96,7 +96,7 @@ export function SetupPage() {
   useEffect(() => {
     if (loading || initialized) return;
     if (currentStep === ("complete" as SetupStep)) {
-      navigate(ROUTES.OVERVIEW, { replace: true });
+      navigate(route(currentTenantSlug, ROUTES.OVERVIEW), { replace: true });
       return;
     }
     setStep(currentStep as 1 | 2 | 3 | 4);
@@ -186,7 +186,7 @@ export function SetupPage() {
             onClick={() => {
               if (window.confirm(t("skipSetupConfirm"))) {
                 markSetupSkipped({ userId, tenantId: currentTenantId, tenantSlug: currentTenantSlug });
-                navigate(ROUTES.OVERVIEW, { replace: true });
+                navigate(route(currentTenantSlug, ROUTES.OVERVIEW), { replace: true });
               }
             }}
           >
@@ -201,7 +201,7 @@ export function SetupPage() {
 
       <SetupCompleteModal
         open={showComplete}
-        onGoToDashboard={() => navigate(ROUTES.OVERVIEW, { replace: true })}
+        onGoToDashboard={() => navigate(route(currentTenantSlug, ROUTES.OVERVIEW), { replace: true })}
       />
     </SetupLayout>
   );

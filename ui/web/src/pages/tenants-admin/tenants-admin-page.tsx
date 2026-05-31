@@ -20,7 +20,8 @@ import { TableSkeleton } from "@/components/shared/loading-skeleton";
 import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { useMinLoading } from "@/hooks/use-min-loading";
 import { useTenantsAdmin } from "./hooks/use-tenants-admin";
-import { ROUTES } from "@/lib/constants";
+import { ROUTES, route } from "@/lib/constants";
+import { useTenants } from "@/hooks/use-tenants";
 
 function statusVariant(status: string): "default" | "secondary" | "destructive" {
   if (status === "active") return "default";
@@ -32,6 +33,7 @@ export function TenantsAdminPage() {
   const { t } = useTranslation("tenants");
   const { t: tc } = useTranslation("common");
   const navigate = useNavigate();
+  const { currentTenantSlug } = useTenants();
   const { tenants, loading, refreshing, refresh, createTenant, isOwner } = useTenantsAdmin();
 
   const spinning = useMinLoading(refreshing);
@@ -102,7 +104,7 @@ export function TenantsAdminPage() {
                   <tr
                     key={tenant.id}
                     className="border-b last:border-0 hover:bg-muted/30 cursor-pointer"
-                    onClick={() => navigate(ROUTES.TENANT_DETAIL.replace(":id", tenant.id))}
+                    onClick={() => navigate(route(currentTenantSlug, ROUTES.TENANT_DETAIL).replace(":id", tenant.id))}
                   >
                     <td className="px-4 py-2 font-medium">{tenant.name}</td>
                     <td className="px-4 py-2">
