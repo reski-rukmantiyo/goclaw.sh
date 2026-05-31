@@ -9,6 +9,7 @@ import { TokenForm } from "./token-form";
 import { PairingForm } from "./pairing-form";
 import { EmailLoginForm } from "./email-login-form";
 import { ProviderButtons } from "./provider-buttons";
+import { RegisterForm } from "./register-form";
 
 export function LoginPage() {
   const { t } = useTranslation("login");
@@ -45,6 +46,8 @@ export function LoginPage() {
         <TokenForm onSubmit={handleTokenLogin} />
       ) : mode === "pairing" ? (
         <PairingForm onApproved={handlePairingApproved} />
+      ) : mode === "register" ? (
+        <RegisterForm onSuccess={handleEmailLogin} />
       ) : (
         <div className="space-y-4">
           <EmailLoginForm onSuccess={handleEmailLogin} />

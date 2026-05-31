@@ -11,3 +11,11 @@ export const pairingFormSchema = z.object({
 
 export type TokenFormData = z.infer<typeof tokenFormSchema>;
 export type PairingFormData = z.infer<typeof pairingFormSchema>;
+
+export const registerSchema = z.object({
+  email: z.string().email("Invalid email"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  displayName: z.string().min(1, "Display name is required"),
+});
+
+export type RegisterFormData = z.infer<typeof registerSchema>;

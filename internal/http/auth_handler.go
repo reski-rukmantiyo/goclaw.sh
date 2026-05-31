@@ -30,6 +30,7 @@ func NewAuthHandler(users store.UserStore, tenants store.TenantStore, jwt *auth.
 // RegisterRoutes registers all auth session routes on the given mux.
 func (h *AuthHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /auth/login", h.handleLogin)
+	mux.HandleFunc("POST /auth/register", h.handleRegister)
 	mux.HandleFunc("POST /auth/refresh", h.handleRefresh)
 	mux.HandleFunc("POST /auth/logout", h.handleLogout)
 	mux.HandleFunc("GET /auth/providers", h.handleProviders)
@@ -131,9 +132,119 @@ type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+type registerRequest struct {
+	Email       string `json:"email"`
+	Password    string `json:"password"`
+	DisplayName string `json:"display_name"`
+}
+
+type registerResponse struct {
+	AccessToken  string          `json:"access_token"`
+	RefreshToken string          `json:"refresh_token"`
+	ExpiresIn    int             `json:"expires_in"`
+	User         *store.UserData `json:"user"`
+}
+
 type refreshResponse struct {
 	AccessToken string `json:"access_token"`
 	ExpiresIn   int    `json:"expires_in"`
+}
+
+func (h *AuthHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
+	locale := extractLocale(r)
+	ctx := r.Context()
+	masterID := store.MasterTenantID
+
+	var req registerRequest
+	if !parseJSON(w, r, &req) {
+		return
+	}
+	if req.Email == "" || req.Password == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", i18n.T(locale, i18n.MsgRequired, "email and password"))
+		return
+	}
+
+	// Validate password complexity
+	lengthOK, hasUpper, hasSymbol := auth.ValidatePasswordComplexity(req.Password)
+	if !lengthOK {
+		writeError(w, http.StatusBadRequest, "invalid_request", i18n.T(locale, i18n.MsgAuthPasswordTooShort, auth.MinPasswordLength))
+		return
+	}
+	if !hasUpper || !hasSymbol {
+		writeError(w, http.StatusBadRequest, "invalid_request", i18n.T(locale, i18n.MsgAuthPasswordComplexity))
+		return
+	}
+
+	// Check for duplicate email
+	existing, err := h.users.GetByEmail(ctx, masterID, req.Email)
+	if err != nil && err.Error() != "not found" {
+		slog.Error("auth.register duplicate check failed", "error", err)
+	}
+	if existing != nil {
+		writeError(w, http.StatusConflict, "invalid_request", i18n.T(locale, i18n.MsgInvalidRequest, "email already exists"))
+		return
+	}
+
+	// Check if any users exist — first user becomes owner
+	isFirstUser := false
+	if existingUserList, err := h.users.List(ctx, masterID, store.UserListParams{Limit: 1}); err == nil && existingUserList != nil {
+		isFirstUser = existingUserList.Total == 0
+	}
+
+	// Hash password
+	hash, err := auth.HashPassword(req.Password)
+	if err != nil {
+		slog.Error("auth.register hash failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", i18n.T(locale, i18n.MsgInternalError, "password hash"))
+		return
+	}
+
+	now := time.Now().UTC()
+	user := &store.UserData{
+		ID:            uuid.New(),
+		Email:         req.Email,
+		DisplayName:   req.DisplayName,
+		TenantID:      masterID,
+		AuthProvider:  store.AuthProviderLocal,
+		PasswordHash:  &hash,
+		Status:        store.UserStatusActive,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+
+	if err := h.users.Create(ctx, user); err != nil {
+		slog.Error("auth.register create user failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", i18n.T(locale, i18n.MsgFailedToCreate, "user", "internal error"))
+		return
+	}
+
+	// Add tenant_users membership
+	role := "member"
+	if isFirstUser {
+		role = "owner"
+	}
+	if h.tenants != nil {
+		if err := h.tenants.AddUser(ctx, masterID, user.ID.String(), role); err != nil {
+			slog.Warn("auth.register: failed to add tenant membership", "error", err, "user_id", user.ID)
+		}
+	}
+
+	// Issue JWT
+	jwtRole := resolveUserRoleForJWT(ctx, h.tenants, masterID, user.ID.String())
+	accessToken, err := h.jwt.IssueAccessToken(user.ID, user.Email, masterID, jwtRole)
+	if err != nil {
+		slog.Error("auth.register issue token failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", i18n.T(locale, i18n.MsgInternalError, "token issue"))
+		return
+	}
+
+	timeout := h.cfg.Session.SessionTimeout()
+	writeJSON(w, http.StatusCreated, registerResponse{
+		AccessToken:  accessToken,
+		RefreshToken: "",
+		ExpiresIn:    timeout * 60,
+		User:         user,
+	})
 }
 
 func (h *AuthHandler) handleRefresh(w http.ResponseWriter, r *http.Request) {

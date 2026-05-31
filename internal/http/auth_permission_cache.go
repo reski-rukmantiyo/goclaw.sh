@@ -70,7 +70,8 @@ func (c *permissionCache) resolveUserRole(ctx context.Context, userIDStr, tenant
 
 	var role permissions.UserRole
 	// Resolve role from tenant_users membership
-	if c.tenants != nil && tenantID != uuid.Nil {
+	tenantID, err := uuid.Parse(tenantIDStr)
+	if c.tenants != nil && err == nil && tenantID != uuid.Nil {
 		tuRole, err := c.tenants.GetUserRole(ctx, tenantID, userIDStr)
 		if err == nil && (tuRole == "owner" || tuRole == "admin") {
 			role = permissions.UserRoleTenantAdmin
