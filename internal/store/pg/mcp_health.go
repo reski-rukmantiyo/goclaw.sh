@@ -17,7 +17,7 @@ func (s *PGMCPServerStore) InsertHealthCheck(ctx context.Context, check *store.M
 	if check.ID == uuid.Nil {
 		check.ID = uuid.New()
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO mcp_health_checks (id, server_id, server_name, tenant_id, status, latency_ms, error, tool_count, health_failures, checked_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		check.ID, check.ServerID, check.ServerName, check.TenantID,
@@ -28,7 +28,7 @@ func (s *PGMCPServerStore) InsertHealthCheck(ctx context.Context, check *store.M
 
 func (s *PGMCPServerStore) ListHealthChecks(ctx context.Context, serverID uuid.UUID, limit, offset int) ([]store.MCPHealthCheck, int, error) {
 	var total int
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM mcp_health_checks WHERE server_id = $1`, serverID).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count health checks: %w", err)
@@ -37,7 +37,7 @@ func (s *PGMCPServerStore) ListHealthChecks(ctx context.Context, serverID uuid.U
 		return nil, 0, nil
 	}
 
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT id, server_id, server_name, tenant_id, status, latency_ms, error, tool_count, health_failures, checked_at
 		 FROM mcp_health_checks WHERE server_id = $1 ORDER BY checked_at DESC LIMIT $2 OFFSET $3`,
 		serverID, limit, offset)
@@ -68,7 +68,7 @@ func (s *PGMCPServerStore) ListHealthChecks(ctx context.Context, serverID uuid.U
 }
 
 func (s *PGMCPServerStore) DeleteHealthChecksBefore(ctx context.Context, before time.Time) (int64, error) {
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM mcp_health_checks WHERE checked_at < $1`, before)
 	if err != nil {
 		return 0, err

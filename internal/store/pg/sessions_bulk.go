@@ -14,7 +14,7 @@ import (
 func (s *PGSessionStore) ClearSessionsByPattern(ctx context.Context, pattern string, action string) (int, error) {
 	tid := tenantIDForInsert(ctx)
 
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		"SELECT session_key FROM sessions WHERE session_key LIKE $1 AND tenant_id = $2",
 		pattern, tid.String())
 	if err != nil {
@@ -74,7 +74,7 @@ func (s *PGSessionStore) bulkReset(ctx context.Context, keys []string, tid strin
 			  WHERE session_key IN (` + strings.Join(ph, ",") + `)
 			  AND tenant_id = $` + strconv.Itoa(len(keys)+2)
 
-	res, err := s.db.ExecContext(ctx, query, args...)
+	res, err := s.dbFor(ctx).ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -99,7 +99,7 @@ func (s *PGSessionStore) bulkDelete(ctx context.Context, keys []string, tid stri
 
 	query := "DELETE FROM sessions WHERE session_key IN (" + strings.Join(ph, ",") + ") AND tenant_id = $" + strconv.Itoa(len(keys)+1)
 
-	res, err := s.db.ExecContext(ctx, query, args...)
+	res, err := s.dbFor(ctx).ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -119,7 +119,7 @@ func (s *PGSessionStore) evictFromCache(keys []string, tid string) {
 // QuerySessionKeys returns session keys matching a SQL LIKE pattern.
 func (s *PGSessionStore) QuerySessionKeys(ctx context.Context, pattern string) ([]string, error) {
 	tid := tenantIDForInsert(ctx)
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		"SELECT session_key FROM sessions WHERE session_key LIKE $1 AND tenant_id = $2",
 		pattern, tid.String())
 	if err != nil {

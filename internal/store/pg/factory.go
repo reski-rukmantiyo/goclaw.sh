@@ -23,9 +23,14 @@ func NewPGStores(cfg store.StoreConfig) (*store.Stores, error) {
 		skillsDir = config.ResolvedDataDirFromEnv() + "/skills-store"
 	}
 
+	connStore := NewPGTenantDBConnectionStore(db, cfg.EncryptionKey)
+	tenantDBMgr := NewPGTenantDBManager(db, connStore, cfg.EncryptionKey)
+
 	pgStores := &store.Stores{
-		DB:        db,
-		Sessions:  NewPGSessionStore(db),
+		DB:                  db,
+		TenantDBManager:     tenantDBMgr,
+		TenantDBConnections: connStore,
+		Sessions:            NewPGSessionStore(db),
 		Memory:    NewPGMemoryStore(db, memCfg),
 		Cron:      NewPGCronStore(db),
 		Pairing:   NewPGPairingStore(db),

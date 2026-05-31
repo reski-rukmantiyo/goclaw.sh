@@ -23,7 +23,7 @@ func (s *PGTeamStore) UpdateTaskProgress(ctx context.Context, taskID, teamID uui
 	now := time.Now()
 	lockExpires := now.Add(taskLockDuration)
 	tid := tenantIDForInsert(ctx)
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE team_tasks SET progress_percent = $1, progress_step = $2, lock_expires_at = $3, updated_at = $4
 		 WHERE id = $5 AND status = $6 AND team_id = $7 AND tenant_id = $8`,
 		percent, step, lockExpires, now,
@@ -54,7 +54,7 @@ func (s *PGTeamStore) RenewTaskLock(ctx context.Context, taskID, teamID uuid.UUI
 	now := time.Now()
 	lockExpires := now.Add(taskLockDuration)
 	tid := tenantIDForInsert(ctx)
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE team_tasks SET lock_expires_at = $1, updated_at = $2
 		 WHERE id = $3 AND team_id = $4 AND status = $5 AND tenant_id = $6`,
 		lockExpires, now,
@@ -82,7 +82,7 @@ const v2ActiveTeamJoin = `JOIN agent_teams tm ON tm.id = t.team_id
 // RecoverAllStaleTasks resets in_progress tasks with expired locks across all v2 active teams.
 func (s *PGTeamStore) RecoverAllStaleTasks(ctx context.Context) ([]store.RecoveredTaskInfo, error) {
 	now := time.Now()
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`UPDATE team_tasks t
 		 SET status = $1, locked_at = NULL, lock_expires_at = NULL,
 		     followup_at = NULL, followup_count = 0, followup_message = NULL,
@@ -105,7 +105,7 @@ func (s *PGTeamStore) RecoverAllStaleTasks(ctx context.Context) ([]store.Recover
 // ForceRecoverAllTasks resets ALL in_progress tasks across v2 active teams (startup).
 func (s *PGTeamStore) ForceRecoverAllTasks(ctx context.Context) ([]store.RecoveredTaskInfo, error) {
 	now := time.Now()
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`UPDATE team_tasks t
 		 SET status = $1, locked_at = NULL, lock_expires_at = NULL,
 		     followup_at = NULL, followup_count = 0, followup_message = NULL,
@@ -129,7 +129,7 @@ func (s *PGTeamStore) ForceRecoverAllTasks(ctx context.Context) ([]store.Recover
 func (s *PGTeamStore) ListRecoverableTasks(ctx context.Context, teamID uuid.UUID) ([]store.TeamTaskData, error) {
 	now := time.Now()
 	tid := tenantIDForInsert(ctx)
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT `+taskSelectCols+`
 		 `+taskJoinClause+`
 		 WHERE t.team_id = $1
@@ -151,7 +151,7 @@ func (s *PGTeamStore) ListRecoverableTasks(ctx context.Context, teamID uuid.UUID
 // MarkAllStaleTasks marks pending tasks older than olderThan as stale across all v2 active teams.
 func (s *PGTeamStore) MarkAllStaleTasks(ctx context.Context, olderThan time.Time) ([]store.RecoveredTaskInfo, error) {
 	now := time.Now()
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`UPDATE team_tasks t
 		 SET status = $1, updated_at = $2
 		 FROM agent_teams tm
@@ -171,7 +171,7 @@ func (s *PGTeamStore) MarkAllStaleTasks(ctx context.Context, olderThan time.Time
 // MarkInReviewStaleTasks marks in_review tasks older than olderThan as stale across all v2 active teams.
 func (s *PGTeamStore) MarkInReviewStaleTasks(ctx context.Context, olderThan time.Time) ([]store.RecoveredTaskInfo, error) {
 	now := time.Now()
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`UPDATE team_tasks t
 		 SET status = $1, updated_at = $2
 		 FROM agent_teams tm
@@ -192,7 +192,7 @@ func (s *PGTeamStore) MarkInReviewStaleTasks(ctx context.Context, olderThan time
 // Safety net for cases where unblockDependentTasks() transaction rolled back.
 func (s *PGTeamStore) FixOrphanedBlockedTasks(ctx context.Context) ([]store.RecoveredTaskInfo, error) {
 	now := time.Now()
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`UPDATE team_tasks t
 		 SET blocked_by = '{}', status = $1, updated_at = $2
 		 FROM agent_teams tm
@@ -238,7 +238,7 @@ func scanRecoveredTaskInfoRows(rows interface {
 func (s *PGTeamStore) ResetTaskStatus(ctx context.Context, taskID, teamID uuid.UUID) error {
 	now := time.Now()
 	tid := tenantIDForInsert(ctx)
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE team_tasks SET status = $1, locked_at = NULL, lock_expires_at = NULL, result = NULL,
 		 progress_percent = NULL, progress_step = NULL, updated_at = $2
 		 WHERE id = $3 AND team_id = $4 AND status IN ($5, $6, $7, $8) AND tenant_id = $9`,

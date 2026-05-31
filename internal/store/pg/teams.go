@@ -28,6 +28,14 @@ func NewPGTeamStore(db *sql.DB) *PGTeamStore {
 	return &PGTeamStore{db: db}
 }
 
+func (s *PGTeamStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 // --- Column constants ---
 
 const teamSelectCols = `id, name, lead_agent_id, description, status, settings, created_by, created_at, updated_at`
@@ -54,7 +62,7 @@ func (s *PGTeamStore) CreateTeam(ctx context.Context, team *store.TeamData) erro
 		tenantID = store.MasterTenantID
 	}
 
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO agent_teams (id, name, lead_agent_id, description, status, settings, created_by, created_at, updated_at, tenant_id)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		team.ID, team.Name, team.LeadAgentID, team.Description,
@@ -65,7 +73,7 @@ func (s *PGTeamStore) CreateTeam(ctx context.Context, team *store.TeamData) erro
 
 func (s *PGTeamStore) GetTeam(ctx context.Context, teamID uuid.UUID) (*store.TeamData, error) {
 	if store.IsCrossTenant(ctx) {
-		row := s.db.QueryRowContext(ctx,
+		row := s.dbFor(ctx).QueryRowContext(ctx,
 			`SELECT `+teamSelectCols+` FROM agent_teams WHERE id = $1`, teamID)
 		return scanTeamRow(row)
 	}
@@ -73,32 +81,32 @@ func (s *PGTeamStore) GetTeam(ctx context.Context, teamID uuid.UUID) (*store.Tea
 	if tenantID == uuid.Nil {
 		return nil, nil
 	}
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT `+teamSelectCols+` FROM agent_teams WHERE id = $1 AND tenant_id = $2`, teamID, tenantID)
 	return scanTeamRow(row)
 }
 
 func (s *PGTeamStore) UpdateTeam(ctx context.Context, teamID uuid.UUID, updates map[string]any) error {
 	if store.IsCrossTenant(ctx) {
-		return execMapUpdate(ctx, s.db, "agent_teams", teamID, updates)
+		return execMapUpdate(ctx, s.dbFor(ctx), "agent_teams", teamID, updates)
 	}
 	tid := store.TenantIDFromContext(ctx)
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required for update")
 	}
-	return execMapUpdateWhereTenant(ctx, s.db, "agent_teams", updates, teamID, tid)
+	return execMapUpdateWhereTenant(ctx, s.dbFor(ctx), "agent_teams", updates, teamID, tid)
 }
 
 func (s *PGTeamStore) DeleteTeam(ctx context.Context, teamID uuid.UUID) error {
 	if store.IsCrossTenant(ctx) {
-		_, err := s.db.ExecContext(ctx, `DELETE FROM agent_teams WHERE id = $1`, teamID)
+		_, err := s.dbFor(ctx).ExecContext(ctx, `DELETE FROM agent_teams WHERE id = $1`, teamID)
 		return err
 	}
 	tid := store.TenantIDFromContext(ctx)
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required for delete")
 	}
-	_, err := s.db.ExecContext(ctx, `DELETE FROM agent_teams WHERE id = $1 AND tenant_id = $2`, teamID, tid)
+	_, err := s.dbFor(ctx).ExecContext(ctx, `DELETE FROM agent_teams WHERE id = $1 AND tenant_id = $2`, teamID, tid)
 	return err
 }
 
@@ -114,7 +122,7 @@ func (s *PGTeamStore) ListTeams(ctx context.Context) ([]store.TeamData, error) {
 		queryArgs = append(queryArgs, tenantID)
 	}
 
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT t.id, t.name, t.lead_agent_id, t.description, t.status, t.settings, t.created_by, t.created_at, t.updated_at,
 		 COALESCE(a.agent_key, '') AS lead_agent_key,
 		 COALESCE(a.display_name, '') AS lead_display_name
@@ -150,7 +158,7 @@ func (s *PGTeamStore) ListTeams(ctx context.Context) ([]store.TeamData, error) {
 
 	// Bulk-fetch all members for returned teams
 	if len(teams) > 0 {
-		mRows, err := s.db.QueryContext(ctx,
+		mRows, err := s.dbFor(ctx).QueryContext(ctx,
 			`SELECT m.team_id, m.agent_id, m.role, m.joined_at,
 			 COALESCE(a.agent_key, '') AS agent_key,
 			 COALESCE(a.display_name, '') AS display_name,
@@ -188,7 +196,7 @@ func (s *PGTeamStore) ListTeams(ctx context.Context) ([]store.TeamData, error) {
 // ============================================================
 
 func (s *PGTeamStore) AddMember(ctx context.Context, teamID, agentID uuid.UUID, role string) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO agent_team_members (team_id, agent_id, role, joined_at, tenant_id)
 		 VALUES ($1, $2, $3, $4, $5)
 		 ON CONFLICT (team_id, agent_id) DO UPDATE SET role = EXCLUDED.role`,
@@ -198,7 +206,7 @@ func (s *PGTeamStore) AddMember(ctx context.Context, teamID, agentID uuid.UUID, 
 }
 
 func (s *PGTeamStore) RemoveMember(ctx context.Context, teamID, agentID uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM agent_team_members WHERE team_id = $1 AND agent_id = $2`,
 		teamID, agentID,
 	)
@@ -227,7 +235,7 @@ func (s *PGTeamStore) ListMembers(ctx context.Context, teamID uuid.UUID) ([]stor
 	q += ` ORDER BY m.joined_at`
 
 	var members []store.TeamMemberData
-	err := pkgSqlxDB.SelectContext(ctx, &members, q, args...)
+	err := SqlxDBFor(ctx).SelectContext(ctx, &members, q, args...)
 	return members, err
 }
 
@@ -257,7 +265,7 @@ func (s *PGTeamStore) ListIdleMembers(ctx context.Context, teamID uuid.UUID) ([]
 	q += ` ORDER BY m.joined_at`
 
 	var members []store.TeamMemberData
-	err := pkgSqlxDB.SelectContext(ctx, &members, q, args...)
+	err := SqlxDBFor(ctx).SelectContext(ctx, &members, q, args...)
 	return members, err
 }
 
@@ -279,7 +287,7 @@ func (s *PGTeamStore) GetTeamForAgent(ctx context.Context, agentID uuid.UUID) (*
 	}
 	q += ` ORDER BY (t.lead_agent_id = $1) DESC LIMIT 1`
 
-	row := s.db.QueryRowContext(ctx, q, args...)
+	row := s.dbFor(ctx).QueryRowContext(ctx, q, args...)
 	d, err := scanTeamRow(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -309,7 +317,7 @@ func (s *PGTeamStore) KnownUserIDs(ctx context.Context, teamID uuid.UUID, limit 
 	args = append(args, limit)
 
 	var users []string
-	err := pkgSqlxDB.SelectContext(ctx, &users, q, args...)
+	err := SqlxDBFor(ctx).SelectContext(ctx, &users, q, args...)
 	return users, err
 }
 
@@ -318,7 +326,7 @@ func (s *PGTeamStore) KnownUserIDs(ctx context.Context, teamID uuid.UUID, limit 
 // ============================================================
 
 func (s *PGTeamStore) GrantTeamAccess(ctx context.Context, teamID uuid.UUID, userID, role, grantedBy string) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO team_user_grants (id, team_id, user_id, role, granted_by, created_at, tenant_id)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role, granted_by = EXCLUDED.granted_by`,
@@ -332,7 +340,7 @@ func (s *PGTeamStore) RevokeTeamAccess(ctx context.Context, teamID uuid.UUID, us
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM team_user_grants WHERE team_id = $1 AND user_id = $2`+tClause,
 		append([]any{teamID, userID}, tArgs...)...)
 	return err
@@ -344,7 +352,7 @@ func (s *PGTeamStore) ListTeamGrants(ctx context.Context, teamID uuid.UUID) ([]s
 		return nil, err
 	}
 	var result []store.TeamUserGrant
-	err = pkgSqlxDB.SelectContext(ctx, &result,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &result,
 		`SELECT id, team_id, user_id, role, COALESCE(granted_by, '') AS granted_by, created_at
 		 FROM team_user_grants WHERE team_id = $1`+tClause+` ORDER BY created_at DESC`,
 		append([]any{teamID}, tArgs...)...,
@@ -370,7 +378,7 @@ func (s *PGTeamStore) ListUserTeams(ctx context.Context, userID string) ([]store
 	baseQuery += ` ORDER BY t.created_at DESC`
 
 	var teams []store.TeamData
-	err := pkgSqlxDB.SelectContext(ctx, &teams, baseQuery, args...)
+	err := SqlxDBFor(ctx).SelectContext(ctx, &teams, baseQuery, args...)
 	return teams, err
 }
 
@@ -380,7 +388,7 @@ func (s *PGTeamStore) HasTeamAccess(ctx context.Context, teamID uuid.UUID, userI
 		return false, err
 	}
 	var exists bool
-	err = s.db.QueryRowContext(ctx,
+	err = s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT EXISTS(SELECT 1 FROM team_user_grants WHERE team_id = $1 AND user_id = $2`+tClause+`)`,
 		append([]any{teamID, userID}, tArgs...)...,
 	).Scan(&exists)

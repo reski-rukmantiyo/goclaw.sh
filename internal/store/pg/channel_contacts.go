@@ -23,12 +23,20 @@ func NewPGContactStore(db *sql.DB) *PGContactStore {
 	return &PGContactStore{db: db, resolveCache: newContactResolveCache()}
 }
 
+func (s *PGContactStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGContactStore) UpsertContact(ctx context.Context, channelType, channelInstance, senderID, userID, displayName, username, peerKind, contactType, threadID, threadType string) error {
 	tenantID := store.TenantIDFromContext(ctx)
 	if tenantID == uuid.Nil {
 		tenantID = store.MasterTenantID
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.dbFor(ctx).ExecContext(ctx, `
 		INSERT INTO channel_contacts (channel_type, channel_instance, sender_id, user_id, display_name, username, peer_kind, contact_type, thread_id, thread_type, tenant_id)
 		VALUES ($1, NULLIF($2,''), $3, NULLIF($4,''), NULLIF($5,''), NULLIF($6,''), NULLIF($7,''), $8, NULLIF($9,''), NULLIF($10,''), $11)
 		ON CONFLICT (tenant_id, channel_type, sender_id, COALESCE(thread_id, '')) DO UPDATE SET
@@ -113,7 +121,7 @@ func (s *PGContactStore) ListContacts(ctx context.Context, opts store.ContactLis
 		args = append(args, opts.Offset)
 	}
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +145,7 @@ func (s *PGContactStore) ListContacts(ctx context.Context, opts store.ContactLis
 func (s *PGContactStore) CountContacts(ctx context.Context, opts store.ContactListOpts) (int, error) {
 	where, args, _ := contactWhereClause(ctx, opts)
 	var count int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM channel_contacts"+where, args...).Scan(&count)
+	err := s.dbFor(ctx).QueryRowContext(ctx, "SELECT COUNT(*) FROM channel_contacts"+where, args...).Scan(&count)
 	return count, err
 }
 
@@ -167,7 +175,7 @@ func (s *PGContactStore) GetContactsBySenderIDs(ctx context.Context, senderIDs [
 		WHERE sender_id IN (%s) AND tenant_id = %s
 		ORDER BY sender_id, last_seen_at DESC`, strings.Join(placeholders, ","), tenantPH)
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +198,7 @@ func (s *PGContactStore) GetContactsBySenderIDs(ctx context.Context, senderIDs [
 
 func (s *PGContactStore) GetContactByID(ctx context.Context, id uuid.UUID) (*store.ChannelContact, error) {
 	tid := store.TenantIDFromContext(ctx)
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT id, channel_type, channel_instance, sender_id, user_id,
 			display_name, username, avatar_url, peer_kind, contact_type,
 			thread_id, thread_type, merged_id,
@@ -222,7 +230,7 @@ func (s *PGContactStore) GetSenderIDsByContactIDs(ctx context.Context, contactID
 	args[len(contactIDs)] = tid
 	q := fmt.Sprintf("SELECT sender_id FROM channel_contacts WHERE id IN (%s) AND tenant_id = $%d",
 		strings.Join(placeholders, ","), len(contactIDs)+1)
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +266,7 @@ func (s *PGContactStore) MergeContacts(ctx context.Context, contactIDs []uuid.UU
 		"UPDATE channel_contacts SET merged_id = $%d WHERE id IN (%s) AND tenant_id = $%d",
 		len(args)-1, inClause, len(args),
 	)
-	_, err := s.db.ExecContext(ctx, q, args...)
+	_, err := s.dbFor(ctx).ExecContext(ctx, q, args...)
 	if err == nil {
 		s.InvalidateContactResolveCache()
 	}
@@ -284,7 +292,7 @@ func (s *PGContactStore) UnmergeContacts(ctx context.Context, contactIDs []uuid.
 		"UPDATE channel_contacts SET merged_id = NULL WHERE id IN (%s) AND tenant_id = $%d",
 		inClause, len(args),
 	)
-	_, err := s.db.ExecContext(ctx, q, args...)
+	_, err := s.dbFor(ctx).ExecContext(ctx, q, args...)
 	if err == nil {
 		s.InvalidateContactResolveCache()
 	}
@@ -300,7 +308,7 @@ func (s *PGContactStore) GetContactsByMergedID(ctx context.Context, mergedID uui
 		FROM channel_contacts WHERE merged_id = $1 AND tenant_id = $2
 		ORDER BY last_seen_at DESC`
 
-	rows, err := s.db.QueryContext(ctx, q, mergedID, tid)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, mergedID, tid)
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +336,7 @@ func (s *PGContactStore) DeleteStaleGroupContacts(ctx context.Context, channelTy
 	}
 
 	if len(activeJIDs) == 0 {
-		res, err := s.db.ExecContext(ctx,
+		res, err := s.dbFor(ctx).ExecContext(ctx,
 			`DELETE FROM channel_contacts WHERE tenant_id = $1 AND channel_type = $2 AND COALESCE(channel_instance, '') = COALESCE(NULLIF($3,''), '') AND contact_type = 'group'`,
 			tid, channelType, channelInstance)
 		if err != nil {
@@ -350,7 +358,7 @@ func (s *PGContactStore) DeleteStaleGroupContacts(ctx context.Context, channelTy
 		`DELETE FROM channel_contacts WHERE tenant_id = $1 AND channel_type = $2 AND COALESCE(channel_instance, '') = COALESCE(NULLIF($3,''), '') AND contact_type = 'group' AND sender_id NOT IN (%s)`,
 		strings.Join(placeholders, ","),
 	)
-	res, err := s.db.ExecContext(ctx, q, args...)
+	res, err := s.dbFor(ctx).ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, err
 	}

@@ -26,7 +26,7 @@ func (s *PGTeamStore) generateTaskEmbedding(ctx context.Context, taskID uuid.UUI
 		return
 	}
 	vecStr := vectorToString(embeddings[0])
-	if _, err := s.db.ExecContext(ctx,
+	if _, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE team_tasks SET embedding = $1::vector WHERE id = $2`, vecStr, taskID,
 	); err != nil {
 		slog.Warn("task embedding store failed", "task_id", taskID, "error", err)
@@ -43,7 +43,7 @@ func (s *PGTeamStore) BackfillTaskEmbeddings(ctx context.Context) (int, error) {
 	total := 0
 
 	for {
-		rows, err := s.db.QueryContext(ctx,
+		rows, err := s.dbFor(ctx).QueryContext(ctx,
 			`SELECT id, subject FROM team_tasks
 			 WHERE embedding IS NULL AND status NOT IN ('cancelled')
 			 ORDER BY created_at DESC
@@ -88,7 +88,7 @@ func (s *PGTeamStore) BackfillTaskEmbeddings(ctx context.Context) (int, error) {
 				continue
 			}
 			vecStr := vectorToString(emb)
-			if _, err := s.db.ExecContext(ctx,
+			if _, err := s.dbFor(ctx).ExecContext(ctx,
 				`UPDATE team_tasks SET embedding = $1::vector WHERE id = $2`,
 				vecStr, pending[i].id,
 			); err != nil {
@@ -117,7 +117,7 @@ func (s *PGTeamStore) SearchTasksByEmbedding(ctx context.Context, teamID uuid.UU
 	vecStr := vectorToString(embedding)
 	tid := tenantIDForInsert(ctx)
 
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT `+taskSelectCols+`
 		 `+taskJoinClause+`
 		 WHERE t.team_id = $1 AND t.embedding IS NOT NULL

@@ -83,6 +83,7 @@ var pkgGatewayToken string
 var pkgAPIKeyCache *apiKeyCache
 var pkgPairingStore store.PairingStore
 var pkgTenantCache *tenantCache
+var pkgTenantDBManager store.TenantDBManager
 var pkgOwnerIDs []string
 var pkgJWTManager *auth.JWTManager
 
@@ -120,6 +121,11 @@ func InitOwnerIDs(ids []string) {
 // InitJWTManager sets the JWT manager for multi-auth session token validation.
 func InitJWTManager(m *auth.JWTManager) {
 	pkgJWTManager = m
+}
+
+// InitTenantDBManager sets the tenant DB manager for per-tenant database resolution.
+func InitTenantDBManager(mgr store.TenantDBManager) {
+	pkgTenantDBManager = mgr
 }
 
 // isHTTPOwnerID checks if the user ID is a configured owner.
@@ -379,6 +385,14 @@ func enrichContext(ctx context.Context, r *http.Request, auth authResult) contex
 		"role", string(auth.Role),
 		"tenant_id", tenantID.String(),
 	)
+
+	// Resolve tenant DB if available (greenfield tenants with tenant_db_connection)
+	if pkgTenantDBManager != nil && tenantID != uuid.Nil && !store.IsMasterScope(ctx) {
+		if db, err := pkgTenantDBManager.GetPool(ctx, tenantID); err == nil && db != nil {
+			ctx = store.WithTenantDB(ctx, db)
+		}
+	}
+
 	return ctx
 }
 

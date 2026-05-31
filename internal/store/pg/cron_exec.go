@@ -32,7 +32,7 @@ func (s *PGCronStore) RunJob(ctx context.Context, jobID string, force bool) (boo
 	if parseErr != nil {
 		return false, "", fmt.Errorf("invalid job id %q: %w", jobID, parseErr)
 	}
-	res, err := s.db.ExecContext(ctx, "UPDATE cron_jobs SET last_status = 'running', next_run_at = NULL, updated_at = $1 WHERE id = $2 AND last_status IS DISTINCT FROM 'running'", time.Now(), id)
+	res, err := s.dbFor(ctx).ExecContext(ctx, "UPDATE cron_jobs SET last_status = 'running', next_run_at = NULL, updated_at = $1 WHERE id = $2 AND last_status IS DISTINCT FROM 'running'", time.Now(), id)
 	if err != nil {
 		slog.Warn("cron: failed to claim job for forced run", "jobId", jobID, "error", err)
 		return false, "", err
@@ -93,7 +93,7 @@ func (s *PGCronStore) GetRunLog(ctx context.Context, jobID string, limit, offset
 		}
 		argIdx := len(tenantArgs) + 1
 		countQ := fmt.Sprintf("SELECT COUNT(*) FROM cron_run_logs r%s WHERE r.job_id = $%d%s", tenantJoin, argIdx, tenantWhere)
-		s.db.QueryRowContext(ctx, countQ, append(tenantArgs, id)...).Scan(&total) //nolint:errcheck
+		s.dbFor(ctx).QueryRowContext(ctx, countQ, append(tenantArgs, id)...).Scan(&total) //nolint:errcheck
 
 		dataQ = fmt.Sprintf("SELECT %s FROM cron_run_logs r%s WHERE r.job_id = $%d%s ORDER BY r.ran_at DESC LIMIT $%d OFFSET $%d",
 			cols, tenantJoin, argIdx, tenantWhere, argIdx+1, argIdx+2)
@@ -101,7 +101,7 @@ func (s *PGCronStore) GetRunLog(ctx context.Context, jobID string, limit, offset
 	} else {
 		argIdx := len(tenantArgs) + 1
 		countQ := fmt.Sprintf("SELECT COUNT(*) FROM cron_run_logs r%s WHERE 1=1%s", tenantJoin, tenantWhere)
-		s.db.QueryRowContext(ctx, countQ, tenantArgs...).Scan(&total) //nolint:errcheck
+		s.dbFor(ctx).QueryRowContext(ctx, countQ, tenantArgs...).Scan(&total) //nolint:errcheck
 
 		dataQ = fmt.Sprintf("SELECT %s FROM cron_run_logs r%s WHERE 1=1%s ORDER BY r.ran_at DESC LIMIT $%d OFFSET $%d",
 			cols, tenantJoin, tenantWhere, argIdx, argIdx+1)
@@ -109,7 +109,7 @@ func (s *PGCronStore) GetRunLog(ctx context.Context, jobID string, limit, offset
 	}
 
 	var scanned []cronRunLogRow
-	if err := pkgSqlxDB.SelectContext(ctx, &scanned, dataQ, dataArgs...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned, dataQ, dataArgs...); err != nil {
 		return nil, total
 	}
 	result := make([]store.CronRunLogEntry, 0, len(scanned))

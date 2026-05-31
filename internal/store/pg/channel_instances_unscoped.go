@@ -9,7 +9,7 @@ import (
 // ListAllInstances returns all channel instances across all tenants. Server-internal only.
 func (s *PGChannelInstanceStore) ListAllInstances(ctx context.Context) ([]store.ChannelInstanceData, error) {
 	q := `SELECT ` + channelInstanceSelectCols + ` FROM channel_instances ORDER BY name`
-	rows, err := s.db.QueryContext(ctx, q)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -19,7 +19,7 @@ func (s *PGChannelInstanceStore) ListAllInstances(ctx context.Context) ([]store.
 // ListAllEnabled returns enabled channel instances across all tenants. Server-internal only.
 func (s *PGChannelInstanceStore) ListAllEnabled(ctx context.Context) ([]store.ChannelInstanceData, error) {
 	q := `SELECT ` + channelInstanceSelectCols + ` FROM channel_instances WHERE enabled = true ORDER BY name`
-	rows, err := s.db.QueryContext(ctx, q)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q)
 	if err != nil {
 		return nil, err
 	}

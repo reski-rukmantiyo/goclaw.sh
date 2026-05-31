@@ -192,18 +192,103 @@ There are no hardcoded constants for `team_user_grants.role`. The application la
 
 ---
 
-## 7. Group Chat Roles (`group_members` table)
+## 7. Organizational Groups (`groups` table)
 
-Channel group chats (Telegram groups, Discord guilds, etc.) track member roles for mention-gating and admin checks.
+Groups are **tenant-scoped organizational units** — departments, teams, projects, or business units. They are separate from chat groups (Telegram/Discord channels) which are managed by the Channel Manager.
 
-| Constant | Value | Meaning |
-|----------|-------|---------|
-| `GroupRoleAdmin` | `admin` | Can change group settings, trigger bot commands |
-| `GroupRoleMember` | `member` | Standard participant |
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID v7 | Primary key |
+| `name` | VARCHAR | Display name |
+| `slug` | VARCHAR | URL-safe identifier, unique per tenant |
+| `description` | TEXT | Optional description |
+| `parent_group_id` | UUID | Parent group for hierarchy (max 3 levels) |
+| `tenant_id` | UUID FK | Scoped to tenant |
+| `visibility` | VARCHAR | `open` (anyone can join) or `closed` (invite/approval only) |
+| `max_members` | INT | `0` = unlimited |
+| `created_by` | UUID | Who created the group |
+| `status` | VARCHAR | `active` or `deleted` (soft delete) |
+
+### Hierarchy
+
+- Root groups: `parent_group_id IS NULL` (level 1)
+- Max depth: 3 levels enforced by PostgreSQL trigger `trg_group_hierarchy_depth`
+- Tree API: `GET /v1/groups/tree`
+
+### Correlation with users and tenant users
+
+| Relationship | How |
+|-------------|-----|
+| **Users** | `group_members.user_id` references `users.id` (UUID). A user can belong to many groups within the same tenant. |
+| **Tenant users** | Groups are tenant-scoped (`groups.tenant_id`). Membership is implicitly valid only for users who also have a `tenant_users` row in that tenant. |
+| **User deletion** | A user cannot be deleted while they still have active `group_members` rows. The delete handler checks `GetUserGroups` and returns `409 Conflict` if any remain. |
+
+### Group membership (`group_members` table)
+
+| Field | Description |
+|-------|-------------|
+| `group_id` | References `groups` |
+| `user_id` | References `users.id` |
+| `role` | `admin` or `member` |
+| `joined_at` | Timestamp |
+| `joined_via` | `admin_add`, `self_join`, `request_approved` |
+
+**Last-admin guard:** `UpdateMemberRole` prevents demoting the final admin of a group. If `admin_count <= 1` and the current role is `admin`, demotion is rejected.
+
+### Group roles vs tenant roles
+
+| Dimension | Group role (`group_members.role`) | Tenant role (`tenant_users.role`) |
+|-----------|-----------------------------------|-----------------------------------|
+| **Scope** | Single group | Single tenant |
+| **Values** | `admin`, `member` | `owner`, `admin`, `operator`, `member`, `viewer` |
+| **Manages** | Group members, join requests | Tenant-wide users, agents, config |
+| **Example** | Group admin can approve join requests | Tenant admin can create API keys |
+
+### Join requests
+
+Closed groups support self-service join requests:
+
+1. User calls `POST /v1/groups/{id}/join-requests`
+2. Group admin reviews: `PATCH /v1/groups/{id}/join-requests/{reqId}` (`approved` or `rejected`)
+3. On approval, a `group_members` row is created with `joined_via = request_approved`
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Awaiting review |
+| `approved` | Accepted, member row created |
+| `rejected` | Denied |
+
+### Resource visibility scoping
+
+Groups enable a 3-tier visibility model for resources (skills, documents, etc.):
+
+| Scope | Visible to |
+|-------|-----------|
+| `personal` | Owner only (or tenant admin) |
+| `group` | Group members, group admins, tenant admin |
+| `tenant` | All authenticated users in the tenant |
+
+**Scope transitions** require escalating authority:
+- `personal → group`: requires `group_admin` or `tenant_admin`
+- `group → tenant`: requires `tenant_admin`
+- Demotions require the same level as the original scope.
+
+Evaluated by `internal/store/visibility_filter.go`: `IsResourceVisibleTo`, `CanTransitionScope`.
+
+### Audit logging
+
+Group actions (create, update, delete, member add/remove, role change, join request review) are logged to `audit_log` with:
+- `resource_type`: `group`, `membership`, `user`, `permission`, `system`
+- `group_id`: Link to the affected group
+- `actor_id`: Who performed the action
+- `detail`: JSONB payload
 
 ### Source
 
-- `internal/store/group_store.go`: `GroupRoleAdmin`, `GroupRoleMember`
+- `internal/store/group_store.go`: `GroupData`, `GroupMemberData`, `GroupStore`, `GroupRoleAdmin`, `GroupRoleMember`
+- `internal/store/visibility_filter.go`: `ScopePersonal`, `ScopeGroup`, `ScopeTenant`, `IsResourceVisibleTo`, `CanTransitionScope`
+- `internal/http/groups.go`: HTTP handlers
+- `internal/http/users.go`: User deletion guard (`GetUserGroups`)
 
 ---
 
@@ -216,7 +301,7 @@ Channel group chats (Telegram groups, Discord guilds, etc.) track member roles f
 | **Agent shares** | `agent_shares` | Human users per agent | `admin`, `operator`, `viewer` (implicit `owner`) |
 | **Team agent members** | `agent_team_members` | Agents per team | `lead`, `member`, `reviewer` |
 | **Team user grants** | `team_user_grants` | Human users per team | Any string (application-defined) |
-| **Group chat** | `group_members` | Users per chat group | `admin`, `member` |
+| **Organizational group** | `group_members` | Users per group (tenant-scoped) | `admin`, `member` |
 
 ---
 
@@ -286,15 +371,60 @@ CREATE TABLE team_user_grants (
     UNIQUE (team_id, user_id)
 );
 
--- Group chat members
+-- Organizational groups
+CREATE TABLE groups (
+    id              UUID PRIMARY KEY,
+    name            VARCHAR NOT NULL,
+    slug            VARCHAR NOT NULL,
+    description     TEXT,
+    parent_group_id UUID REFERENCES groups(id) ON DELETE SET NULL,
+    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    visibility      VARCHAR NOT NULL DEFAULT 'closed',
+    max_members     INTEGER NOT NULL DEFAULT 0,
+    created_by      UUID REFERENCES users(id),
+    status          VARCHAR NOT NULL DEFAULT 'active',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (slug, tenant_id)
+);
+
+-- Group members
 CREATE TABLE group_members (
     id         UUID PRIMARY KEY,
-    group_id   UUID NOT NULL,
-    user_id    UUID NOT NULL,
+    group_id   UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role       VARCHAR NOT NULL DEFAULT 'member',
     joined_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    joined_via VARCHAR,
+    joined_via VARCHAR NOT NULL DEFAULT 'admin_add',
     UNIQUE (group_id, user_id)
+);
+
+-- Group join requests
+CREATE TABLE join_requests (
+    id          UUID PRIMARY KEY,
+    group_id    UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status      VARCHAR NOT NULL DEFAULT 'pending',
+    reviewed_by UUID REFERENCES users(id),
+    reviewed_at TIMESTAMPTZ,
+    message     TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (group_id, user_id, status)
+);
+
+-- Audit log
+CREATE TABLE audit_log (
+    id            UUID PRIMARY KEY,
+    tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    actor_id      UUID REFERENCES users(id),
+    action        VARCHAR NOT NULL,
+    resource_type VARCHAR NOT NULL,
+    resource_id   UUID NOT NULL,
+    group_id      UUID REFERENCES groups(id) ON DELETE SET NULL,
+    detail        JSONB,
+    ip_address    VARCHAR,
+    user_agent    TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
@@ -309,6 +439,8 @@ CREATE TABLE group_members (
 | Permission engine | `internal/permissions/policy.go` | `Role`, `Scope`, `PolicyEngine`, gateway role constants |
 | Agent access store | `internal/store/agent_store.go` | `AgentAccessStore`, `AgentShareData` |
 | Team store interface | `internal/store/team_store.go` | `TeamCRUDStore`, `TeamAccessStore`, `TeamUserGrant`, team role constants |
-| Group store interface | `internal/store/group_store.go` | `GroupRoleAdmin`, `GroupRoleMember` |
+| Group store interface | `internal/store/group_store.go` | `GroupData`, `GroupMemberData`, `GroupStore`, `GroupRoleAdmin`, `GroupRoleMember` |
+| Visibility filter | `internal/store/visibility_filter.go` | `ScopePersonal`, `ScopeGroup`, `ScopeTenant`, `IsResourceVisibleTo`, `CanTransitionScope` |
 | PG implementations | `internal/store/pg/users.go`, `tenant_store.go`, `agents.go`, `teams.go`, `groups.go` | SQL queries and scans |
 | SQLite implementations | `internal/store/sqlitestore/tenants.go`, `agents_access.go`, `teams.go`, `groups.go` | Lite edition parity |
+| HTTP handlers | `internal/http/groups.go`, `internal/http/users.go` | Group CRUD + user deletion guard |

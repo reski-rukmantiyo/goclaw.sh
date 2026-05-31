@@ -4,15 +4,16 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
 const (
 	// Entra ID OIDC endpoints (public cloud).
-	EntraCommonIssuer  = "https://login.microsoftonline.com/common/v2.0"
-	EntraCommonAuthURL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+	EntraCommonIssuer   = "https://login.microsoftonline.com/common/v2.0"
+	EntraCommonAuthURL  = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
 	EntraCommonTokenURL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-	EntraCommonJWKSURI = "https://login.microsoftonline.com/common/discovery/v2.0/keys"
+	EntraCommonJWKSURI  = "https://login.microsoftonline.com/common/discovery/v2.0/keys"
 
 	// Google OAuth2 endpoints.
 	GoogleIssuer   = "https://accounts.google.com"
@@ -53,15 +54,16 @@ func NewGoogleProvider(clientID, clientSecret, redirectURI string) *OIDCProvider
 
 // BuildAuthorizeURL constructs the authorization redirect URL for an OIDC provider.
 func BuildAuthorizeURL(provider *OIDCProvider, state string) string {
-	scopes := "openid"
+	var scopes strings.Builder
+	scopes.WriteString("openid")
 	for _, s := range provider.Scopes {
 		if s == "openid" {
 			continue
 		}
-		scopes += " " + s
+		scopes.WriteString(" " + s)
 	}
 	return fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s",
-		provider.AuthURL, provider.ClientID, provider.RedirectURI, scopes, state)
+		provider.AuthURL, provider.ClientID, provider.RedirectURI, scopes.String(), state)
 }
 
 // ExchangeCode exchanges an authorization code for tokens at the provider's token endpoint.

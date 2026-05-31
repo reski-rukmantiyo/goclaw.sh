@@ -117,7 +117,7 @@ func exportTeamMembers(ctx context.Context, db *sql.DB, teamID, leadAgentID uuid
 		return nil, err
 	}
 	var out []TeamMemberExport
-	err = pkgSqlxDB.SelectContext(ctx, &out,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &out,
 		"SELECT a.agent_key, m.role"+
 			" FROM agent_team_members m"+
 			" JOIN agents a ON a.id = m.agent_id"+
@@ -372,7 +372,7 @@ func ExportAgentLinks(ctx context.Context, db *sql.DB, agentID uuid.UUID) ([]Age
 		return nil, err
 	}
 	var out []AgentLinkExport
-	err = pkgSqlxDB.SelectContext(ctx, &out,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &out,
 		"SELECT sa.agent_key AS source_agent_key, ta.agent_key AS target_agent_key, l.direction, COALESCE(l.description,'') AS description"+
 			" FROM agent_links l"+
 			" JOIN agents sa ON sa.id = l.source_agent_id"+

@@ -24,7 +24,7 @@ func (s *PGAgentStore) GetAgentContextFiles(ctx context.Context, agentID uuid.UU
 		return nil, err
 	}
 	var result []store.AgentContextFileData
-	if err := pkgSqlxDB.SelectContext(ctx, &result,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &result,
 		"SELECT agent_id, file_name, content FROM agent_context_files WHERE agent_id = $1"+tClause+" ORDER BY file_name",
 		append([]any{agentID}, tArgs...)...,
 	); err != nil {
@@ -34,7 +34,7 @@ func (s *PGAgentStore) GetAgentContextFiles(ctx context.Context, agentID uuid.UU
 }
 
 func (s *PGAgentStore) SetAgentContextFile(ctx context.Context, agentID uuid.UUID, fileName, content string) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO agent_context_files (id, agent_id, file_name, content, updated_at, tenant_id)
 		 VALUES ($1, $2, $3, $4, $5, $6)
 		 ON CONFLICT (agent_id, file_name) DO UPDATE SET content = EXCLUDED.content, updated_at = EXCLUDED.updated_at`,
@@ -51,7 +51,7 @@ func (s *PGAgentStore) PropagateContextFile(ctx context.Context, agentID uuid.UU
 		return 0, err
 	}
 	// $4 (tenant_id) is referenced twice in the query but only needs one arg value.
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE user_context_files
 		 SET content = src.content, updated_at = $3
 		 FROM (
@@ -77,7 +77,7 @@ func (s *PGAgentStore) GetUserContextFiles(ctx context.Context, agentID uuid.UUI
 		return nil, err
 	}
 	var result []store.UserContextFileData
-	if err := pkgSqlxDB.SelectContext(ctx, &result,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &result,
 		"SELECT agent_id, user_id, file_name, content FROM user_context_files WHERE agent_id = $1 AND user_id = $2"+tClause+" ORDER BY file_name",
 		append([]any{agentID, userID}, tArgs...)...,
 	); err != nil {
@@ -87,7 +87,7 @@ func (s *PGAgentStore) GetUserContextFiles(ctx context.Context, agentID uuid.UUI
 }
 
 func (s *PGAgentStore) SetUserContextFile(ctx context.Context, agentID uuid.UUID, userID, fileName, content string) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO user_context_files (id, agent_id, user_id, file_name, content, updated_at, tenant_id)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 ON CONFLICT (agent_id, user_id, file_name) DO UPDATE SET content = EXCLUDED.content, updated_at = EXCLUDED.updated_at`,
@@ -102,7 +102,7 @@ func (s *PGAgentStore) ListUserContextFilesByName(ctx context.Context, agentID u
 		return nil, err
 	}
 	var result []store.UserContextFileData
-	if err := pkgSqlxDB.SelectContext(ctx, &result,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &result,
 		"SELECT agent_id, user_id, file_name, content FROM user_context_files WHERE agent_id = $1 AND file_name = $2"+tClause,
 		append([]any{agentID, fileName}, tArgs...)...,
 	); err != nil {
@@ -116,7 +116,7 @@ func (s *PGAgentStore) DeleteUserContextFile(ctx context.Context, agentID uuid.U
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		"DELETE FROM user_context_files WHERE agent_id = $1 AND user_id = $2 AND file_name = $3"+tClause,
 		append([]any{agentID, userID, fileName}, tArgs...)...)
 	return err
@@ -159,10 +159,10 @@ func (s *PGAgentStore) MigrateUserDataOnMerge(ctx context.Context, oldUserIDs []
 	// Helper: migrate + delete for one table. DO NOTHING on conflict —
 	// existing tenant user data always wins (canonical identity).
 	migrate := func(insertQ, deleteQ string) {
-		if _, err := s.db.ExecContext(ctx, insertQ, baseArgs...); err != nil {
+		if _, err := s.dbFor(ctx).ExecContext(ctx, insertQ, baseArgs...); err != nil {
 			slog.Warn("merge.migrate", "error", err)
 		}
-		if _, err := s.db.ExecContext(ctx, deleteQ, delArgs...); err != nil {
+		if _, err := s.dbFor(ctx).ExecContext(ctx, deleteQ, delArgs...); err != nil {
 			slog.Warn("merge.cleanup", "error", err)
 		}
 	}
@@ -208,7 +208,7 @@ func (s *PGAgentStore) MigrateUserDataOnMerge(ctx context.Context, oldUserIDs []
 	// Simply re-point remaining chunks whose document still has old user_id.
 	// Uses INSERT-style arg layout (newUserID at N+1, tenant at N+2).
 	repoint := fmt.Sprintf(`UPDATE memory_chunks SET user_id = %s WHERE user_id IN (%s)%s`, newP, inClause, tClauseIns)
-	if _, err := s.db.ExecContext(ctx, repoint, baseArgs...); err != nil {
+	if _, err := s.dbFor(ctx).ExecContext(ctx, repoint, baseArgs...); err != nil {
 		slog.Warn("merge.migrate_chunks", "error", err)
 	}
 
@@ -227,7 +227,7 @@ func (s *PGAgentStore) GetOrCreateUserProfile(ctx context.Context, agentID uuid.
 
 	var isInserted bool
 	var storedWorkspace sql.NullString
-	err := s.db.QueryRowContext(ctx, `
+	err := s.dbFor(ctx).QueryRowContext(ctx, `
 		INSERT INTO user_agent_profiles (agent_id, user_id, workspace, first_seen_at, last_seen_at, tenant_id)
 		VALUES ($1, $2, NULLIF($3, ''), NOW(), NOW(), $4)
 		ON CONFLICT (agent_id, user_id) DO UPDATE SET last_seen_at = NOW()
@@ -246,7 +246,7 @@ func (s *PGAgentStore) GetOrCreateUserProfile(ctx context.Context, agentID uuid.
 // EnsureUserProfile creates a minimal user_agent_profiles row if not exists.
 // Used when admin manually adds a contact as an agent instance via the UI.
 func (s *PGAgentStore) EnsureUserProfile(ctx context.Context, agentID uuid.UUID, userID string) error {
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.dbFor(ctx).ExecContext(ctx, `
 		INSERT INTO user_agent_profiles (agent_id, user_id, first_seen_at, last_seen_at, tenant_id)
 		VALUES ($1, $2, NOW(), NOW(), $3)
 		ON CONFLICT (agent_id, user_id) DO NOTHING
@@ -267,7 +267,7 @@ func (s *PGAgentStore) ListUserInstances(ctx context.Context, agentID uuid.UUID)
 		subTenantFilter = " AND tenant_id = $2"
 	}
 	var rows []userInstanceRow
-	if err := pkgSqlxDB.SelectContext(ctx, &rows, `
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows, `
 		SELECT p.user_id,
 		       TO_CHAR(p.first_seen_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS first_seen_at,
 		       TO_CHAR(p.last_seen_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_seen_at,
@@ -301,7 +301,7 @@ func (s *PGAgentStore) UpdateUserProfileMetadata(ctx context.Context, agentID uu
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE user_agent_profiles SET metadata = COALESCE(metadata, '{}') || $3::jsonb
 		 WHERE agent_id = $1 AND user_id = $2`+tClause,
 		append([]any{agentID, userID, metaJSON}, tArgs...)...,
@@ -317,7 +317,7 @@ func (s *PGAgentStore) GetUserOverride(ctx context.Context, agentID uuid.UUID, u
 		return nil, err
 	}
 	var d store.UserAgentOverrideData
-	err = pkgSqlxDB.GetContext(ctx, &d,
+	err = SqlxDBFor(ctx).GetContext(ctx, &d,
 		"SELECT agent_id, user_id, provider, model FROM user_agent_overrides WHERE agent_id = $1 AND user_id = $2"+tClause,
 		append([]any{agentID, userID}, tArgs...)...,
 	)
@@ -328,7 +328,7 @@ func (s *PGAgentStore) GetUserOverride(ctx context.Context, agentID uuid.UUID, u
 }
 
 func (s *PGAgentStore) SetUserOverride(ctx context.Context, override *store.UserAgentOverrideData) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO user_agent_overrides (id, agent_id, user_id, provider, model, tenant_id)
 		 VALUES ($1, $2, $3, $4, $5, $6)
 		 ON CONFLICT (agent_id, user_id) DO UPDATE SET provider = EXCLUDED.provider, model = EXCLUDED.model`,

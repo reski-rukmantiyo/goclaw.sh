@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"strings"
 
@@ -56,6 +57,8 @@ const (
 	GroupIDKey contextKey = "goclaw_group_id"
 	// GroupRoleKey is the context key for the user's role in the current group.
 	GroupRoleKey contextKey = "goclaw_group_role"
+	// TenantDBKey is the context key for the tenant-specific *sql.DB pool.
+	TenantDBKey contextKey = "goclaw_tenant_db"
 )
 
 // AgentAudioSnapshot is an immutable snapshot of agent audio config carried through
@@ -426,6 +429,20 @@ func TenantSlugFromContext(ctx context.Context) string {
 		return v
 	}
 	return ""
+}
+
+// WithTenantDB returns a new context with the tenant-specific *sql.DB pool.
+func WithTenantDB(ctx context.Context, db *sql.DB) context.Context {
+	return context.WithValue(ctx, TenantDBKey, db)
+}
+
+// TenantDBFromContext extracts the tenant-specific *sql.DB from context.
+// Returns nil if not set.
+func TenantDBFromContext(ctx context.Context) *sql.DB {
+	if v, ok := ctx.Value(TenantDBKey).(*sql.DB); ok && v != nil {
+		return v
+	}
+	return nil
 }
 
 // WithRole returns a new context with the caller's permission role.

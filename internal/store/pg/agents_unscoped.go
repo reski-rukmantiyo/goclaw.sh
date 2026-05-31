@@ -11,7 +11,7 @@ import (
 
 // GetByIDUnscoped returns an agent by ID without tenant filtering. Server-internal only.
 func (s *PGAgentStore) GetByIDUnscoped(ctx context.Context, id uuid.UUID) (*store.AgentData, error) {
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT `+agentSelectCols+`
 		 FROM agents WHERE id = $1 AND deleted_at IS NULL`, id)
 	d, err := scanAgentRow(row)

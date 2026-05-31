@@ -17,7 +17,7 @@ import (
 func (s *PGTeamStore) SetTaskFollowup(ctx context.Context, taskID, teamID uuid.UUID, followupAt time.Time, max int, message, channel, chatID string) error {
 	now := time.Now()
 	tid := tenantIDForInsert(ctx)
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE team_tasks SET followup_at = $1, followup_max = $2, followup_message = $3, followup_channel = $4, followup_chat_id = $5, updated_at = $6
 		 WHERE id = $7 AND team_id = $8 AND status = $9 AND tenant_id = $10`,
 		followupAt, max, message, channel, chatID, now,
@@ -38,7 +38,7 @@ func (s *PGTeamStore) SetTaskFollowup(ctx context.Context, taskID, teamID uuid.U
 
 func (s *PGTeamStore) ClearTaskFollowup(ctx context.Context, taskID uuid.UUID) error {
 	tid := tenantIDForInsert(ctx)
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE team_tasks SET followup_at = NULL, followup_count = 0, followup_message = NULL, followup_channel = NULL, followup_chat_id = NULL, updated_at = $1
 		 WHERE id = $2 AND tenant_id = $3`,
 		time.Now(), taskID, tid,
@@ -49,7 +49,7 @@ func (s *PGTeamStore) ClearTaskFollowup(ctx context.Context, taskID uuid.UUID) e
 // ListAllFollowupDueTasks returns due followup tasks across all v2 active teams (batch).
 func (s *PGTeamStore) ListAllFollowupDueTasks(ctx context.Context) ([]store.TeamTaskData, error) {
 	now := time.Now()
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT `+taskSelectCols+`
 		 `+taskJoinClause+`
 		 `+v2ActiveTeamJoin+`
@@ -70,7 +70,7 @@ func (s *PGTeamStore) ListAllFollowupDueTasks(ctx context.Context) ([]store.Team
 
 func (s *PGTeamStore) IncrementFollowupCount(ctx context.Context, taskID uuid.UUID, nextAt *time.Time) error {
 	tid := tenantIDForInsert(ctx)
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE team_tasks SET followup_count = followup_count + 1, followup_at = $1, updated_at = $2
 		 WHERE id = $3 AND tenant_id = $4`,
 		nextAt, time.Now(), taskID, tid,
@@ -80,7 +80,7 @@ func (s *PGTeamStore) IncrementFollowupCount(ctx context.Context, taskID uuid.UU
 
 func (s *PGTeamStore) ClearFollowupByScope(ctx context.Context, channel, chatID string) (int, error) {
 	tid := tenantIDForInsert(ctx)
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE team_tasks
 		 SET followup_at = NULL, followup_count = 0, followup_message = NULL,
 		     followup_channel = NULL, followup_chat_id = NULL, updated_at = NOW()
@@ -97,7 +97,7 @@ func (s *PGTeamStore) ClearFollowupByScope(ctx context.Context, channel, chatID 
 
 func (s *PGTeamStore) SetFollowupForActiveTasks(ctx context.Context, teamID uuid.UUID, channel, chatID string, followupAt time.Time, max int, message string) (int, error) {
 	tid := tenantIDForInsert(ctx)
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE team_tasks
 		 SET followup_at = $4, followup_max = $5, followup_message = $6,
 		     followup_channel = $2, followup_chat_id = $3, updated_at = NOW()
@@ -122,7 +122,7 @@ func (s *PGTeamStore) SetFollowupForActiveTasks(ctx context.Context, teamID uuid
 func (s *PGTeamStore) HasActiveMemberTasks(ctx context.Context, teamID uuid.UUID, excludeAgentID uuid.UUID) (bool, error) {
 	tid := tenantIDForInsert(ctx)
 	var exists bool
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT EXISTS(
 			SELECT 1 FROM team_tasks
 			WHERE team_id = $1

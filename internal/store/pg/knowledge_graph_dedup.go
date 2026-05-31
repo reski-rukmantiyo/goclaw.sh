@@ -49,7 +49,7 @@ func (s *PGKnowledgeGraphStore) DedupAfterExtraction(ctx context.Context, agentI
 		if err != nil {
 			continue
 		}
-		row := s.db.QueryRowContext(ctx,
+		row := s.dbFor(ctx).QueryRowContext(ctx,
 			`SELECT name, entity_type, confidence, embedding::text
 			 FROM kg_entities WHERE id = $1 AND agent_id = $2`+tc,
 			append([]any{entityID, aid}, tcArgs...)...)
@@ -134,7 +134,7 @@ func (s *PGKnowledgeGraphStore) knnNeighbors(ctx context.Context, agentID uuid.U
 		LIMIT $%d`, idx, where, idx, idx+1)
 
 	var nRows []knnNeighborRow
-	if err = pkgSqlxDB.SelectContext(ctx, &nRows, q, args...); err != nil {
+	if err = SqlxDBFor(ctx).SelectContext(ctx, &nRows, q, args...); err != nil {
 		return nil, err
 	}
 	results := make([]knnNeighbor, len(nRows))
@@ -158,7 +158,7 @@ func (s *PGKnowledgeGraphStore) insertDedupCandidate(ctx context.Context, agentI
 		return fmt.Errorf("insert dedup candidate: entity_b_id: %w", err)
 	}
 	tid := tenantIDForInsert(ctx)
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.dbFor(ctx).ExecContext(ctx, `
 		INSERT INTO kg_dedup_candidates (id, tenant_id, agent_id, user_id, entity_a_id, entity_b_id, similarity, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (entity_a_id, entity_b_id) DO NOTHING`,
@@ -217,7 +217,7 @@ func (s *PGKnowledgeGraphStore) ScanDuplicates(ctx context.Context, agentID, use
 		ORDER BY similarity DESC
 		LIMIT $%d`, where, idx, idx+1)
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return 0, fmt.Errorf("kg.scan_duplicates: query failed: %w", err)
 	}
@@ -245,7 +245,7 @@ func (s *PGKnowledgeGraphStore) ScanDuplicates(ctx context.Context, agentID, use
 			slog.Warn("kg.scan_duplicates: invalid entity_b UUID from DB row", "id", bID, "error", err)
 			continue
 		}
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.dbFor(ctx).ExecContext(ctx, `
 			INSERT INTO kg_dedup_candidates (id, tenant_id, agent_id, user_id, entity_a_id, entity_b_id, similarity, created_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			ON CONFLICT (entity_a_id, entity_b_id) DO NOTHING`,
@@ -277,7 +277,7 @@ func (s *PGKnowledgeGraphStore) MergeEntities(ctx context.Context, agentID, user
 		return fmt.Errorf("kg merge entities: source: %w", err)
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -408,7 +408,7 @@ func (s *PGKnowledgeGraphStore) ListDedupCandidates(ctx context.Context, agentID
 		LIMIT $%d`, where, idx)
 
 	var dRows []dedupCandidateRow
-	if err = pkgSqlxDB.SelectContext(ctx, &dRows, q, args...); err != nil {
+	if err = SqlxDBFor(ctx).SelectContext(ctx, &dRows, q, args...); err != nil {
 		return nil, err
 	}
 	results := make([]store.DedupCandidate, len(dRows))
@@ -433,7 +433,7 @@ func (s *PGKnowledgeGraphStore) DismissCandidate(ctx context.Context, agentID, c
 	if err != nil {
 		return err
 	}
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE kg_dedup_candidates SET status = 'dismissed' WHERE id = $1 AND agent_id = $2 AND status = 'pending'`+tc,
 		append([]any{cid, aid}, tcArgs...)...,
 	)

@@ -2,8 +2,8 @@ package config
 
 // AuthConfig configures the multi-auth module (local, Entra ID, Google OAuth2).
 type AuthConfig struct {
-	Providers AuthProvidersConfig `json:"providers,omitempty"`
-	Session   AuthSessionConfig   `json:"session,omitempty"`
+	Providers AuthProvidersConfig `json:"providers"`
+	Session   AuthSessionConfig   `json:"session"`
 }
 
 // AuthProvidersConfig holds per-provider auth configuration.

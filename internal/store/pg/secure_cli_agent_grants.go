@@ -24,6 +24,14 @@ func NewPGSecureCLIAgentGrantStore(db *sql.DB, encKey string) *PGSecureCLIAgentG
 	return &PGSecureCLIAgentGrantStore{db: db, encKey: encKey}
 }
 
+func (s *PGSecureCLIAgentGrantStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 const grantSelectCols = `id, binary_id, agent_id, deny_args, deny_verbose, timeout_seconds, tips, enabled, encrypted_env, created_at, updated_at`
 
 func (s *PGSecureCLIAgentGrantStore) Create(ctx context.Context, g *store.SecureCLIAgentGrant) error {
@@ -39,7 +47,7 @@ func (s *PGSecureCLIAgentGrantStore) Create(ctx context.Context, g *store.Secure
 		tenantID = store.MasterTenantID
 	}
 
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO secure_cli_agent_grants
 		 (id, binary_id, agent_id, deny_args, deny_verbose, timeout_seconds, tips, enabled, encrypted_env, tenant_id, created_at, updated_at)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
@@ -62,7 +70,7 @@ func (s *PGSecureCLIAgentGrantStore) Get(ctx context.Context, id uuid.UUID) (*st
 		query += ` AND tenant_id = $2`
 		args = append(args, tid)
 	}
-	row := s.db.QueryRowContext(ctx, query, args...)
+	row := s.dbFor(ctx).QueryRowContext(ctx, query, args...)
 	return s.scanRow(row)
 }
 
@@ -80,25 +88,25 @@ func (s *PGSecureCLIAgentGrantStore) Update(ctx context.Context, id uuid.UUID, u
 	updates["updated_at"] = time.Now()
 
 	if store.IsCrossTenant(ctx) {
-		return execMapUpdate(ctx, s.db, "secure_cli_agent_grants", id, updates)
+		return execMapUpdate(ctx, s.dbFor(ctx), "secure_cli_agent_grants", id, updates)
 	}
 	tid := store.TenantIDFromContext(ctx)
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required")
 	}
-	return execMapUpdateWhereTenant(ctx, s.db, "secure_cli_agent_grants", updates, id, tid)
+	return execMapUpdateWhereTenant(ctx, s.dbFor(ctx), "secure_cli_agent_grants", updates, id, tid)
 }
 
 func (s *PGSecureCLIAgentGrantStore) Delete(ctx context.Context, id uuid.UUID) error {
 	if store.IsCrossTenant(ctx) {
-		_, err := s.db.ExecContext(ctx, "DELETE FROM secure_cli_agent_grants WHERE id = $1", id)
+		_, err := s.dbFor(ctx).ExecContext(ctx, "DELETE FROM secure_cli_agent_grants WHERE id = $1", id)
 		return err
 	}
 	tid := store.TenantIDFromContext(ctx)
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required")
 	}
-	_, err := s.db.ExecContext(ctx, "DELETE FROM secure_cli_agent_grants WHERE id = $1 AND tenant_id = $2", id, tid)
+	_, err := s.dbFor(ctx).ExecContext(ctx, "DELETE FROM secure_cli_agent_grants WHERE id = $1 AND tenant_id = $2", id, tid)
 	return err
 }
 
@@ -114,7 +122,7 @@ func (s *PGSecureCLIAgentGrantStore) ListByBinary(ctx context.Context, binaryID 
 		args = append(args, tid)
 	}
 	query += ` ORDER BY created_at`
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +141,7 @@ func (s *PGSecureCLIAgentGrantStore) ListByAgent(ctx context.Context, agentID uu
 		args = append(args, tid)
 	}
 	query += ` ORDER BY created_at`
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +255,7 @@ func (s *PGSecureCLIAgentGrantStore) UpdateGrantEnv(ctx context.Context, grantID
 	}
 	now := time.Now()
 	if store.IsCrossTenant(ctx) {
-		_, err := s.db.ExecContext(ctx,
+		_, err := s.dbFor(ctx).ExecContext(ctx,
 			`UPDATE secure_cli_agent_grants SET encrypted_env = $1, updated_at = $2 WHERE id = $3`,
 			nilIfEmpty(envBytes), now, grantID,
 		)
@@ -257,7 +265,7 @@ func (s *PGSecureCLIAgentGrantStore) UpdateGrantEnv(ctx context.Context, grantID
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required")
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE secure_cli_agent_grants SET encrypted_env = $1, updated_at = $2 WHERE id = $3 AND tenant_id = $4`,
 		nilIfEmpty(envBytes), now, grantID, tid,
 	)

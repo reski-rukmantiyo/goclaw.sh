@@ -25,6 +25,13 @@ func NewPGAuditStore(db *sql.DB) *PGAuditStore {
 	return &PGAuditStore{db: db}
 }
 
+func (s *PGAuditStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
 func (s *PGAuditStore) Log(ctx context.Context, entry *store.AuditLogEntry) error {
 	if entry.ID == uuid.Nil {
 		entry.ID = store.GenNewID()
@@ -39,7 +46,7 @@ func (s *PGAuditStore) Log(ctx context.Context, entry *store.AuditLogEntry) erro
 		detail = b
 	}
 
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO audit_log (id, tenant_id, actor_id, action, resource_type, resource_id, group_id, detail, ip_address, user_agent, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		entry.ID, entry.TenantID, nilUUID(entry.ActorID), entry.Action,
@@ -107,10 +114,7 @@ func (s *PGAuditStore) List(ctx context.Context, tenantID uuid.UUID, params stor
 	if limit <= 0 {
 		limit = 50
 	}
-	offset := params.Offset
-	if offset < 0 {
-		offset = 0
-	}
+	offset := max(params.Offset, 0)
 
 	where := "WHERE " + strings.Join(conditions, " AND ")
 
@@ -122,7 +126,7 @@ func (s *PGAuditStore) List(ctx context.Context, tenantID uuid.UUID, params stor
 	)
 	args = append(args, limit, offset)
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, 0, err
 	}

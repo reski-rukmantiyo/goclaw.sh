@@ -1,6 +1,7 @@
 package pg
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 
@@ -31,6 +32,15 @@ func initSqlx(db *sql.DB) {
 
 // SqlxDB returns the package-level *sqlx.DB for use in store methods.
 func SqlxDB() *sqlx.DB {
+	return pkgSqlxDB
+}
+
+// SqlxDBFor returns the tenant-specific sqlx.DB if one is in context,
+// otherwise falls back to the package-level sqlx.DB.
+func SqlxDBFor(ctx context.Context) *sqlx.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return sqlx.NewDb(db, "pgx")
+	}
 	return pkgSqlxDB
 }
 

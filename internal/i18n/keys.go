@@ -209,6 +209,11 @@ const (
 	// --- Tenants ---
 	MsgInvalidRole = "error.invalid_role" // "invalid role: allowed values are owner, admin, operator, member, viewer"
 
+	// --- Tenant DB ---
+	MsgTenantDBConnectionFailed = "error.tenant_db_connection_failed" // "failed to connect to tenant database: %s"
+	MsgTenantDBProvisionFailed  = "error.tenant_db_provision_failed"  // "failed to provision tenant database: %s"
+	MsgTenantDBNotFound         = "error.tenant_db_not_found"         // "tenant database configuration not found"
+
 	// --- TTS / Voices ---
 	MsgTtsUnknownModel          = "error.tts_unknown_model"           // "unknown tts model: %s"
 	MsgVoicesListFailed         = "error.voices_list_failed"          // "failed to list voices: %s"

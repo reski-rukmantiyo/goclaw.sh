@@ -22,6 +22,14 @@ func NewPGWorkstationPermissionStore(db *sql.DB) *PGWorkstationPermissionStore {
 	return &PGWorkstationPermissionStore{db: db}
 }
 
+func (s *PGWorkstationPermissionStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 const wpSelectCols = `id, workstation_id, tenant_id, pattern, enabled, created_by, created_at`
 
 func (s *PGWorkstationPermissionStore) ListForWorkstation(ctx context.Context, workstationID uuid.UUID) ([]store.WorkstationPermission, error) {
@@ -29,7 +37,7 @@ func (s *PGWorkstationPermissionStore) ListForWorkstation(ctx context.Context, w
 	if tid == uuid.Nil {
 		return nil, nil
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT `+wpSelectCols+` FROM workstation_permissions
 		 WHERE workstation_id = $1 AND tenant_id = $2
 		 ORDER BY created_at`,
@@ -52,7 +60,7 @@ func (s *PGWorkstationPermissionStore) Add(ctx context.Context, perm *store.Work
 	if perm.CreatedAt.IsZero() {
 		perm.CreatedAt = time.Now()
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO workstation_permissions
 		 (id, workstation_id, tenant_id, pattern, enabled, created_by, created_at)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -71,7 +79,7 @@ func (s *PGWorkstationPermissionStore) GetByID(ctx context.Context, id uuid.UUID
 	if tid == uuid.Nil {
 		return nil, sql.ErrNoRows
 	}
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT `+wpSelectCols+` FROM workstation_permissions WHERE id = $1 AND tenant_id = $2`,
 		id, tid)
 	p, err := scanPermRow(row)
@@ -89,7 +97,7 @@ func (s *PGWorkstationPermissionStore) Remove(ctx context.Context, id uuid.UUID)
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required")
 	}
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM workstation_permissions WHERE id = $1 AND tenant_id = $2`, id, tid)
 	if err != nil {
 		return fmt.Errorf("workstation_permissions remove: %w", err)
@@ -106,7 +114,7 @@ func (s *PGWorkstationPermissionStore) SetEnabled(ctx context.Context, id uuid.U
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required")
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE workstation_permissions SET enabled = $1 WHERE id = $2 AND tenant_id = $3`,
 		enabled, id, tid)
 	return err
@@ -117,7 +125,7 @@ func (s *PGWorkstationPermissionStore) SetEnabled(ctx context.Context, id uuid.U
 // Uses ON CONFLICT DO NOTHING — safe to call multiple times.
 func (s *PGWorkstationPermissionStore) SeedDefaults(ctx context.Context, workstationID, tenantID uuid.UUID) error {
 	for _, pattern := range store.DefaultAllowedBinaries {
-		_, err := s.db.ExecContext(ctx,
+		_, err := s.dbFor(ctx).ExecContext(ctx,
 			`INSERT INTO workstation_permissions
 			 (id, workstation_id, tenant_id, pattern, enabled, created_by, created_at)
 			 VALUES ($1,$2,$3,$4,TRUE,'system',NOW())

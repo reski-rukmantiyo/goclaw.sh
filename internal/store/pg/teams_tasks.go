@@ -54,7 +54,7 @@ func (s *PGTeamStore) ListTaskScopes(ctx context.Context, teamID uuid.UUID) ([]s
 		tenantWhere = fmt.Sprintf(" AND tenant_id = $%d", len(args)+1)
 		args = append(args, tid)
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT DISTINCT channel, chat_id FROM team_tasks
 		 WHERE team_id = $1 AND channel IS NOT NULL AND channel != ''`+tenantWhere+`
 		 ORDER BY channel, chat_id`, args...)
@@ -91,7 +91,7 @@ func (s *PGTeamStore) CreateTask(ctx context.Context, task *store.TeamTaskData) 
 	}
 
 	// Wrap entire operation in a transaction for atomicity.
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -185,13 +185,13 @@ func (s *PGTeamStore) UpdateTask(ctx context.Context, taskID uuid.UUID, updates 
 	updates["updated_at"] = time.Now()
 	var updateErr error
 	if store.IsCrossTenant(ctx) {
-		updateErr = execMapUpdate(ctx, s.db, "team_tasks", taskID, updates)
+		updateErr = execMapUpdate(ctx, s.dbFor(ctx), "team_tasks", taskID, updates)
 	} else {
 		tid := store.TenantIDFromContext(ctx)
 		if tid == uuid.Nil {
 			return fmt.Errorf("tenant_id required for update")
 		}
-		updateErr = execMapUpdateWhereTenant(ctx, s.db, "team_tasks", updates, taskID, tid)
+		updateErr = execMapUpdateWhereTenant(ctx, s.dbFor(ctx), "team_tasks", updates, taskID, tid)
 	}
 	if updateErr != nil {
 		return updateErr
@@ -243,7 +243,7 @@ func (s *PGTeamStore) ListTasks(ctx context.Context, teamID uuid.UUID, orderBy s
 		args = append(args, tid)
 	}
 
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT `+taskSelectCols+`
 		 `+taskJoinClause+`
 		 WHERE t.team_id = $1 AND ($2 = '' OR t.user_id = $2) `+statusWhere+` `+scopeWhere+tenantWhere+`
@@ -267,7 +267,7 @@ func (s *PGTeamStore) GetTask(ctx context.Context, taskID uuid.UUID) (*store.Tea
 		tenantWhere = fmt.Sprintf(" AND t.tenant_id = $%d", len(args)+1)
 		args = append(args, tid)
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT `+taskSelectCols+`
 		 `+taskJoinClause+`
 		 WHERE t.id = $1`+tenantWhere, args...)
@@ -299,7 +299,7 @@ func (s *PGTeamStore) GetTasksByIDs(ctx context.Context, ids []uuid.UUID) ([]sto
 		tenantWhere = fmt.Sprintf(" AND t.tenant_id = $%d", len(args)+1)
 		args = append(args, tid)
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT `+taskSelectCols+`
 		 `+taskJoinClause+`
 		 WHERE t.id = ANY($1)`+tenantWhere, args...)
@@ -354,7 +354,7 @@ func (s *PGTeamStore) SearchTasks(ctx context.Context, teamID uuid.UUID, query s
 		ftsTenantWhere = fmt.Sprintf(" AND t.tenant_id = $%d", len(ftsArgs)+1)
 		ftsArgs = append(ftsArgs, tid)
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT `+taskSelectCols+`
 		 `+taskJoinClause+`
 		 WHERE t.team_id = $1 AND t.tsv @@ to_tsquery('simple', $2) AND ($4 = '' OR t.user_id = $4)`+ftsTenantWhere+`
@@ -413,7 +413,7 @@ func (s *PGTeamStore) DeleteTask(ctx context.Context, taskID, teamID uuid.UUID) 
 		args = append(args, tid)
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("delete task: begin tx: %w", err)
 	}
@@ -465,7 +465,7 @@ func (s *PGTeamStore) DeleteTasks(ctx context.Context, taskIDs []uuid.UUID, team
 		args = append(args, tid)
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("delete tasks: begin tx: %w", err)
 	}
@@ -533,7 +533,7 @@ func (s *PGTeamStore) ListActiveTasksByChatID(ctx context.Context, chatID string
 		tenantWhere = fmt.Sprintf(" AND t.tenant_id = $%d", len(args)+1)
 		args = append(args, tid)
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT `+taskSelectCols+`
 		 `+taskJoinClause+`
 		 WHERE COALESCE(t.chat_id,'') = $1

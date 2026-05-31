@@ -324,6 +324,7 @@ func runGateway() {
 	server.SetDB(pgStores.DB)
 	server.SetPolicyEngine(permPE)
 	server.SetPairingService(pgStores.Pairing)
+	server.SetTenantDBManager(pgStores.TenantDBManager)
 	server.SetMessageBus(msgBus)
 	server.SetOAuthHandler(httpapi.NewOAuthHandler(pgStores.Providers, pgStores.ConfigSecrets, providerRegistry, msgBus))
 
@@ -656,6 +657,7 @@ func runGateway() {
 		})
 		server.Router().SetPermissionCache(permCache)
 		httpapi.InitTenantStore(pgStores.Tenants, msgBus)
+		httpapi.InitTenantDBManager(pgStores.TenantDBManager)
 		httpapi.InitOwnerIDs(cfg.Gateway.OwnerIDs)
 	}
 

@@ -25,7 +25,7 @@ func (s *PGKnowledgeGraphStore) Traverse(ctx context.Context, agentID, userID, s
 		return nil, fmt.Errorf("kg traverse: start: %w", err)
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}

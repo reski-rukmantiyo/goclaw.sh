@@ -21,12 +21,20 @@ func NewPGEvolutionMetricsStore(db *sql.DB) *PGEvolutionMetricsStore {
 	return &PGEvolutionMetricsStore{db: db}
 }
 
+func (s *PGEvolutionMetricsStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGEvolutionMetricsStore) RecordMetric(ctx context.Context, m store.EvolutionMetric) error {
 	tenantID := store.TenantIDFromContext(ctx)
 	if tenantID == uuid.Nil {
 		return fmt.Errorf("evolution.RecordMetric: tenant_id required in context")
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO agent_evolution_metrics (id, tenant_id, agent_id, session_key, metric_type, metric_key, value)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		m.ID, tenantID, m.AgentID, m.SessionKey, m.MetricType, m.MetricKey, m.Value)
@@ -38,7 +46,7 @@ func (s *PGEvolutionMetricsStore) QueryMetrics(ctx context.Context, agentID uuid
 	if limit <= 0 {
 		limit = 100
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT id, tenant_id, agent_id, session_key, metric_type, metric_key, value, created_at
 		 FROM agent_evolution_metrics
 		 WHERE agent_id = $1 AND metric_type = $2 AND created_at >= $3 AND tenant_id = $4
@@ -62,7 +70,7 @@ func (s *PGEvolutionMetricsStore) QueryMetrics(ctx context.Context, agentID uuid
 
 func (s *PGEvolutionMetricsStore) AggregateToolMetrics(ctx context.Context, agentID uuid.UUID, since time.Time) ([]store.ToolAggregate, error) {
 	tenantID := store.TenantIDFromContext(ctx)
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT metric_key,
 		        COUNT(*) AS call_count,
 		        AVG(CASE WHEN COALESCE(value->>'success','false') = 'true' THEN 1.0 ELSE 0.0 END) AS success_rate,
@@ -92,7 +100,7 @@ func (s *PGEvolutionMetricsStore) AggregateToolMetrics(ctx context.Context, agen
 
 func (s *PGEvolutionMetricsStore) AggregateRetrievalMetrics(ctx context.Context, agentID uuid.UUID, since time.Time) ([]store.RetrievalAggregate, error) {
 	tenantID := store.TenantIDFromContext(ctx)
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT metric_key,
 		        COUNT(*) AS query_count,
 		        AVG(CASE WHEN COALESCE(value->>'used_in_reply','false') = 'true' THEN 1.0 ELSE 0.0 END) AS usage_rate,
@@ -123,11 +131,11 @@ func (s *PGEvolutionMetricsStore) Cleanup(ctx context.Context, olderThan time.Ti
 	var result sql.Result
 	var err error
 	if tenantID != uuid.Nil {
-		result, err = s.db.ExecContext(ctx,
+		result, err = s.dbFor(ctx).ExecContext(ctx,
 			`DELETE FROM agent_evolution_metrics WHERE created_at < $1 AND tenant_id = $2`,
 			olderThan, tenantID)
 	} else {
-		result, err = s.db.ExecContext(ctx,
+		result, err = s.dbFor(ctx).ExecContext(ctx,
 			`DELETE FROM agent_evolution_metrics WHERE created_at < $1`,
 			olderThan)
 	}

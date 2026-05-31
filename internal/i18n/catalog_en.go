@@ -195,6 +195,10 @@ func init() {
 
 		MsgInvalidRole: "invalid role: allowed values are owner, admin, operator, member, viewer",
 
+		MsgTenantDBConnectionFailed: "failed to connect to tenant database: %s",
+		MsgTenantDBProvisionFailed:  "failed to provision tenant database: %s",
+		MsgTenantDBNotFound:         "tenant database configuration not found",
+
 		MsgContactIDsRequired:  "contact_ids is required",
 		MsgMergeTargetRequired: "exactly one of tenant_user_id or create_user is required",
 		MsgTenantUserNotFound:  "tenant user not found",

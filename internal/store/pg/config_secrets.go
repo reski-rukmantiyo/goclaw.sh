@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nextlevelbuilder/goclaw/internal/crypto"
+	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
 
 // PGConfigSecretsStore implements store.ConfigSecretsStore backed by Postgres.
@@ -20,10 +21,18 @@ func NewPGConfigSecretsStore(db *sql.DB, encryptionKey string) *PGConfigSecretsS
 	return &PGConfigSecretsStore{db: db, encKey: encryptionKey}
 }
 
+func (s *PGConfigSecretsStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGConfigSecretsStore) Get(ctx context.Context, key string) (string, error) {
 	tid := tenantIDForInsert(ctx) // fallback to master
 	var value []byte
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT value FROM config_secrets WHERE key = $1 AND tenant_id = $2`, key, tid).Scan(&value)
 	if err != nil {
 		return "", err
@@ -52,7 +61,7 @@ func (s *PGConfigSecretsStore) Set(ctx context.Context, key, value string) error
 	}
 
 	tid := tenantIDForInsert(ctx)
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO config_secrets (key, value, updated_at, tenant_id) VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (key, tenant_id) DO UPDATE SET value = $2, updated_at = $3`,
 		key, stored, time.Now(), tid,
@@ -62,13 +71,13 @@ func (s *PGConfigSecretsStore) Set(ctx context.Context, key, value string) error
 
 func (s *PGConfigSecretsStore) Delete(ctx context.Context, key string) error {
 	tid := tenantIDForInsert(ctx)
-	_, err := s.db.ExecContext(ctx, `DELETE FROM config_secrets WHERE key = $1 AND tenant_id = $2`, key, tid)
+	_, err := s.dbFor(ctx).ExecContext(ctx, `DELETE FROM config_secrets WHERE key = $1 AND tenant_id = $2`, key, tid)
 	return err
 }
 
 func (s *PGConfigSecretsStore) GetAll(ctx context.Context) (map[string]string, error) {
 	tid := tenantIDForInsert(ctx)
-	rows, err := s.db.QueryContext(ctx, `SELECT key, value FROM config_secrets WHERE tenant_id = $1`, tid)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, `SELECT key, value FROM config_secrets WHERE tenant_id = $1`, tid)
 	if err != nil {
 		return nil, err
 	}

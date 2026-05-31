@@ -195,6 +195,10 @@ func init() {
 
 		MsgInvalidRole: "vai trò không hợp lệ: giá trị cho phép là owner, admin, operator, member, viewer",
 
+		MsgTenantDBConnectionFailed: "không thể kết nối đến cơ sở dữ liệu tenant: %s",
+		MsgTenantDBProvisionFailed:  "không thể cấp phát cơ sở dữ liệu tenant: %s",
+		MsgTenantDBNotFound:         "không tìm thấy cấu hình cơ sở dữ liệu tenant",
+
 		MsgContactIDsRequired:  "contact_ids là bắt buộc",
 		MsgMergeTargetRequired: "cần chính xác một trong tenant_user_id hoặc create_user",
 		MsgTenantUserNotFound:  "không tìm thấy tenant user",

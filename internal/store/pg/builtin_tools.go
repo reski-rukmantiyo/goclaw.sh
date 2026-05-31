@@ -20,10 +20,18 @@ func NewPGBuiltinToolStore(db *sql.DB) *PGBuiltinToolStore {
 	return &PGBuiltinToolStore{db: db}
 }
 
+func (s *PGBuiltinToolStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 const builtinToolSelectCols = `name, display_name, description, category, enabled, settings, requires, metadata, created_at, updated_at`
 
 func (s *PGBuiltinToolStore) List(ctx context.Context) ([]store.BuiltinToolDef, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT `+builtinToolSelectCols+` FROM builtin_tools ORDER BY category, name`)
 	if err != nil {
 		return nil, err
@@ -32,7 +40,7 @@ func (s *PGBuiltinToolStore) List(ctx context.Context) ([]store.BuiltinToolDef, 
 }
 
 func (s *PGBuiltinToolStore) ListEnabled(ctx context.Context) ([]store.BuiltinToolDef, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT `+builtinToolSelectCols+` FROM builtin_tools WHERE enabled = true ORDER BY category, name`)
 	if err != nil {
 		return nil, err
@@ -41,14 +49,14 @@ func (s *PGBuiltinToolStore) ListEnabled(ctx context.Context) ([]store.BuiltinTo
 }
 
 func (s *PGBuiltinToolStore) Get(ctx context.Context, name string) (*store.BuiltinToolDef, error) {
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT `+builtinToolSelectCols+` FROM builtin_tools WHERE name = $1`, name)
 	return s.scanTool(row)
 }
 
 func (s *PGBuiltinToolStore) GetSettings(ctx context.Context, name string) (json.RawMessage, error) {
 	var settings json.RawMessage
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT settings FROM builtin_tools WHERE name = $1`, name).Scan(&settings)
 	if err != nil {
 		return nil, err
@@ -94,14 +102,14 @@ func (s *PGBuiltinToolStore) Update(ctx context.Context, name string, updates ma
 	}
 	args = append(args, name)
 	q := fmt.Sprintf("UPDATE builtin_tools SET %s WHERE name = $%d", strings.Join(setClauses, ", "), i)
-	_, err := s.db.ExecContext(ctx, q, args...)
+	_, err := s.dbFor(ctx).ExecContext(ctx, q, args...)
 	return err
 }
 
 // Seed inserts or updates builtin tool definitions.
 // Preserves user-customized enabled and settings values across upgrades.
 func (s *PGBuiltinToolStore) Seed(ctx context.Context, tools []store.BuiltinToolDef) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}

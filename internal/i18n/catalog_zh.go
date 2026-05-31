@@ -195,6 +195,10 @@ func init() {
 
 		MsgInvalidRole: "无效角色：允许的值为 owner、admin、operator、member、viewer",
 
+		MsgTenantDBConnectionFailed: "无法连接租户数据库: %s",
+		MsgTenantDBProvisionFailed:  "无法配置租户数据库: %s",
+		MsgTenantDBNotFound:         "未找到租户数据库配置",
+
 		MsgContactIDsRequired:  "contact_ids 为必填项",
 		MsgMergeTargetRequired: "必须提供 tenant_user_id 或 create_user 其中之一",
 		MsgTenantUserNotFound:  "未找到租户用户",

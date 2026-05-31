@@ -81,7 +81,7 @@ FROM ranked
 WHERE rn <= $3
 ORDER BY source_base, task_id, created_at DESC
 `
-		rows, err := s.db.QueryContext(ctx, q, tenantID, pqStringArray(chunk), limit)
+		rows, err := s.dbFor(ctx).QueryContext(ctx, q, tenantID, pqStringArray(chunk), limit)
 		if err != nil {
 			return nil, fmt.Errorf("batch task siblings: %w", err)
 		}

@@ -21,7 +21,7 @@ func (s *PGMCPServerStore) GetUserCredentials(ctx context.Context, serverID uuid
 	var apiKey sql.NullString
 	var headersEnc, envEnc []byte
 
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT api_key, headers, env FROM mcp_user_credentials
 		 WHERE server_id = $1 AND user_id = $2 AND tenant_id = $3`,
 		serverID, userID, tid,
@@ -79,7 +79,7 @@ func (s *PGMCPServerStore) SetUserCredentials(ctx context.Context, serverID uuid
 	}
 
 	now := time.Now()
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO mcp_user_credentials (id, server_id, user_id, api_key, headers, env, tenant_id, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
 		 ON CONFLICT (server_id, user_id, tenant_id) DO UPDATE SET
@@ -92,7 +92,7 @@ func (s *PGMCPServerStore) SetUserCredentials(ctx context.Context, serverID uuid
 // DeleteUserCredentials removes per-user MCP credentials.
 func (s *PGMCPServerStore) DeleteUserCredentials(ctx context.Context, serverID uuid.UUID, userID string) error {
 	tid := tenantIDForInsert(ctx)
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM mcp_user_credentials WHERE server_id = $1 AND user_id = $2 AND tenant_id = $3`,
 		serverID, userID, tid,
 	)

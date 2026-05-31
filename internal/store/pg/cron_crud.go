@@ -66,7 +66,7 @@ func (s *PGCronStore) AddJob(ctx context.Context, name string, schedule store.Cr
 
 	nextRun := computeNextRun(&schedule, now, s.defaultTZ)
 
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO cron_jobs (id, tenant_id, agent_id, user_id, name, enabled, schedule_kind, cron_expression, run_at, timezone,
 		 interval_ms, payload, delete_after_run, deliver, deliver_channel, deliver_to, wake_heartbeat, next_run_at, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, true, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
@@ -134,7 +134,7 @@ func (s *PGCronStore) ListJobs(ctx context.Context, includeDisabled bool, agentI
 
 	q += " ORDER BY created_at DESC"
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil
 	}
@@ -169,7 +169,7 @@ func (s *PGCronStore) RemoveJob(ctx context.Context, jobID string) error {
 		args = append(args, tid)
 	}
 
-	res, err := s.db.ExecContext(ctx, q, args...)
+	res, err := s.dbFor(ctx).ExecContext(ctx, q, args...)
 	if err != nil {
 		return err
 	}
@@ -186,7 +186,7 @@ func (s *PGCronStore) EnableJob(ctx context.Context, jobID string, enabled bool)
 		return fmt.Errorf("invalid job ID: %s", jobID)
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}

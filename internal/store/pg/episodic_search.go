@@ -47,7 +47,7 @@ func (s *PGEpisodicStore) ftsSearch(ctx context.Context, query, agentID, userID 
 	args = append(args, limit)
 
 	var rows []episodicScoredRow
-	if err := pkgSqlxDB.SelectContext(ctx, &rows, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows, q, args...); err != nil {
 		return nil
 	}
 	results := make([]episodicScored, len(rows))
@@ -80,7 +80,7 @@ func (s *PGEpisodicStore) vectorSearch(ctx context.Context, embedding []float32,
 	args = append(args, limit)
 
 	var rows []episodicScoredRow
-	if err := pkgSqlxDB.SelectContext(ctx, &rows, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows, q, args...); err != nil {
 		return nil
 	}
 	results := make([]episodicScored, len(rows))

@@ -22,6 +22,14 @@ func NewPGBuiltinToolTenantConfigStore(db *sql.DB) *PGBuiltinToolTenantConfigSto
 	return &PGBuiltinToolTenantConfigStore{db: db}
 }
 
+func (s *PGBuiltinToolTenantConfigStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGBuiltinToolTenantConfigStore) ListDisabled(ctx context.Context, tenantID uuid.UUID) ([]string, error) {
 	if tenantID == uuid.Nil {
 		return nil, store.ErrInvalidTenant
@@ -30,7 +38,7 @@ func (s *PGBuiltinToolTenantConfigStore) ListDisabled(ctx context.Context, tenan
 		ToolName string `db:"tool_name"`
 	}
 	var rows []row
-	if err := pkgSqlxDB.SelectContext(ctx, &rows,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows,
 		`SELECT tool_name FROM builtin_tool_tenant_configs WHERE tenant_id = $1 AND enabled = false`,
 		tenantID,
 	); err != nil {
@@ -52,7 +60,7 @@ func (s *PGBuiltinToolTenantConfigStore) ListAll(ctx context.Context, tenantID u
 		Enabled  *bool  `db:"enabled"`
 	}
 	var rows []row
-	if err := pkgSqlxDB.SelectContext(ctx, &rows,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows,
 		`SELECT tool_name, enabled FROM builtin_tool_tenant_configs WHERE tenant_id = $1 AND enabled IS NOT NULL`,
 		tenantID,
 	); err != nil {
@@ -73,7 +81,7 @@ func (s *PGBuiltinToolTenantConfigStore) Set(ctx context.Context, tenantID uuid.
 	if tenantID == uuid.Nil {
 		return store.ErrInvalidTenant
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO builtin_tool_tenant_configs (tool_name, tenant_id, enabled, updated_at)
 		 VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (tool_name, tenant_id)
@@ -90,7 +98,7 @@ func (s *PGBuiltinToolTenantConfigStore) Delete(ctx context.Context, tenantID uu
 	if tenantID == uuid.Nil {
 		return store.ErrInvalidTenant
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM builtin_tool_tenant_configs WHERE tool_name = $1 AND tenant_id = $2`,
 		toolName, tenantID,
 	)
@@ -104,7 +112,7 @@ func (s *PGBuiltinToolTenantConfigStore) GetSettings(ctx context.Context, tenant
 		return nil, store.ErrInvalidTenant
 	}
 	var raw []byte
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT settings FROM builtin_tool_tenant_configs
 		 WHERE tool_name = $1 AND tenant_id = $2`,
 		toolName, tenantID,
@@ -131,7 +139,7 @@ func (s *PGBuiltinToolTenantConfigStore) SetSettings(ctx context.Context, tenant
 	if settings != nil {
 		settingsArg = []byte(settings)
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO builtin_tool_tenant_configs (tool_name, tenant_id, settings, updated_at)
 		 VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (tool_name, tenant_id)
@@ -151,7 +159,7 @@ func (s *PGBuiltinToolTenantConfigStore) ListAllSettings(ctx context.Context, te
 	if tenantID == uuid.Nil {
 		return nil, store.ErrInvalidTenant
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT tool_name, settings FROM builtin_tool_tenant_configs
 		 WHERE tenant_id = $1 AND settings IS NOT NULL`,
 		tenantID,
@@ -183,12 +191,19 @@ func NewPGSkillTenantConfigStore(db *sql.DB) *PGSkillTenantConfigStore {
 	return &PGSkillTenantConfigStore{db: db}
 }
 
+func (s *PGSkillTenantConfigStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
 func (s *PGSkillTenantConfigStore) ListDisabledSkillIDs(ctx context.Context, tenantID uuid.UUID) ([]uuid.UUID, error) {
 	type row struct {
 		SkillID uuid.UUID `db:"skill_id"`
 	}
 	var rows []row
-	if err := pkgSqlxDB.SelectContext(ctx, &rows,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows,
 		`SELECT skill_id FROM skill_tenant_configs WHERE tenant_id = $1 AND enabled = false`,
 		tenantID,
 	); err != nil {
@@ -207,7 +222,7 @@ func (s *PGSkillTenantConfigStore) ListAll(ctx context.Context, tenantID uuid.UU
 		Enabled bool      `db:"enabled"`
 	}
 	var rows []row
-	if err := pkgSqlxDB.SelectContext(ctx, &rows,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows,
 		`SELECT skill_id, enabled FROM skill_tenant_configs WHERE tenant_id = $1`,
 		tenantID,
 	); err != nil {
@@ -221,7 +236,7 @@ func (s *PGSkillTenantConfigStore) ListAll(ctx context.Context, tenantID uuid.UU
 }
 
 func (s *PGSkillTenantConfigStore) Set(ctx context.Context, tenantID uuid.UUID, skillID uuid.UUID, enabled bool) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO skill_tenant_configs (skill_id, tenant_id, enabled, updated_at)
 		 VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (skill_id, tenant_id) DO UPDATE SET enabled = $3, updated_at = $4`,
@@ -231,7 +246,7 @@ func (s *PGSkillTenantConfigStore) Set(ctx context.Context, tenantID uuid.UUID, 
 }
 
 func (s *PGSkillTenantConfigStore) Delete(ctx context.Context, tenantID uuid.UUID, skillID uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM skill_tenant_configs WHERE skill_id = $1 AND tenant_id = $2`,
 		skillID, tenantID,
 	)

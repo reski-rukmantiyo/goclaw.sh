@@ -22,7 +22,7 @@ func (s *PGAgentStore) GetByKeys(ctx context.Context, keys []string) ([]store.Ag
 	var err error
 
 	if store.IsCrossTenant(ctx) {
-		rows, err = s.db.QueryContext(ctx,
+		rows, err = s.dbFor(ctx).QueryContext(ctx,
 			`SELECT `+agentSelectCols+`
 			 FROM agents WHERE agent_key = ANY($1) AND deleted_at IS NULL`,
 			pq.Array(keys))
@@ -31,7 +31,7 @@ func (s *PGAgentStore) GetByKeys(ctx context.Context, keys []string) ([]store.Ag
 		if tid == uuid.Nil {
 			return nil, fmt.Errorf("no tenant context for batch agent lookup")
 		}
-		rows, err = s.db.QueryContext(ctx,
+		rows, err = s.dbFor(ctx).QueryContext(ctx,
 			`SELECT `+agentSelectCols+`
 			 FROM agents WHERE agent_key = ANY($1) AND deleted_at IS NULL AND tenant_id = $2`,
 			pq.Array(keys), tid)
@@ -54,7 +54,7 @@ func (s *PGAgentStore) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]store.A
 	var err error
 
 	if store.IsCrossTenant(ctx) {
-		rows, err = s.db.QueryContext(ctx,
+		rows, err = s.dbFor(ctx).QueryContext(ctx,
 			`SELECT `+agentSelectCols+`
 			 FROM agents WHERE id = ANY($1) AND deleted_at IS NULL`,
 			pq.Array(ids))
@@ -63,7 +63,7 @@ func (s *PGAgentStore) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]store.A
 		if tid == uuid.Nil {
 			return nil, fmt.Errorf("no tenant context for batch agent lookup")
 		}
-		rows, err = s.db.QueryContext(ctx,
+		rows, err = s.dbFor(ctx).QueryContext(ctx,
 			`SELECT `+agentSelectCols+`
 			 FROM agents WHERE id = ANY($1) AND deleted_at IS NULL AND tenant_id = $2`,
 			pq.Array(ids), tid)

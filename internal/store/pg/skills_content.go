@@ -31,7 +31,7 @@ func (s *PGSkillStore) LoadSkill(ctx context.Context, name string) (string, bool
 		q += " AND (is_system = true OR tenant_id = $2)"
 		args = append(args, tid)
 	}
-	err := s.db.QueryRowContext(ctx, q, args...).Scan(&slug, &version, &filePath)
+	err := s.dbFor(ctx).QueryRowContext(ctx, q, args...).Scan(&slug, &version, &filePath)
 	if err != nil {
 		return "", false
 	}
@@ -111,7 +111,7 @@ func (s *PGSkillStore) GetSkill(ctx context.Context, name string) (*store.SkillI
 		var isSystem, enabled bool
 		var depsRaw, fmRaw []byte
 		var filePath *string
-		err := s.db.QueryRowContext(ctx, q, qArgs...).Scan(&id, &skillName, &slug, &desc, &visibility, &ownerID, pq.Array(&tags), &version, &isSystem, &status, &enabled, &depsRaw, &fmRaw, &filePath)
+		err := s.dbFor(ctx).QueryRowContext(ctx, q, qArgs...).Scan(&id, &skillName, &slug, &desc, &visibility, &ownerID, pq.Array(&tags), &version, &isSystem, &status, &enabled, &depsRaw, &fmRaw, &filePath)
 		if err != nil {
 			return nil, false
 		}
@@ -190,7 +190,7 @@ func (s *PGSkillStore) GetSkillByID(ctx context.Context, id uuid.UUID) (store.Sk
 		q += " AND (is_system = true OR tenant_id = $2)"
 		args = append(args, tid)
 	}
-	err := s.db.QueryRowContext(ctx, q, args...).Scan(&name, &slug, &desc, &visibility, &ownerID, pq.Array(&tags), &version, &isSystem, &status, &enabled, &depsRaw, &filePath)
+	err := s.dbFor(ctx).QueryRowContext(ctx, q, args...).Scan(&name, &slug, &desc, &visibility, &ownerID, pq.Array(&tags), &version, &isSystem, &status, &enabled, &depsRaw, &filePath)
 	if err != nil {
 		return store.SkillInfo{}, false
 	}
@@ -219,7 +219,7 @@ func (s *PGSkillStore) GetSkillOwnerID(ctx context.Context, id uuid.UUID) (strin
 		args = append(args, tid)
 	}
 	var ownerID string
-	if err := s.db.QueryRowContext(ctx, q, args...).Scan(&ownerID); err != nil {
+	if err := s.dbFor(ctx).QueryRowContext(ctx, q, args...).Scan(&ownerID); err != nil {
 		return "", false
 	}
 	return ownerID, true
@@ -239,7 +239,7 @@ func (s *PGSkillStore) GetSkillOwnerIDBySlug(ctx context.Context, slug string) (
 		args = append(args, tid)
 	}
 	var ownerID string
-	if err := s.db.QueryRowContext(ctx, q, args...).Scan(&ownerID); err != nil {
+	if err := s.dbFor(ctx).QueryRowContext(ctx, q, args...).Scan(&ownerID); err != nil {
 		return "", false
 	}
 	return ownerID, true

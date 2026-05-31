@@ -41,6 +41,13 @@ func NewPGWorkstationActivityStore(db *sql.DB) *PGWorkstationActivityStore {
 	return s
 }
 
+func (s *PGWorkstationActivityStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
 // Insert enqueues the row for async batch insert. Drops and warns if buffer is full.
 func (s *PGWorkstationActivityStore) Insert(_ context.Context, row *store.WorkstationActivity) error {
 	select {
@@ -61,7 +68,7 @@ func (s *PGWorkstationActivityStore) List(ctx context.Context, workstationID uui
 	var rows *sql.Rows
 	var err error
 	if cursor == nil {
-		rows, err = s.db.QueryContext(ctx,
+		rows, err = s.dbFor(ctx).QueryContext(ctx,
 			`SELECT id, tenant_id, workstation_id, agent_id, action, cmd_hash, cmd_preview,
 			        exit_code, duration_ms, deny_reason, created_at
 			 FROM workstation_activity
@@ -72,7 +79,7 @@ func (s *PGWorkstationActivityStore) List(ctx context.Context, workstationID uui
 		)
 	} else {
 		// Cursor: created_at of the cursor row acts as the page boundary.
-		rows, err = s.db.QueryContext(ctx,
+		rows, err = s.dbFor(ctx).QueryContext(ctx,
 			`SELECT id, tenant_id, workstation_id, agent_id, action, cmd_hash, cmd_preview,
 			        exit_code, duration_ms, deny_reason, created_at
 			 FROM workstation_activity
@@ -145,7 +152,7 @@ func (s *PGWorkstationActivityStore) ListAll(ctx context.Context, workstationID 
 			 ORDER BY created_at DESC, id DESC
 			 LIMIT $%d`, where, paramIdx)
 		args = append(args, limit+1)
-		rows, err = s.db.QueryContext(ctx, query, args...)
+		rows, err = s.dbFor(ctx).QueryContext(ctx, query, args...)
 	} else {
 		query := fmt.Sprintf(`SELECT id, tenant_id, workstation_id, agent_id, action, cmd_hash, cmd_preview,
 			        exit_code, duration_ms, deny_reason, created_at
@@ -155,7 +162,7 @@ func (s *PGWorkstationActivityStore) ListAll(ctx context.Context, workstationID 
 			 ORDER BY created_at DESC, id DESC
 			 LIMIT $%d`, where, paramIdx, paramIdx+1)
 		args = append(args, *cursor, limit+1)
-		rows, err = s.db.QueryContext(ctx, query, args...)
+		rows, err = s.dbFor(ctx).QueryContext(ctx, query, args...)
 	}
 	if err != nil {
 		return nil, nil, err
@@ -194,7 +201,7 @@ func (s *PGWorkstationActivityStore) DropCount() int64 { return s.dropCount.Load
 func (s *PGWorkstationActivityStore) Prune(ctx context.Context, before time.Time) (int64, error) {
 	var total int64
 	for {
-		res, err := s.db.ExecContext(ctx,
+		res, err := s.dbFor(ctx).ExecContext(ctx,
 			`DELETE FROM workstation_activity
 			 WHERE id IN (
 			   SELECT id FROM workstation_activity WHERE created_at < $1 LIMIT 1000
@@ -268,7 +275,7 @@ func (s *PGWorkstationActivityStore) flusher() {
 
 // batchInsert inserts rows using individual statements (no unnest for portability).
 func (s *PGWorkstationActivityStore) batchInsert(ctx context.Context, rows []*store.WorkstationActivity) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
