@@ -63,5 +63,27 @@ export function useTenantsAdmin() {
     [ws, invalidate],
   );
 
-  return { tenants, loading, refreshing, refresh: invalidate, createTenant, isOwner };
+  const deleteTenant = useCallback(
+    async (tenantId: string) => {
+      try {
+        // Optimistically remove from list cache for instant UI feedback
+        queryClient.setQueryData<TenantsResult>(queryKeys.tenants.all, (old) => {
+          if (!old) return old;
+          return { ...old, tenants: old.tenants.filter((t) => t.id !== tenantId) };
+        });
+        await ws.call(Methods.TENANTS_DELETE, { tenant_id: tenantId });
+        // Re-sync in background
+        queryClient.invalidateQueries({ queryKey: queryKeys.tenants.all });
+        toast.success(i18next.t("tenants:deleteTenant"));
+      } catch (err) {
+        // Rollback: restore cache and revalidate
+        queryClient.invalidateQueries({ queryKey: queryKeys.tenants.all });
+        toast.error(i18next.t("tenants:deleteTenant"), err instanceof Error ? err.message : "");
+        throw err;
+      }
+    },
+    [ws, queryClient],
+  );
+
+  return { tenants, loading, refreshing, refresh: invalidate, createTenant, deleteTenant, isOwner };
 }
