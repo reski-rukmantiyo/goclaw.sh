@@ -383,7 +383,7 @@ func (s *PGGroupStore) GetMemberRole(ctx context.Context, groupID, userID uuid.U
 func (s *PGGroupStore) ListMembers(ctx context.Context, groupID uuid.UUID) ([]store.GroupMemberData, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT m.id, m.group_id, m.user_id, m.role, m.joined_at, m.joined_via,
-		        COALESCE(u.display_name, '') AS display_name
+		        COALESCE(u.display_name, ''), COALESCE(u.email, '')
 		 FROM group_members m
 		 LEFT JOIN users u ON u.id = m.user_id
 		 WHERE m.group_id = $1
@@ -398,16 +398,19 @@ func (s *PGGroupStore) ListMembers(ctx context.Context, groupID uuid.UUID) ([]st
 	var members []store.GroupMemberData
 	for rows.Next() {
 		var m store.GroupMemberData
-		var displayName string
+		var displayName, email string
 		if err := rows.Scan(
 			&m.ID, &m.GroupID, &m.UserID, &m.Role, &m.JoinedAt, &m.JoinedVia,
-			&displayName,
+			&displayName, &email,
 		); err != nil {
 			return nil, err
 		}
-		// displayName is available for callers but not part of GroupMemberData struct.
-		// Keep it in case the struct is extended; suppress unused warning.
-		_ = displayName
+		if displayName != "" {
+			m.DisplayName = &displayName
+		}
+		if email != "" {
+			m.Email = &email
+		}
 		members = append(members, m)
 	}
 	if err := rows.Err(); err != nil {

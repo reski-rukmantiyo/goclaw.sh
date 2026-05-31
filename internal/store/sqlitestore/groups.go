@@ -311,10 +311,17 @@ const memberCols = `id, group_id, user_id, role, joined_at, joined_via`
 func scanMember(row interface{ Scan(dest ...any) error }) (*store.GroupMemberData, error) {
 	var m store.GroupMemberData
 	joinedAt := &sqliteTime{}
-	if err := row.Scan(&m.ID, &m.GroupID, &m.UserID, &m.Role, joinedAt, &m.JoinedVia); err != nil {
+	var displayName, email string
+	if err := row.Scan(&m.ID, &m.GroupID, &m.UserID, &m.Role, joinedAt, &m.JoinedVia, &displayName, &email); err != nil {
 		return nil, err
 	}
 	m.JoinedAt = joinedAt.Time
+	if displayName != "" {
+		m.DisplayName = &displayName
+	}
+	if email != "" {
+		m.Email = &email
+	}
 	return &m, nil
 }
 
@@ -388,7 +395,7 @@ func (s *SQLiteGroupStore) GetMemberRole(ctx context.Context, groupID, userID uu
 func (s *SQLiteGroupStore) ListMembers(ctx context.Context, groupID uuid.UUID) ([]store.GroupMemberData, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT m.id, m.group_id, m.user_id, m.role, m.joined_at, m.joined_via,
-		        COALESCE(u.display_name, '') AS display_name
+		        COALESCE(u.display_name, ''), COALESCE(u.email, '')
 		 FROM group_members m
 		 LEFT JOIN users u ON u.id = m.user_id
 		 WHERE m.group_id = ?

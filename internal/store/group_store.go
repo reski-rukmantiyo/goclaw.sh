@@ -66,12 +66,14 @@ type GroupData struct {
 
 // GroupMemberData represents a user's membership in a group.
 type GroupMemberData struct {
-	ID        uuid.UUID `json:"id" db:"id"`
-	GroupID   uuid.UUID `json:"group_id" db:"group_id"`
-	UserID    uuid.UUID `json:"user_id" db:"user_id"`
-	Role      string    `json:"role" db:"role"`
-	JoinedAt  time.Time `json:"joined_at" db:"joined_at"`
-	JoinedVia string    `json:"joined_via" db:"joined_via"`
+	ID          uuid.UUID `json:"id" db:"id"`
+	GroupID     uuid.UUID `json:"group_id" db:"group_id"`
+	UserID      uuid.UUID `json:"user_id" db:"user_id"`
+	Role        string    `json:"role" db:"role"`
+	JoinedAt    time.Time `json:"joined_at" db:"joined_at"`
+	JoinedVia   string    `json:"joined_via" db:"joined_via"`
+	DisplayName *string   `json:"display_name,omitempty" db:"-"`
+	Email       *string   `json:"email,omitempty" db:"-"`
 }
 
 // JoinRequestData represents a pending group join request.
