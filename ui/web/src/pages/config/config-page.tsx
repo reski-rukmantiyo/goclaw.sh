@@ -22,6 +22,7 @@ import { TtsSection } from "./sections/tts-section";
 import { CronSection } from "./sections/cron-section";
 import { TelemetrySection } from "./sections/telemetry-section";
 import { BindingsSection } from "./sections/bindings-section";
+import { AuthSection } from "./sections/auth-section";
 
 export function ConfigPage() {
   const { t } = useTranslation("config");
@@ -98,6 +99,7 @@ export function ConfigPage() {
           <TabsTrigger value="aiDefaults">{t("tabs.aiDefaults")}</TabsTrigger>
           <TabsTrigger value="quota">{t("tabs.quota")}</TabsTrigger>
           <TabsTrigger value="tools">{t("tabs.tools")}</TabsTrigger>
+          <TabsTrigger value="auth">{t("tabs.auth")}</TabsTrigger>
           <TabsTrigger value="integrations">{t("tabs.integrations")}</TabsTrigger>
         </TabsList>
 
@@ -152,6 +154,14 @@ export function ConfigPage() {
           <AutoApprovedCommandsSection
             data={config.tools as any}
             onSave={(v) => patch({ tools: v })}
+            saving={saving}
+          />
+        </TabsContent>
+
+        <TabsContent value="auth" className="space-y-4">
+          <AuthSection
+            data={config.auth as any}
+            onSave={(v) => patch({ auth: v })}
             saving={saving}
           />
         </TabsContent>

@@ -1,4 +1,4 @@
-import { Moon, Sun, PanelLeftClose, PanelLeftOpen, Menu, LogOut, Globe, Clock, Building2, ChevronDown, Check, User, KeyRound, Info, Settings2 } from "lucide-react";
+import { Moon, Sun, PanelLeftClose, PanelLeftOpen, Menu, LogOut, Globe, Clock, Building2, ChevronDown, Check, User, KeyRound, Info, Settings2, UserCircle } from "lucide-react";
 import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { useUiStore } from "@/stores/use-ui-store";
@@ -211,6 +211,15 @@ function UserMenu() {
               <span>{tt("title")}</span>
             </button>
           )}
+
+          {/* Profile */}
+          <button
+            onClick={() => { setOpen(false); navigate(ROUTES.PROFILE); }}
+            className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+          >
+            <UserCircle className="h-3.5 w-3.5 shrink-0" />
+            <span>{t("profile")}</span>
+          </button>
 
           {/* API Keys shortcut */}
           <button

@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   CheckCircle,
   XCircle,
+  LayoutList,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,7 +43,9 @@ import {
   useGroupsAdmin,
   useGroupMembers,
   useJoinRequests,
+  useGroupsTree,
 } from "./hooks/use-groups-admin";
+import { GroupTreeView } from "./group-tree-view";
 import type { Group, GroupMember, JoinRequest } from "@/types/user-mgmt";
 
 function visibilityBadge(visibility: string) {
@@ -55,6 +58,7 @@ function GroupsAdminPage() {
   const { t: tc } = useTranslation("common");
 
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"table" | "tree">("table");
   const {
     groups,
     loading,
@@ -66,6 +70,8 @@ function GroupsAdminPage() {
     isUpdating,
   } = useGroupsAdmin({ search });
 
+  const { tree } = useGroupsTree();
+
   const spinning = useMinLoading(loading);
   const showSkeleton = useDeferredLoading(loading && groups.length === 0);
 
@@ -76,6 +82,7 @@ function GroupsAdminPage() {
   const [formSlug, setFormSlug] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formVisibility, setFormVisibility] = useState("open");
+  const [formParentGroupId, setFormParentGroupId] = useState<string>("none");
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<Group | null>(null);
@@ -116,6 +123,7 @@ function GroupsAdminPage() {
     setFormSlug("");
     setFormDescription("");
     setFormVisibility("open");
+    setFormParentGroupId("none");
     setFormOpen(true);
   };
 
@@ -146,6 +154,7 @@ function GroupsAdminPage() {
           slug: formSlug.trim(),
           description: formDescription.trim() || undefined,
           visibility: formVisibility,
+          parent_group_id: formParentGroupId !== "none" ? formParentGroupId : undefined,
         });
       }
       setFormOpen(false);
@@ -217,6 +226,7 @@ function GroupsAdminPage() {
       setFormSlug("");
       setFormDescription("");
       setFormVisibility("open");
+      setFormParentGroupId("none");
     }
   }, [formOpen]);
 
@@ -235,6 +245,26 @@ function GroupsAdminPage() {
         description={t("description")}
         actions={
           <div className="flex gap-2">
+            <div className="flex rounded-md border">
+              <Button
+                variant={viewMode === "table" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("table")}
+                className="rounded-r-none"
+                title={t("viewMode.table")}
+              >
+                <LayoutList className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant={viewMode === "tree" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("tree")}
+                className="rounded-l-none"
+                title={t("viewMode.tree")}
+              >
+                <FolderTree className="h-3.5 w-3.5" />
+              </Button>
+            </div>
             <Button size="sm" onClick={openCreate} className="gap-1">
               <Plus className="h-3.5 w-3.5" /> {t("createGroup")}
             </Button>
@@ -268,6 +298,23 @@ function GroupsAdminPage() {
       <div className="mt-4">
         {showSkeleton ? (
           <TableSkeleton rows={5} />
+        ) : viewMode === "tree" ? (
+          tree.length === 0 ? (
+            <EmptyState
+              icon={FolderTree}
+              title={t("emptyTitle")}
+              description={t("emptyDescription")}
+            />
+          ) : (
+            <GroupTreeView
+              tree={tree}
+              groupMap={groupMap}
+              onEdit={openEdit}
+              onDelete={(g) => setDeleteTarget(g)}
+              onManageMembers={(id) => setMemberGroup(id)}
+              onViewRequests={(id) => setRequestGroup(id)}
+            />
+          )
         ) : groups.length === 0 ? (
           <EmptyState
             icon={FolderTree}
@@ -446,6 +493,26 @@ function GroupsAdminPage() {
                 </SelectContent>
               </Select>
             </div>
+            {!editTarget && (
+              <div className="space-y-1.5">
+                <Label>{t("form.parentGroup")}</Label>
+                <Select value={formParentGroupId} onValueChange={setFormParentGroupId}>
+                  <SelectTrigger size="sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      {t("form.parentGroupNone")}
+                    </SelectItem>
+                    {groups.map((g) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {g.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button

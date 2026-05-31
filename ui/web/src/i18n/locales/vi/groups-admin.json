@@ -23,7 +23,13 @@
   },
   "form": {
     "description": "Mô tả",
-    "descriptionPlaceholder": "Mô tả nhóm (tùy chọn)"
+    "descriptionPlaceholder": "Mô tả nhóm (tùy chọn)",
+    "parentGroup": "Nhóm cha",
+    "parentGroupNone": "Không có (Cấp cao nhất)"
+  },
+  "viewMode": {
+    "table": "Dạng bảng",
+    "tree": "Dạng cây"
   },
   "actions": {
     "manageMembers": "Quản lý thành viên",

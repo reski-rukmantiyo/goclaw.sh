@@ -23,7 +23,13 @@
   },
   "form": {
     "description": "描述",
-    "descriptionPlaceholder": "可选的组描述"
+    "descriptionPlaceholder": "可选的组描述",
+    "parentGroup": "父组",
+    "parentGroupNone": "无（顶级）"
+  },
+  "viewMode": {
+    "table": "表格视图",
+    "tree": "树状视图"
   },
   "actions": {
     "manageMembers": "管理成员",

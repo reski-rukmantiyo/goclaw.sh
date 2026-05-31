@@ -23,7 +23,13 @@
   },
   "form": {
     "description": "Description",
-    "descriptionPlaceholder": "Optional group description"
+    "descriptionPlaceholder": "Optional group description",
+    "parentGroup": "Parent Group",
+    "parentGroupNone": "None (Top Level)"
+  },
+  "viewMode": {
+    "table": "Table View",
+    "tree": "Tree View"
   },
   "actions": {
     "manageMembers": "Manage Members",

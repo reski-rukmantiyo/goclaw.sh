@@ -62,6 +62,14 @@ func (c *Config) MaskedCopy() *Config {
 	// Mask Tailscale auth key
 	maskNonEmpty(&cp.Tailscale.AuthKey)
 
+	// Mask auth provider secrets
+	if cp.Auth.Providers.EntraID != nil {
+		maskNonEmpty(&cp.Auth.Providers.EntraID.ClientSecret)
+	}
+	if cp.Auth.Providers.Google != nil {
+		maskNonEmpty(&cp.Auth.Providers.Google.ClientSecret)
+	}
+
 	return cp
 }
 
@@ -109,6 +117,14 @@ func (c *Config) StripSecrets() {
 
 	// Tailscale auth key
 	c.Tailscale.AuthKey = ""
+
+	// Auth provider secrets
+	if c.Auth.Providers.EntraID != nil {
+		c.Auth.Providers.EntraID.ClientSecret = ""
+	}
+	if c.Auth.Providers.Google != nil {
+		c.Auth.Providers.Google.ClientSecret = ""
+	}
 }
 
 // StripMaskedSecrets strips only fields that still contain the mask value "***".
@@ -162,6 +178,14 @@ func (c *Config) StripMaskedSecrets() {
 
 	// Tailscale auth key
 	stripIfMasked(&c.Tailscale.AuthKey)
+
+	// Auth provider secrets
+	if c.Auth.Providers.EntraID != nil {
+		stripIfMasked(&c.Auth.Providers.EntraID.ClientSecret)
+	}
+	if c.Auth.Providers.Google != nil {
+		stripIfMasked(&c.Auth.Providers.Google.ClientSecret)
+	}
 }
 
 // ApplyDBSecrets overlays secrets from the config_secrets table onto the config.
@@ -180,6 +204,14 @@ func (c *Config) ApplyDBSecrets(secrets map[string]string) {
 	apply("tts.minimax.api_key", &c.Tts.MiniMax.APIKey)
 	apply("tts.minimax.group_id", &c.Tts.MiniMax.GroupID)
 	apply("tailscale.auth_key", &c.Tailscale.AuthKey)
+
+	// Auth provider secrets
+	if c.Auth.Providers.EntraID != nil {
+		apply("auth.entra_id.client_secret", &c.Auth.Providers.EntraID.ClientSecret)
+	}
+	if c.Auth.Providers.Google != nil {
+		apply("auth.google.client_secret", &c.Auth.Providers.Google.ClientSecret)
+	}
 }
 
 // ExtractDBSecrets returns the config_secrets key-value pairs from the config.
@@ -199,6 +231,14 @@ func (c *Config) ExtractDBSecrets() map[string]string {
 	collect("tts.minimax.api_key", c.Tts.MiniMax.APIKey)
 	collect("tts.minimax.group_id", c.Tts.MiniMax.GroupID)
 	collect("tailscale.auth_key", c.Tailscale.AuthKey)
+
+	// Auth provider secrets
+	if c.Auth.Providers.EntraID != nil {
+		collect("auth.entra_id.client_secret", c.Auth.Providers.EntraID.ClientSecret)
+	}
+	if c.Auth.Providers.Google != nil {
+		collect("auth.google.client_secret", c.Auth.Providers.Google.ClientSecret)
+	}
 
 	return secrets
 }

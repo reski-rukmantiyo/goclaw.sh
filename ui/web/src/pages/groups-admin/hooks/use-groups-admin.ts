@@ -7,6 +7,7 @@ import { toast } from "@/stores/use-toast-store";
 import type {
   Group,
   GroupMember,
+  GroupTreeNode,
   JoinRequest,
   PaginatedResult,
 } from "@/types/user-mgmt";
@@ -272,4 +273,14 @@ export function useJoinRequests(groupId: string | null) {
     reviewRequest: reviewRequest.mutateAsync,
     isReviewing: reviewRequest.isPending,
   };
+}
+
+export function useGroupsTree() {
+  const http = useHttp();
+  const { data, isLoading } = useQuery({
+    queryKey: queryKeys.groups.tree,
+    queryFn: () => http.get<GroupTreeNode[]>("/v1/groups/tree"),
+    staleTime: 30_000,
+  });
+  return { tree: data ?? [], loading: isLoading };
 }

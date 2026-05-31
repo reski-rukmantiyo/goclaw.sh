@@ -11,6 +11,7 @@
   "pairingRequests": "Pairing requests",
   "pendingPairingRequest": "{{count}} pending pairing request",
   "pendingPairingRequests": "{{count}} pending pairing requests",
+  "profile": "Profile",
   "apiKeys": "API Keys",
   "documents": "Documents",
   "about": {

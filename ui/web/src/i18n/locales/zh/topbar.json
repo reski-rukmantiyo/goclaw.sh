@@ -14,6 +14,7 @@
   "pairingRequests": "配对请求",
   "pendingPairingRequest": "待处理配对请求",
   "pendingPairingRequests": "{{count}} 个待处理配对请求",
+  "profile": "个人资料",
   "apiKeys": "API Keys",
   "documents": "文档",
   "about": {

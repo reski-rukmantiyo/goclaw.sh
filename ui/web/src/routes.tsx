@@ -135,6 +135,9 @@ const GroupsAdminPage = lazyWithRetry(() =>
 const AuditLogPage = lazyWithRetry(() =>
   import("@/pages/audit-log/audit-log-page"),
 );
+const ProfilePage = lazyWithRetry(() =>
+  import("@/pages/profile/profile-page").then((m) => ({ default: m.ProfilePage })),
+);
 
 function PageLoader() {
   return (
@@ -175,6 +178,7 @@ export function AppRoutes() {
           }
         >
           <Route index element={<Navigate to={ROUTES.OVERVIEW} replace />} />
+          <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
           <Route path={ROUTES.OVERVIEW} element={<OverviewPage />} />
           <Route path={ROUTES.CHAT_PATTERN} element={<ChatPage />} />
           <Route path={ROUTES.AGENTS} element={<AgentsPage key="list" />} />

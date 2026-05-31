@@ -1,0 +1,22 @@
+{
+  "title": "Profile",
+  "description": "Your account information and settings",
+  "account": {
+    "title": "Account",
+    "description": "Your identity and authentication details",
+    "displayName": "Display Name",
+    "email": "Email",
+    "memberSince": "Member since {{date}}",
+    "save": "Save",
+    "saving": "Saving..."
+  },
+  "password": {
+    "title": "Password",
+    "description": "Change your local account password",
+    "change": "Change Password"
+  },
+  "toast": {
+    "saved": "Profile updated",
+    "saveFailed": "Failed to update profile"
+  }
+}

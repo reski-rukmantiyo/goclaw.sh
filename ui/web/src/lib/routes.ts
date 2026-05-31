@@ -56,4 +56,5 @@ export const ROUTES = {
   GROUPS: "/admin/groups",
   GROUP_DETAIL: "/admin/groups/:id",
   AUDIT_LOG: "/admin/audit",
+  PROFILE: "/profile",
 } as const;
