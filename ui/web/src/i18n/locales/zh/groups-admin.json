@@ -43,7 +43,7 @@
   },
   "members": {
     "title": "组成员",
-    "addPlaceholder": "输入用户ID...",
+    "addPlaceholder": "按姓名或邮箱搜索...",
     "empty": "该组没有成员",
     "remove": "移除",
     "promoteToAdmin": "提升为管理员",

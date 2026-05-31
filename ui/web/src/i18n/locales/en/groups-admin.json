@@ -43,7 +43,7 @@
   },
   "members": {
     "title": "Group Members",
-    "addPlaceholder": "User ID to add...",
+    "addPlaceholder": "Search by name or email...",
     "empty": "No members in this group",
     "remove": "Remove",
     "promoteToAdmin": "Promote to Admin",

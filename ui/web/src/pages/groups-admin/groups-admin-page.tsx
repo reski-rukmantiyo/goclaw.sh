@@ -576,6 +576,7 @@ function GroupsAdminPage() {
                 onChange={setAddMemberUserId}
                 source="tenant_user"
                 valueMode="uuid"
+                allowCustom={false}
                 placeholder={t("members.addPlaceholder")}
                 className="flex-1"
               />

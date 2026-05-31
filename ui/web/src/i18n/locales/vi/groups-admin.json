@@ -43,7 +43,7 @@
   },
   "members": {
     "title": "Thành viên nhóm",
-    "addPlaceholder": "ID người dùng cần thêm...",
+    "addPlaceholder": "Tìm theo tên hoặc email...",
     "empty": "Không có thành viên",
     "remove": "Xóa",
     "promoteToAdmin": "Nâng lên Quản trị",
