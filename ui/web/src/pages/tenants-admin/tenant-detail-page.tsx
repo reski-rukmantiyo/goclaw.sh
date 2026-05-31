@@ -156,6 +156,16 @@ export function TenantDetailPage() {
                 <Pencil className="h-3.5 w-3.5" /> {t("editName")}
               </Button>
             )}
+            {tenant && (
+              <Button
+                variant="destructive"
+                size="sm"
+                className="gap-1"
+                onClick={() => { setDeleteOpen(true); setDeleteConfirmName(""); }}
+              >
+                <Trash2 className="h-3.5 w-3.5" /> {t("deleteTenant")}
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => navigate(route(currentTenantSlug, ROUTES.TENANTS))} className="gap-1">
               <ArrowLeft className="h-3.5 w-3.5" /> {t("back")}
             </Button>
@@ -232,17 +242,6 @@ export function TenantDetailPage() {
           </div>
         )}
       </div>
-
-      {/* Danger zone */}
-      {tenant && (
-        <div className="rounded-lg border border-destructive/20 p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-destructive">{t("deleteTenant")}</h3>
-          <p className="text-xs text-muted-foreground">{t("deleteWarning")}</p>
-          <Button variant="destructive" size="sm" onClick={() => { setDeleteOpen(true); setDeleteConfirmName(""); }} className="gap-1">
-            <Trash2 className="h-3.5 w-3.5" /> {t("deleteTenant")}
-          </Button>
-        </div>
-      )}
 
       {/* Add User Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
