@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nextlevelbuilder/goclaw/internal/auth"
 	"github.com/nextlevelbuilder/goclaw/internal/cache"
 	"github.com/nextlevelbuilder/goclaw/internal/edition"
 	httpapi "github.com/nextlevelbuilder/goclaw/internal/http"
@@ -27,6 +28,7 @@ type MethodRouter struct {
 	server      *Server
 	tenantStore store.TenantStore      // optional, for enriching connect response
 	permCache   *cache.PermissionCache // optional, for caching tenant membership checks
+	jwtManager  *auth.JWTManager       // optional, for validating JWT access tokens (email/OIDC login)
 }
 
 func NewMethodRouter(server *Server) *MethodRouter {
@@ -40,6 +42,9 @@ func NewMethodRouter(server *Server) *MethodRouter {
 
 // SetTenantStore sets the tenant store for enriching connect responses with tenant name/slug.
 func (r *MethodRouter) SetTenantStore(ts store.TenantStore) { r.tenantStore = ts }
+
+// SetJWTManager sets the JWT manager for validating access tokens from email/OIDC login.
+func (r *MethodRouter) SetJWTManager(m *auth.JWTManager) { r.jwtManager = m }
 
 // SetPermissionCache sets the permission cache for tenant membership checks.
 func (r *MethodRouter) SetPermissionCache(pc *cache.PermissionCache) { r.permCache = pc }
@@ -227,6 +232,47 @@ func (r *MethodRouter) handleConnect(ctx context.Context, client *Client, req *p
 					"tenant_id", client.tenantID.String(),
 				)
 			}
+			r.sendConnectResponse(ctx, client, req.ID)
+			return
+		}
+	}
+
+	// Path 1c: JWT access token from email/OIDC login
+	if params.Token != "" && r.jwtManager != nil {
+		claims, err := r.jwtManager.ValidateToken(params.Token)
+		if err == nil && claims != nil {
+			client.authenticated = true
+			client.userID = claims.Subject
+
+			// Map JWT role to permission role
+			switch claims.Role {
+			case "tenant_admin":
+				client.role = permissions.RoleAdmin
+			default:
+				client.role = permissions.RoleOperator
+			}
+
+			// Resolve tenant from JWT claims
+			if claims.TID != "" {
+				if tid, parseErr := uuid.Parse(claims.TID); parseErr == nil {
+					client.tenantID = tid
+				}
+			}
+
+			// Owner check: owner IDs get elevated to RoleOwner
+			if isOwnerID(claims.Subject, r.server.cfg.Gateway.OwnerIDs) {
+				client.role = permissions.RoleOwner
+			}
+			if client.tenantID == uuid.Nil {
+				client.tenantID = store.MasterTenantID
+			}
+
+			slog.Debug("security.ws_connect_jwt",
+				"client", client.id,
+				"role", string(client.role),
+				"tenant_id", client.tenantID.String(),
+				"user_id", client.userID,
+			)
 			r.sendConnectResponse(ctx, client, req.ID)
 			return
 		}

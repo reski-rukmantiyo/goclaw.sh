@@ -215,6 +215,7 @@ func (d *gatewayDeps) wireHTTPHandlersOnServer(
 				slog.Error("auth.jwt_init_failed", "error", err)
 			} else {
 				httpapi.InitJWTManager(jwtManager)
+					d.server.Router().SetJWTManager(jwtManager)
 
 				authH := httpapi.NewAuthHandler(d.pgStores.Users, jwtManager, &d.cfg.Auth)
 				d.server.SetAuthHandler(authH)
