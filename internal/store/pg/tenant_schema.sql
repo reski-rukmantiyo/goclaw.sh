@@ -1696,7 +1696,7 @@ CREATE INDEX idx_tenants_slug ON tenants(slug);
 CREATE INDEX idx_tenants_status ON tenants(status) WHERE status = 'active';
 
 -- Seed master tenant
-VALUES ('0193a5b0-7000-7000-8000-000000000001', 'Master', 'master', 'active');
+INSERT INTO tenants (id, name, slug, status) VALUES ('0193a5b0-7000-7000-8000-000000000001', 'Master', 'master', 'active');
 
 CREATE TABLE tenant_users (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1895,10 +1895,10 @@ CREATE INDEX idx_traces_tenant_time ON traces(tenant_id, created_at DESC);
 -- Phase E: Seed master tenant owner from existing agents
 -- ============================================================
 
+INSERT INTO tenant_users (tenant_id, user_id, role)
 SELECT DISTINCT '0193a5b0-7000-7000-8000-000000000001'::uuid, owner_id, 'owner'
 FROM agents
 WHERE owner_id IS NOT NULL AND owner_id != ''
-LIMIT 1
 ON CONFLICT (tenant_id, user_id) DO NOTHING;
 
 -- ============================================================
