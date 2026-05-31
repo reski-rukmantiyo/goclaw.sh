@@ -123,10 +123,11 @@ type TailscaleConfig struct {
 // DatabaseConfig configures the database connection and optional Redis cache.
 // DSN fields are NEVER read from config.json (secrets) — only from env vars.
 type DatabaseConfig struct {
-	PostgresDSN    string `json:"-"` // from env GOCLAW_POSTGRES_DSN only
-	RedisDSN       string `json:"-"` // from env GOCLAW_REDIS_DSN only (optional, requires -tags redis)
-	StorageBackend string `json:"-"` // from env GOCLAW_STORAGE_BACKEND only ("postgres" or "sqlite", default "postgres")
-	SQLitePath     string `json:"-"` // from env GOCLAW_SQLITE_PATH only (default: {dataDir}/goclaw.db)
+	PostgresDSN     string `json:"-"` // from env GOCLAW_POSTGRES_DSN only
+	RedisDSN        string `json:"-"` // from env GOCLAW_REDIS_DSN only (optional, requires -tags redis)
+	StorageBackend  string `json:"-"` // from env GOCLAW_STORAGE_BACKEND only ("postgres" or "sqlite", default "postgres")
+	SQLitePath      string `json:"-"` // from env GOCLAW_SQLITE_PATH only (default: {dataDir}/goclaw.db)
+	TenantDBSSLMode string `json:"tenant_db_ssl_mode,omitempty"` // default sslmode for auto-generated tenant DBs
 }
 
 // SkillsConfig configures the skills storage system.

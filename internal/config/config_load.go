@@ -189,6 +189,7 @@ func (c *Config) applyEnvOverrides() {
 	envStr("GOCLAW_REDIS_DSN", &c.Database.RedisDSN)
 	envStr("GOCLAW_STORAGE_BACKEND", &c.Database.StorageBackend)
 	envStr("GOCLAW_SQLITE_PATH", &c.Database.SQLitePath)
+	envStr("GOCLAW_TENANT_DB_SSLMODE", &c.Database.TenantDBSSLMode)
 
 	// Deprecation warning for GOCLAW_MODE (removed — PostgreSQL is always active)
 	if v := os.Getenv("GOCLAW_MODE"); v != "" {

@@ -23,6 +23,7 @@ import { CronSection } from "./sections/cron-section";
 import { TelemetrySection } from "./sections/telemetry-section";
 import { BindingsSection } from "./sections/bindings-section";
 import { AuthSection } from "./sections/auth-section";
+import { DatabaseSection } from "./sections/database-section";
 
 export function ConfigPage() {
   const { t } = useTranslation("config");
@@ -99,6 +100,7 @@ export function ConfigPage() {
           <TabsTrigger value="aiDefaults">{t("tabs.aiDefaults")}</TabsTrigger>
           <TabsTrigger value="quota">{t("tabs.quota")}</TabsTrigger>
           <TabsTrigger value="tools">{t("tabs.tools")}</TabsTrigger>
+          <TabsTrigger value="database">{t("tabs.database")}</TabsTrigger>
           <TabsTrigger value="auth">{t("tabs.auth")}</TabsTrigger>
           <TabsTrigger value="integrations">{t("tabs.integrations")}</TabsTrigger>
         </TabsList>
@@ -154,6 +156,14 @@ export function ConfigPage() {
           <AutoApprovedCommandsSection
             data={config.tools as any}
             onSave={(v) => patch({ tools: v })}
+            saving={saving}
+          />
+        </TabsContent>
+
+        <TabsContent value="database" className="space-y-4">
+          <DatabaseSection
+            data={config.database as any}
+            onSave={(v) => patch({ database: v })}
             saving={saving}
           />
         </TabsContent>

@@ -368,6 +368,12 @@
   "auth.session.refreshEnabled": "刷新令牌",
   "auth.session.refreshTip": "颁发刷新令牌，以便用户可以跨会话保持登录状态。",
 
+  "tabs.database": "数据库",
+  "database.title": "数据库",
+  "database.description": "租户数据库连接的默认设置",
+  "database.sslMode": "租户数据库 SSL 模式",
+  "database.sslModeTip": "自动生成的租户数据库的默认 SSL 模式。'prefer' 先尝试 TLS 再回退。'require' 强制使用 TLS。",
+
   "toast": {
     "saved": "配置已保存",
     "saveFailed": "保存配置失败"
