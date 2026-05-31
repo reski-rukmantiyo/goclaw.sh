@@ -14,7 +14,6 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
@@ -46,6 +45,7 @@ export function TenantsAdminPage() {
   const [creating, setCreating] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [deleteSaving, setDeleteSaving] = useState(false);
 
   const handleCreate = async () => {
@@ -67,12 +67,15 @@ export function TenantsAdminPage() {
     setSlug(v.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""));
   };
 
+  const deleteTargetTenant = tenants.find((t) => t.id === deleteTarget);
+
   const handleDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || deleteConfirmName.trim() !== deleteTargetTenant?.name) return;
     setDeleteSaving(true);
     try {
       await deleteTenant(deleteTarget);
       setDeleteTarget(null);
+      setDeleteConfirmName("");
     } finally {
       setDeleteSaving(false);
     }
@@ -140,7 +143,7 @@ export function TenantsAdminPage() {
                           variant="ghost"
                           size="sm"
                           className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                          onClick={(e) => { e.stopPropagation(); setDeleteTarget(tenant.id); }}
+                          onClick={(e) => { e.stopPropagation(); setDeleteTarget(tenant.id); setDeleteConfirmName(""); }}
                           title={t("deleteTenant")}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -195,16 +198,38 @@ export function TenantsAdminPage() {
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
-        title={t("deleteTenant")}
-        description={t("deleteConfirm")}
-        confirmLabel={t("deleteTenant")}
-        variant="destructive"
-        onConfirm={handleDelete}
-        loading={deleteSaving}
-      />
+      <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) { setDeleteTarget(null); setDeleteConfirmName(""); } }}>
+        <DialogContent className="max-sm:inset-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("deleteTenant")}</DialogTitle>
+            <DialogDescription>{t("deleteConfirm")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              {t("typeToConfirm", { name: deleteTargetTenant?.name ?? "" })}
+            </p>
+            <Input
+              value={deleteConfirmName}
+              onChange={(e) => setDeleteConfirmName(e.target.value)}
+              placeholder={deleteTargetTenant?.name ?? ""}
+              className="text-base md:text-sm"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteTarget(null); setDeleteConfirmName(""); }} disabled={deleteSaving}>
+              {tc("cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteSaving || deleteConfirmName.trim() !== deleteTargetTenant?.name}
+            >
+              {t("deleteTenant")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

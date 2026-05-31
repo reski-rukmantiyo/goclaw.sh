@@ -81,6 +81,7 @@ export function TenantDetailPage() {
 
   // Delete tenant
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [deleteSaving, setDeleteSaving] = useState(false);
 
   const handleAdd = async () => {
@@ -122,10 +123,12 @@ export function TenantDetailPage() {
   };
 
   const handleDelete = async () => {
+    if (deleteConfirmName.trim() !== tenant?.name) return;
     setDeleteSaving(true);
     try {
       await deleteTenant();
       setDeleteOpen(false);
+      setDeleteConfirmName("");
       navigate(route(currentTenantSlug, ROUTES.TENANTS));
     } finally {
       setDeleteSaving(false);
@@ -235,7 +238,7 @@ export function TenantDetailPage() {
         <div className="rounded-lg border border-destructive/20 p-4 space-y-3">
           <h3 className="text-sm font-semibold text-destructive">{t("deleteTenant")}</h3>
           <p className="text-xs text-muted-foreground">{t("deleteWarning")}</p>
-          <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)} className="gap-1">
+          <Button variant="destructive" size="sm" onClick={() => { setDeleteOpen(true); setDeleteConfirmName(""); }} className="gap-1">
             <Trash2 className="h-3.5 w-3.5" /> {t("deleteTenant")}
           </Button>
         </div>
@@ -314,16 +317,38 @@ export function TenantDetailPage() {
         loading={removing}
       />
 
-      <ConfirmDialog
-        open={deleteOpen}
-        onOpenChange={(o) => { if (!o) setDeleteOpen(false); }}
-        title={t("deleteTenant")}
-        description={t("deleteConfirm")}
-        confirmLabel={t("deleteTenant")}
-        variant="destructive"
-        onConfirm={handleDelete}
-        loading={deleteSaving}
-      />
+      <Dialog open={deleteOpen} onOpenChange={(o) => { if (!o) { setDeleteOpen(false); setDeleteConfirmName(""); } }}>
+        <DialogContent className="max-sm:inset-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("deleteTenant")}</DialogTitle>
+            <DialogDescription>{t("deleteConfirm")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              {t("typeToConfirm", { name: tenant?.name ?? "" })}
+            </p>
+            <Input
+              value={deleteConfirmName}
+              onChange={(e) => setDeleteConfirmName(e.target.value)}
+              placeholder={tenant?.name ?? ""}
+              className="text-base md:text-sm"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteOpen(false); setDeleteConfirmName(""); }} disabled={deleteSaving}>
+              {tc("cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteSaving || deleteConfirmName.trim() !== tenant?.name}
+            >
+              {t("deleteTenant")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
