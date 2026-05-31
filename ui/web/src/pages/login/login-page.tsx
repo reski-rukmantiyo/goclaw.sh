@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "@/stores/use-auth-store";
-import { ROUTES } from "@/lib/constants";
+import { LOCAL_STORAGE_KEYS, ROUTES } from "@/lib/constants";
+import { route } from "@/lib/routes";
 import { LoginLayout } from "./login-layout";
 import { LoginTabs, type LoginMode } from "./login-tabs";
 import { TokenForm } from "./token-form";
@@ -15,6 +16,9 @@ export function LoginPage() {
   const { t } = useTranslation("login");
   const [mode, setMode] = useState<LoginMode>("token");
 
+  const token = useAuthStore((s) => s.token);
+  const userId = useAuthStore((s) => s.userId);
+  const senderID = useAuthStore((s) => s.senderID);
   const setCredentials = useAuthStore((s) => s.setCredentials);
   const setPairing = useAuthStore((s) => s.setPairing);
   const navigate = useNavigate();
@@ -23,6 +27,13 @@ export function LoginPage() {
   const from =
     (location.state as { from?: { pathname: string } })?.from?.pathname ??
     ROUTES.OVERVIEW;
+
+  useEffect(() => {
+    if ((token || senderID) && userId) {
+      const slug = localStorage.getItem(LOCAL_STORAGE_KEYS.TENANT_ID) || "master";
+      navigate(route(slug, ROUTES.OVERVIEW), { replace: true });
+    }
+  }, [token, userId, senderID, navigate]);
 
   function handleTokenLogin(userId: string, token: string) {
     setCredentials(token, userId);

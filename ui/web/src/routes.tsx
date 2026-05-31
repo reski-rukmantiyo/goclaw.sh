@@ -1,5 +1,7 @@
 import { Suspense } from "react";
-import { Routes, Route, Navigate } from "react-router";
+import { Routes, Route, Navigate, useLocation } from "react-router";
+import { LOCAL_STORAGE_KEYS } from "@/lib/constants";
+import { route } from "@/lib/routes";
 import { AppLayout } from "@/components/layout/app-layout";
 import { RequireAuth } from "@/components/shared/require-auth";
 import { RequireAdmin, RequireCrossTenant } from "@/components/shared/require-role";
@@ -139,6 +141,12 @@ const ProfilePage = lazyWithRetry(() =>
   import("@/pages/profile/profile-page").then((m) => ({ default: m.ProfilePage })),
 );
 
+function LegacyRedirect() {
+  const location = useLocation();
+  const slug = localStorage.getItem(LOCAL_STORAGE_KEYS.TENANT_ID) || "master";
+  return <Navigate to={route(slug, location.pathname)} replace />;
+}
+
 function PageLoader() {
   return (
     <div className="flex h-full items-center justify-center">
@@ -239,7 +247,58 @@ export function AppRoutes() {
         </Route>
 
         {/* Legacy routes — redirect to tenant-scoped */}
-        <Route path={ROUTES.OVERVIEW} element={<Navigate to="/t/master/overview" replace />} />
+        <Route path={ROUTES.OVERVIEW} element={<LegacyRedirect />} />
+        <Route path={ROUTES.PROFILE} element={<LegacyRedirect />} />
+        <Route path={ROUTES.CHAT_PATTERN} element={<LegacyRedirect />} />
+        <Route path={ROUTES.AGENTS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.AGENT_DETAIL} element={<LegacyRedirect />} />
+        <Route path={ROUTES.AGENT_CODEX_POOL} element={<LegacyRedirect />} />
+        <Route path={ROUTES.TEAMS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.TEAM_DETAIL} element={<LegacyRedirect />} />
+        <Route path={ROUTES.SESSIONS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.SESSION_DETAIL} element={<LegacyRedirect />} />
+        <Route path={ROUTES.SKILLS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.SKILL_DETAIL} element={<LegacyRedirect />} />
+        <Route path={ROUTES.CRON} element={<LegacyRedirect />} />
+        <Route path={ROUTES.CRON_DETAIL} element={<LegacyRedirect />} />
+        <Route path={ROUTES.CONFIG} element={<LegacyRedirect />} />
+        <Route path={ROUTES.PROVIDERS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.PROVIDER_DETAIL} element={<LegacyRedirect />} />
+        <Route path={ROUTES.API_KEYS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.CHANNELS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.CHANNEL_DETAIL} element={<LegacyRedirect />} />
+        <Route path={ROUTES.NODES} element={<LegacyRedirect />} />
+        <Route path={ROUTES.WORKSTATIONS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.LOGS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.BUILTIN_TOOLS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.MCP} element={<LegacyRedirect />} />
+        <Route path={ROUTES.TTS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.STORAGE} element={<LegacyRedirect />} />
+        <Route path={ROUTES.PACKAGES} element={<LegacyRedirect />} />
+        <Route path={ROUTES.TRACES} element={<LegacyRedirect />} />
+        <Route path={ROUTES.TRACE_DETAIL} element={<LegacyRedirect />} />
+        <Route path={ROUTES.EVENTS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.PENDING_MESSAGES} element={<LegacyRedirect />} />
+        <Route path={ROUTES.RAW_MESSAGES} element={<LegacyRedirect />} />
+        <Route path={ROUTES.EMBEDDINGS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.MEMORY} element={<LegacyRedirect />} />
+        <Route path={ROUTES.VAULT} element={<LegacyRedirect />} />
+        <Route path={ROUTES.KNOWLEDGE_GRAPH} element={<LegacyRedirect />} />
+        <Route path={ROUTES.CONTACTS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.ACTIVITY} element={<LegacyRedirect />} />
+        <Route path={ROUTES.APPROVALS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.HOOKS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.HOOK_DETAIL} element={<LegacyRedirect />} />
+        <Route path={ROUTES.TENANTS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.TENANT_DETAIL} element={<LegacyRedirect />} />
+        <Route path={ROUTES.USER_MGMT} element={<LegacyRedirect />} />
+        <Route path={ROUTES.USER_MGMT_DETAIL} element={<LegacyRedirect />} />
+        <Route path={ROUTES.GROUPS} element={<LegacyRedirect />} />
+        <Route path={ROUTES.GROUP_DETAIL} element={<LegacyRedirect />} />
+        <Route path={ROUTES.AUDIT_LOG} element={<LegacyRedirect />} />
+        <Route path={ROUTES.BACKUP_RESTORE} element={<LegacyRedirect />} />
+        <Route path={ROUTES.IMPORT_EXPORT} element={<LegacyRedirect />} />
+        <Route path={ROUTES.SETUP} element={<LegacyRedirect />} />
         <Route path="*" element={<Navigate to={ROUTES.LOGIN} replace />} />
       </Routes>
     </Suspense>

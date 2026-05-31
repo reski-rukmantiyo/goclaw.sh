@@ -34,12 +34,29 @@ interface AuthState {
   logout: () => void;
 }
 
+function getPersistedAuth(): { token: string; userId: string; senderID: string } | null {
+  try {
+    const raw = localStorage.getItem("goclaw:auth");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return {
+      token: parsed.state?.token ?? "",
+      userId: parsed.state?.userId ?? "",
+      senderID: parsed.state?.senderID ?? "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+const persisted = getPersistedAuth();
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      token: "",
-      userId: "",
-      senderID: "",
+      token: persisted?.token ?? "",
+      userId: persisted?.userId ?? "",
+      senderID: persisted?.senderID ?? "",
       connected: false,
       role: "" as UserRole,
       serverInfo: null,
