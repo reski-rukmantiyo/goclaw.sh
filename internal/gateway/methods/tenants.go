@@ -406,7 +406,16 @@ func (m *TenantsMethods) handleMine(ctx context.Context, client *gateway.Client,
 		entries = append(entries, tenantEntry{ID: t.ID.String(), Name: t.Name, Slug: t.Slug, Role: mem.Role, Status: t.Status})
 	}
 
-	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"tenants": entries}))
+		// Fallback for users created before tenant_users membership was auto-created:
+		// synthesize an entry from the client's resolved tenant (set via JWT tid claim).
+		if len(entries) == 0 && client.TenantID() != uuid.Nil {
+			t, tErr := m.tenantStore.GetTenant(ctx, client.TenantID())
+			if tErr == nil && t != nil && t.Status == store.TenantStatusActive {
+				entries = append(entries, tenantEntry{ID: t.ID.String(), Name: t.Name, Slug: t.Slug, Role: "member", Status: t.Status})
+			}
+		}
+
+		client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"tenants": entries}))
 }
 
 func (m *TenantsMethods) emitCacheInvalidate(kind, key string) {

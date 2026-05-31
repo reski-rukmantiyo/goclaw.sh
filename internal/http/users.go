@@ -15,13 +15,14 @@ import (
 
 // UsersHandler handles user management endpoints.
 type UsersHandler struct {
-	users  store.UserStore
-	groups store.GroupStore
+	users   store.UserStore
+	groups  store.GroupStore
+	tenants store.TenantStore
 }
 
 // NewUsersHandler creates a handler for user management endpoints.
-func NewUsersHandler(users store.UserStore, groups store.GroupStore) *UsersHandler {
-	return &UsersHandler{users: users, groups: groups}
+func NewUsersHandler(users store.UserStore, groups store.GroupStore, tenants store.TenantStore) *UsersHandler {
+	return &UsersHandler{users: users, groups: groups, tenants: tenants}
 }
 
 // RegisterRoutes registers all user management routes on the given mux.
@@ -224,6 +225,16 @@ func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		slog.Error("users.create failed", "error", err, "email", input.Email)
 		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToCreate, "user", "internal error"))
 		return
+	}
+
+	if h.tenants != nil && tenantID != uuid.Nil {
+		role := "member"
+		if user.IsTenantAdmin {
+			role = "admin"
+		}
+		if err := h.tenants.AddUser(ctx, tenantID, user.ID.String(), role); err != nil {
+			slog.Warn("users.create: failed to add tenant membership", "error", err, "user_id", user.ID)
+		}
 	}
 
 	writeJSON(w, http.StatusCreated, user)
