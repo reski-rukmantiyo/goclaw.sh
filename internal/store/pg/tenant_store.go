@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -103,7 +104,105 @@ func (s *PGTenantStore) GetTenantsByIDs(ctx context.Context, ids []uuid.UUID) ([
 }
 
 func (s *PGTenantStore) UpdateTenant(ctx context.Context, id uuid.UUID, updates map[string]any) error {
+	if _, ok := updates["slug"]; ok {
+		return errors.New("slug cannot be modified")
+	}
 	return execMapUpdate(ctx, s.db, "tenants", id, updates)
+}
+
+func (s *PGTenantStore) DeleteTenant(ctx context.Context, id uuid.UUID) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	deleteStmts := []string{
+		// Tier 5+ leaf tables
+		`DELETE FROM team_task_comments WHERE tenant_id = $1`,
+		`DELETE FROM team_task_events WHERE tenant_id = $1`,
+		`DELETE FROM team_task_attachments WHERE tenant_id = $1`,
+		`DELETE FROM webhook_calls WHERE tenant_id = $1`,
+		`DELETE FROM hook_executions WHERE hook_id IN (SELECT id FROM hooks WHERE tenant_id = $1)`,
+		`DELETE FROM hook_agents WHERE hook_id IN (SELECT id FROM hooks WHERE tenant_id = $1)`,
+		`DELETE FROM agent_workstation_links WHERE tenant_id = $1`,
+		`DELETE FROM workstation_permissions WHERE tenant_id = $1`,
+		`DELETE FROM workstation_activity WHERE tenant_id = $1`,
+		`DELETE FROM workstation_group_permissions WHERE tenant_id = $1`,
+		`DELETE FROM memory_chunks WHERE tenant_id = $1`,
+		`DELETE FROM kg_relations WHERE tenant_id = $1`,
+		`DELETE FROM kg_dedup_candidates WHERE tenant_id = $1`,
+		`DELETE FROM vault_links WHERE from_doc_id IN (SELECT id FROM vault_documents WHERE tenant_id = $1)`,
+		`DELETE FROM agent_config_permissions WHERE tenant_id = $1`,
+		`DELETE FROM agent_context_files WHERE tenant_id = $1`,
+		`DELETE FROM user_context_files WHERE tenant_id = $1`,
+		`DELETE FROM user_agent_profiles WHERE tenant_id = $1`,
+		`DELETE FROM user_agent_overrides WHERE tenant_id = $1`,
+		`DELETE FROM agent_shares WHERE tenant_id = $1`,
+		`DELETE FROM agent_links WHERE tenant_id = $1`,
+		`DELETE FROM episodic_summaries WHERE tenant_id = $1`,
+		`DELETE FROM agent_evolution_metrics WHERE tenant_id = $1`,
+		`DELETE FROM agent_evolution_suggestions WHERE tenant_id = $1`,
+		`DELETE FROM channel_contacts WHERE tenant_id = $1`,
+		`DELETE FROM channel_pending_messages WHERE tenant_id = $1`,
+		`DELETE FROM pairing_requests WHERE tenant_id = $1`,
+		`DELETE FROM paired_devices WHERE tenant_id = $1`,
+		`DELETE FROM traces WHERE tenant_id = $1`,
+		`DELETE FROM spans WHERE tenant_id = $1`,
+		`DELETE FROM activity_logs WHERE tenant_id = $1`,
+		`DELETE FROM usage_snapshots WHERE tenant_id = $1`,
+		`DELETE FROM embedding_cache WHERE tenant_id = $1`,
+		`DELETE FROM listen_raw_messages WHERE tenant_id = $1`,
+		`DELETE FROM raw_message_chunks WHERE tenant_id = $1`,
+		`DELETE FROM system_configs WHERE tenant_id = $1`,
+		`DELETE FROM builtin_tool_tenant_configs WHERE tenant_id = $1`,
+		`DELETE FROM skill_tenant_configs WHERE tenant_id = $1`,
+		`DELETE FROM subagent_tasks WHERE tenant_id = $1`,
+		`DELETE FROM tenant_hook_budget WHERE tenant_id = $1`,
+		`DELETE FROM cron_jobs WHERE tenant_id = $1`,
+		`DELETE FROM webhooks WHERE tenant_id = $1`,
+		`DELETE FROM hooks WHERE tenant_id = $1`,
+		// Tier 4
+		`DELETE FROM team_tasks WHERE tenant_id = $1`,
+		`DELETE FROM team_user_grants WHERE tenant_id = $1`,
+		// Tier 3
+		`DELETE FROM skill_agent_grants WHERE tenant_id = $1`,
+		`DELETE FROM skill_user_grants WHERE tenant_id = $1`,
+		`DELETE FROM mcp_agent_grants WHERE tenant_id = $1`,
+		`DELETE FROM mcp_user_grants WHERE tenant_id = $1`,
+		`DELETE FROM mcp_access_requests WHERE tenant_id = $1`,
+		`DELETE FROM mcp_user_credentials WHERE tenant_id = $1`,
+		`DELETE FROM secure_cli_agent_grants WHERE tenant_id = $1`,
+		`DELETE FROM secure_cli_user_credentials WHERE tenant_id = $1`,
+		`DELETE FROM agent_team_members WHERE tenant_id = $1`,
+		`DELETE FROM memory_documents WHERE tenant_id = $1`,
+		`DELETE FROM kg_entities WHERE tenant_id = $1`,
+		`DELETE FROM vault_documents WHERE tenant_id = $1`,
+		// Tier 2
+		`DELETE FROM tenant_users WHERE tenant_id = $1`,
+		`DELETE FROM sessions WHERE tenant_id = $1`,
+		`DELETE FROM api_keys WHERE tenant_id = $1`,
+		`DELETE FROM config_secrets WHERE tenant_id = $1`,
+		`DELETE FROM skills WHERE tenant_id = $1`,
+		`DELETE FROM mcp_servers WHERE tenant_id = $1`,
+		`DELETE FROM secure_cli_binaries WHERE tenant_id = $1`,
+		`DELETE FROM channel_instances WHERE tenant_id = $1`,
+		`DELETE FROM agent_teams WHERE tenant_id = $1`,
+		`DELETE FROM llm_providers WHERE tenant_id = $1`,
+		`DELETE FROM workstations WHERE tenant_id = $1`,
+		`DELETE FROM agents WHERE tenant_id = $1`,
+		`DELETE FROM tenant_db_connections WHERE tenant_id = $1`,
+		// Root
+		`DELETE FROM tenants WHERE id = $1`,
+	}
+
+	for _, stmt := range deleteStmts {
+		if _, err := tx.ExecContext(ctx, stmt, id); err != nil {
+			return fmt.Errorf("delete tenant data: %w", err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 // ============================================================

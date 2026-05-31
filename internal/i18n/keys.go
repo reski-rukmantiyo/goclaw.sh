@@ -207,7 +207,10 @@ const (
 	MsgSkillNudge90Pct      = "skill.nudge_90_pct"
 
 	// --- Tenants ---
-	MsgInvalidRole = "error.invalid_role" // "invalid role: allowed values are owner, admin, operator, member, viewer"
+	MsgInvalidRole       = "error.invalid_role"        // "invalid role: allowed values are owner, admin, operator, member, viewer"
+	MsgSlugImmutable     = "error.slug_immutable"      // "slug cannot be modified"
+	MsgTenantDeleted     = "info.tenant_deleted"       // "tenant deleted"
+	MsgTenantDeleteFailed = "error.tenant_delete_failed" // "failed to delete tenant: %s"
 
 	// --- Tenant DB ---
 	MsgTenantDBConnectionFailed = "error.tenant_db_connection_failed" // "failed to connect to tenant database: %s"

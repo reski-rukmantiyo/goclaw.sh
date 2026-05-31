@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Plus, RefreshCw, Users, Trash2, Calendar, Hash, Shield } from "lucide-react";
+import { ArrowLeft, Plus, RefreshCw, Users, Trash2, Calendar, Hash, Shield, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -56,7 +57,7 @@ export function TenantDetailPage() {
 
   const { currentTenantSlug } = useTenants();
 
-  const { tenant, tenantLoading, users, usersLoading, usersRefreshing, refreshUsers, addUser, removeUser } =
+  const { tenant, tenantLoading, users, usersLoading, usersRefreshing, refreshUsers, addUser, removeUser, updateTenantName, deleteTenant } =
     useTenantDetail(id);
 
   const spinning = useMinLoading(usersRefreshing);
@@ -72,6 +73,15 @@ export function TenantDetailPage() {
   const [adding, setAdding] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
+
+  // Edit name
+  const [editOpen, setEditOpen] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+
+  // Delete tenant
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteSaving, setDeleteSaving] = useState(false);
 
   const handleAdd = async () => {
     if (!userId.trim()) return;
@@ -97,6 +107,31 @@ export function TenantDetailPage() {
     }
   };
 
+  const handleEditSave = async () => {
+    if (!editName.trim() || editName.trim() === tenant?.name) {
+      setEditOpen(false);
+      return;
+    }
+    setEditSaving(true);
+    try {
+      await updateTenantName(editName.trim());
+      setEditOpen(false);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleteSaving(true);
+    try {
+      await deleteTenant();
+      setDeleteOpen(false);
+      navigate(route(currentTenantSlug, ROUTES.TENANTS));
+    } finally {
+      setDeleteSaving(false);
+    }
+  };
+
   if (tenantLoading) {
     return <div className="p-4 sm:p-6 pb-10"><TableSkeleton rows={3} /></div>;
   }
@@ -107,9 +142,21 @@ export function TenantDetailPage() {
         title={tenant?.name ?? t("detail")}
         description=""
         actions={
-          <Button variant="outline" size="sm" onClick={() => navigate(route(currentTenantSlug, ROUTES.TENANTS))} className="gap-1">
-            <ArrowLeft className="h-3.5 w-3.5" /> {t("back")}
-          </Button>
+          <div className="flex items-center gap-2">
+            {tenant && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                onClick={() => { setEditName(tenant.name); setEditOpen(true); }}
+              >
+                <Pencil className="h-3.5 w-3.5" /> {t("editName")}
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => navigate(route(currentTenantSlug, ROUTES.TENANTS))} className="gap-1">
+              <ArrowLeft className="h-3.5 w-3.5" /> {t("back")}
+            </Button>
+          </div>
         }
       />
 
@@ -183,6 +230,17 @@ export function TenantDetailPage() {
         )}
       </div>
 
+      {/* Danger zone */}
+      {tenant && (
+        <div className="rounded-lg border border-destructive/20 p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-destructive">{t("deleteTenant")}</h3>
+          <p className="text-xs text-muted-foreground">{t("deleteWarning")}</p>
+          <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)} className="gap-1">
+            <Trash2 className="h-3.5 w-3.5" /> {t("deleteTenant")}
+          </Button>
+        </div>
+      )}
+
       {/* Add User Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-sm:inset-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-md">
@@ -220,6 +278,31 @@ export function TenantDetailPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Edit Name Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-sm:inset-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("editName")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>{t("name")}</Label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder={t("name")}
+                className="text-base md:text-sm"
+                onKeyDown={(e) => { if (e.key === "Enter") handleEditSave(); }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)} disabled={editSaving}>{tc("cancel")}</Button>
+            <Button onClick={handleEditSave} disabled={editSaving || !editName.trim()}>{tc("save")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ConfirmDialog
         open={!!removeTarget}
         onOpenChange={(o) => { if (!o) setRemoveTarget(null); }}
@@ -229,6 +312,17 @@ export function TenantDetailPage() {
         variant="destructive"
         onConfirm={handleRemove}
         loading={removing}
+      />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={(o) => { if (!o) setDeleteOpen(false); }}
+        title={t("deleteTenant")}
+        description={t("deleteConfirm")}
+        confirmLabel={t("deleteTenant")}
+        variant="destructive"
+        onConfirm={handleDelete}
+        loading={deleteSaving}
       />
     </div>
   );

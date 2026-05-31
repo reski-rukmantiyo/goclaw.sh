@@ -193,7 +193,10 @@ func init() {
 		MsgSkillNudge70Pct:      "[System] You are at 70% of your iteration budget. Consider whether any patterns from this session would make a good skill.",
 		MsgSkillNudge90Pct:      "[System] You are at 90% of your iteration budget. If this session involved reusable patterns, consider saving them as a skill before completing.",
 
-		MsgInvalidRole: "invalid role: allowed values are owner, admin, operator, member, viewer",
+		MsgInvalidRole:           "invalid role: allowed values are owner, admin, operator, member, viewer",
+		MsgSlugImmutable:         "slug cannot be modified",
+		MsgTenantDeleted:         "tenant deleted",
+		MsgTenantDeleteFailed:    "failed to delete tenant: %s",
 
 		MsgTenantDBConnectionFailed: "failed to connect to tenant database: %s",
 		MsgTenantDBProvisionFailed:  "failed to provision tenant database: %s",

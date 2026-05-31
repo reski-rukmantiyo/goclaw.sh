@@ -46,6 +46,7 @@ func (m *TenantsMethods) Register(router *gateway.MethodRouter) {
 	router.Register("tenants.users.list", m.handleUsersList)
 	router.Register("tenants.users.add", m.handleUsersAdd)
 	router.Register("tenants.users.remove", m.handleUsersRemove)
+	router.Register("tenants.delete", m.handleDelete)
 	router.Register("tenants.mine", m.handleMine)
 }
 
@@ -377,6 +378,40 @@ func (m *TenantsMethods) handleUsersRemove(ctx context.Context, client *gateway.
 		Payload: map[string]string{"user_id": params.UserID, "tenant_id": tid.String()},
 	})
 
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]string{"ok": "true"}))
+}
+
+func (m *TenantsMethods) handleDelete(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	if !client.IsOwner() {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrUnauthorized, i18n.T(locale, i18n.MsgPermissionDenied, "tenants.delete")))
+		return
+	}
+
+	var params struct {
+		TenantID string `json:"tenant_id"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidJSON)))
+			return
+		}
+	}
+
+	tid, err := uuid.Parse(params.TenantID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidID, "tenant_id")))
+		return
+	}
+
+	if err := m.tenantStore.DeleteTenant(ctx, tid); err != nil {
+		slog.Error("tenants.delete failed", "error", err)
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToDelete, "tenant", err.Error())))
+		return
+	}
+
+	m.emitCacheInvalidate(bus.CacheKindTenantUsers, tid.String())
+	m.emitCacheInvalidate(bus.CacheKindTenants, "")
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]string{"ok": "true"}))
 }
 

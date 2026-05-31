@@ -193,7 +193,10 @@ func init() {
 		MsgSkillNudge70Pct:      "[System] 您已使用 70% 的迭代预算。请考虑本次会话中的模式是否值得保存为技能。",
 		MsgSkillNudge90Pct:      "[System] 您已使用 90% 的迭代预算。如果本次会话涉及可重用的模式，请考虑在完成前将其保存为技能。",
 
-		MsgInvalidRole: "无效角色：允许的值为 owner、admin、operator、member、viewer",
+		MsgInvalidRole:           "无效角色：允许的值为 owner、admin、operator、member、viewer",
+		MsgSlugImmutable:         "无法修改 slug",
+		MsgTenantDeleted:         "租户已删除",
+		MsgTenantDeleteFailed:    "删除租户失败：%s",
 
 		MsgTenantDBConnectionFailed: "无法连接租户数据库: %s",
 		MsgTenantDBProvisionFailed:  "无法配置租户数据库: %s",

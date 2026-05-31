@@ -181,6 +181,7 @@ export const Methods = {
   TENANTS_USERS_LIST: "tenants.users.list",
   TENANTS_USERS_ADD: "tenants.users.add",
   TENANTS_USERS_REMOVE: "tenants.users.remove",
+  TENANTS_DELETE: "tenants.delete",
 
   // WhatsApp
   WHATSAPP_GROUPS_REFRESH: "whatsapp.groups.refresh",
