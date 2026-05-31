@@ -35,17 +35,12 @@ func (s *SQLiteUserStore) Create(ctx context.Context, user *store.UserData) erro
 	user.CreatedAt = now
 	user.UpdatedAt = now
 
-	var adminInt int
-	if user.IsTenantAdmin {
-		adminInt = 1
-	}
-
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO users (id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, is_tenant_admin, status, last_login_at, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO users (id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, status, last_login_at, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.ID.String(), user.Email, user.DisplayName, user.AvatarURL,
 		user.TenantID.String(), user.AuthProvider, user.PasswordHash,
-		adminInt, user.Status, user.LastLoginAt, user.CreatedAt, user.UpdatedAt,
+		user.Status, user.LastLoginAt, user.CreatedAt, user.UpdatedAt,
 	)
 	return err
 }
@@ -124,8 +119,8 @@ func (s *SQLiteUserStore) Update(ctx context.Context, user *store.UserData) erro
 	user.UpdatedAt = now
 
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE users SET display_name = ?, avatar_url = ?, is_tenant_admin = ?, updated_at = ? WHERE id = ?`,
-		user.DisplayName, user.AvatarURL, user.IsTenantAdmin, now, user.ID.String(),
+		`UPDATE users SET display_name = ?, avatar_url = ?, updated_at = ? WHERE id = ?`,
+		user.DisplayName, user.AvatarURL, now, user.ID.String(),
 	)
 	if err != nil {
 		return err

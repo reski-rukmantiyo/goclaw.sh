@@ -5,7 +5,6 @@ export interface User {
   avatar_url?: string | null;
   tenant_id: string;
   auth_provider: "local" | "entra_id" | "google";
-  is_tenant_admin: boolean;
   status: "active" | "suspended" | "deactivated";
   last_login_at?: string | null;
   created_at: string;

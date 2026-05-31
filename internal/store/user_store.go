@@ -30,7 +30,8 @@ type UserData struct {
 	TenantID        uuid.UUID  `json:"tenant_id" db:"tenant_id"`
 	AuthProvider    string     `json:"auth_provider" db:"auth_provider"`
 	PasswordHash    *string    `json:"-" db:"password_hash"`
-	IsTenantAdmin   bool       `json:"is_tenant_admin" db:"is_tenant_admin"`
+	// Deprecated: roles now live in tenant_users. Kept for DB backward compat.
+	IsTenantAdmin   bool       `json:"-" db:"is_tenant_admin"`
 	Status          string     `json:"status" db:"status"`
 	LastLoginAt     *time.Time `json:"last_login_at,omitempty" db:"last_login_at"`
 	CreatedAt       time.Time  `json:"created_at" db:"created_at"`

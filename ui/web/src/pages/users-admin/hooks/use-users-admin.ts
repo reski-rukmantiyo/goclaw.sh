@@ -66,7 +66,7 @@ export function useUsersAdmin(params: UserListParams = {}) {
   });
 
   const createUser = useMutation({
-    mutationFn: async (input: { email: string; display_name: string; password: string; is_tenant_admin?: boolean }) => {
+    mutationFn: async (input: { email: string; display_name: string; password: string; role?: string }) => {
       return http.post<User>("/v1/users", input);
     },
     onSuccess: () => {
@@ -80,7 +80,7 @@ export function useUsersAdmin(params: UserListParams = {}) {
 
   const toggleAdmin = useMutation({
     mutationFn: async (userId: string) => {
-      return http.patch<{ is_tenant_admin: boolean }>(`/v1/users/${userId}/admin`, {});
+      return http.patch<{ role: string }>(`/v1/users/${userId}/admin`, {});
     },
     onSuccess: () => {
       invalidate();

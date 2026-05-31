@@ -34,7 +34,7 @@ export function ProfilePage() {
   const { t } = useTranslation("profile");
   const { user, loading, updateProfile, isUpdating } = useProfile();
   const tenantName = useAuthStore((s) => s.tenantName);
-  const isTenantAdmin = user?.is_tenant_admin;
+  const isTenantAdmin = false; // TODO: derive from tenant_users.role
 
   const [displayName, setDisplayName] = useState("");
   const [dirty, setDirty] = useState(false);

@@ -16,7 +16,7 @@ var schemaSQL string
 
 // SchemaVersion is the current SQLite schema version.
 // Bump this when adding new migration steps below.
-const SchemaVersion = 41
+const SchemaVersion = 42
 
 // migrations maps version → SQL to apply when upgrading FROM that version.
 // schema.sql always represents the LATEST full schema (for fresh DBs).
@@ -779,7 +779,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_webhook_calls_idempotency
 	    tenant_id        TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
 	    auth_provider    VARCHAR(20) NOT NULL CHECK (auth_provider IN ('local', 'entra_id', 'google')),
 	    password_hash    TEXT,
-	    is_tenant_admin  INTEGER NOT NULL DEFAULT 0,
 	    status           VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'deactivated')),
 	    last_login_at    TEXT,
 	    created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -884,6 +883,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_webhook_calls_idempotency
 	CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
 	CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash);
 	CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens(expires_at);`,
+
+	// Version 41 → 42: drop is_tenant_admin from users (roles now in tenant_users).
+	41: `ALTER TABLE users DROP COLUMN IF EXISTS is_tenant_admin;`,
 }
 
 // addHooksTables is the SQLite incremental migration for schema v19 → v20.

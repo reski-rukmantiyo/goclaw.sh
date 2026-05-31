@@ -1931,7 +1931,6 @@ CREATE TABLE IF NOT EXISTS users (
     tenant_id        TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     auth_provider    VARCHAR(20) NOT NULL CHECK (auth_provider IN ('local', 'entra_id', 'google')),
     password_hash    TEXT,
-    is_tenant_admin  INTEGER NOT NULL DEFAULT 0,
     status           VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'deactivated')),
     last_login_at    TEXT,
     created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),

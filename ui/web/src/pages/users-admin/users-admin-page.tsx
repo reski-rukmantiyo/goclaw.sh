@@ -87,7 +87,7 @@ function UsersAdminPage() {
         email: email.trim(),
         display_name: displayName.trim(),
         password: password.trim(),
-        is_tenant_admin: isAdmin,
+        role: isAdmin ? "admin" : "member",
       });
       setCreateOpen(false);
       setEmail("");
@@ -247,16 +247,9 @@ function UsersAdminPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      {user.is_tenant_admin ? (
-                        <Badge variant="default" className="text-xs gap-1">
-                          <ShieldCheck className="h-3 w-3" />
-                          {t("role.admin")}
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-xs">
-                          {t("role.member")}
-                        </Badge>
-                      )}
+                      <Badge variant="secondary" className="text-xs">
+                        {t("role.member")}
+                      </Badge>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {user.last_login_at
@@ -296,9 +289,9 @@ function UsersAdminPage() {
                           size="sm"
                           onClick={() => toggleAdmin(user.id)}
                           disabled={isTogglingAdmin}
-                          title={user.is_tenant_admin ? t("actions.removeAdmin") : t("actions.makeAdmin")}
+                          title={t("actions.toggleRole")}
                         >
-                          <ShieldCheck className={`h-3.5 w-3.5 ${user.is_tenant_admin ? "text-primary" : ""}`} />
+                          <ShieldCheck className="h-3.5 w-3.5" />
                         </Button>
                         <Button
                           variant="ghost"

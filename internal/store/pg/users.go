@@ -27,13 +27,13 @@ func NewPGUserStore(db *sql.DB) *PGUserStore {
 
 func (s *PGUserStore) Create(ctx context.Context, user *store.UserData) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO users (id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, is_tenant_admin, status, last_login_at, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		`INSERT INTO users (id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, status, last_login_at, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		user.ID, user.Email, user.DisplayName,
 		sql.NullString{String: derefStr(user.AvatarURL), Valid: user.AvatarURL != nil && *user.AvatarURL != ""},
 		user.TenantID, user.AuthProvider,
 		sql.NullString{String: derefStr(user.PasswordHash), Valid: user.PasswordHash != nil && *user.PasswordHash != ""},
-		user.IsTenantAdmin, user.Status,
+		user.Status,
 		sql.NullTime{Time: func() time.Time { if user.LastLoginAt != nil { return *user.LastLoginAt }; return time.Time{} }(), Valid: user.LastLoginAt != nil && !user.LastLoginAt.IsZero()},
 		user.CreatedAt, user.UpdatedAt,
 	)
@@ -70,10 +70,9 @@ func (s *PGUserStore) GetByEmail(ctx context.Context, tenantID uuid.UUID, email 
 
 func (s *PGUserStore) Update(ctx context.Context, user *store.UserData) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE users SET display_name = $1, avatar_url = $2, is_tenant_admin = $3, updated_at = NOW() WHERE id = $4`,
+		`UPDATE users SET display_name = $1, avatar_url = $2, updated_at = NOW() WHERE id = $3`,
 		user.DisplayName,
 		sql.NullString{String: derefStr(user.AvatarURL), Valid: user.AvatarURL != nil && *user.AvatarURL != ""},
-		user.IsTenantAdmin,
 		user.ID,
 	)
 	return err
