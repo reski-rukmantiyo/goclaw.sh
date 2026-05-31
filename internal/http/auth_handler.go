@@ -28,11 +28,11 @@ func NewAuthHandler(users store.UserStore, jwt *auth.JWTManager, cfg *config.Aut
 
 // RegisterRoutes registers all auth session routes on the given mux.
 func (h *AuthHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /v1/auth/login", h.handleLogin)
-	mux.HandleFunc("POST /v1/auth/refresh", h.handleRefresh)
-	mux.HandleFunc("POST /v1/auth/logout", h.handleLogout)
-	mux.HandleFunc("GET /v1/auth/providers", h.handleProviders)
-	mux.HandleFunc("POST /v1/auth/password/change", requireAuth("", h.handlePasswordChange))
+	mux.HandleFunc("POST /auth/login", h.handleLogin)
+	mux.HandleFunc("POST /auth/refresh", h.handleRefresh)
+	mux.HandleFunc("POST /auth/logout", h.handleLogout)
+	mux.HandleFunc("GET /auth/providers", h.handleProviders)
+	mux.HandleFunc("POST /auth/password/change", requireAuth("", h.handlePasswordChange))
 }
 
 type loginRequest struct {

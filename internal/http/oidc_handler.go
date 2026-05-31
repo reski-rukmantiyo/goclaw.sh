@@ -42,10 +42,10 @@ func NewOIDCHandler(users store.UserStore, groups store.GroupStore, validator *a
 
 // RegisterRoutes registers all OIDC routes on the given mux.
 func (h *OIDCHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/auth/entra/authorize", h.handleAuthorize("entra_id"))
-	mux.HandleFunc("GET /v1/auth/entra/callback", h.handleCallback("entra_id"))
-	mux.HandleFunc("GET /v1/auth/google/authorize", h.handleAuthorize("google"))
-	mux.HandleFunc("GET /v1/auth/google/callback", h.handleCallback("google"))
+	mux.HandleFunc("GET /auth/entra/authorize", h.handleAuthorize("entra_id"))
+	mux.HandleFunc("GET /auth/entra/callback", h.handleCallback("entra_id"))
+	mux.HandleFunc("GET /auth/google/authorize", h.handleAuthorize("google"))
+	mux.HandleFunc("GET /auth/google/callback", h.handleCallback("google"))
 }
 
 // storeState saves a CSRF state token with 10-minute TTL.
