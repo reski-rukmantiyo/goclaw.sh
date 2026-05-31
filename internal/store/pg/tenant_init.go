@@ -20,20 +20,34 @@ var tenantSchemaSQL string
 
 // InitTenantDB runs the tenant schema initialization on the given tenant DB.
 func InitTenantDB(ctx context.Context, db *sql.DB) error {
-	// Split by statement and execute each. Simple split on "\n\n" is fragile
-	// for SQL with blank lines inside functions, but our generated schema uses
-	// blank lines between statements consistently.
 	stmts := splitSQLStatements(tenantSchemaSQL)
 	for _, stmt := range stmts {
 		stmt = strings.TrimSpace(stmt)
-		if stmt == "" || strings.HasPrefix(stmt, "--") {
+		if stmt == "" || isOnlyCommentsOrEmpty(stmt) {
 			continue
 		}
 		if _, err := db.ExecContext(ctx, stmt); err != nil {
-			return fmt.Errorf("tenant schema init: %w", err)
+			firstLine := stmt
+			if idx := strings.IndexByte(firstLine, '\n'); idx > 0 {
+				firstLine = firstLine[:idx]
+			}
+			if len(firstLine) > 120 {
+				firstLine = firstLine[:120] + "..."
+			}
+			return fmt.Errorf("tenant schema init [stmt: %s]: %w", firstLine, err)
 		}
 	}
 	return nil
+}
+
+func isOnlyCommentsOrEmpty(stmt string) bool {
+	for _, line := range strings.Split(stmt, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" && !strings.HasPrefix(trimmed, "--") {
+			return false
+		}
+	}
+	return true
 }
 
 // splitSQLStatements splits a SQL file into individual statements.
@@ -46,7 +60,9 @@ func splitSQLStatements(sql string) []string {
 	lines := strings.Split(sql, "\n")
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "$$") {
+		// Toggle once per $$ occurrence on the line (handles AS $$, $$ LANGUAGE,
+		// END $$;, and one-line $$...$$ blocks correctly).
+		for i := 0; i < strings.Count(trimmed, "$$"); i++ {
 			inDollarQuote = !inDollarQuote
 		}
 		buf.WriteString(line)
