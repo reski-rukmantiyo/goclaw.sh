@@ -95,7 +95,7 @@ func (s *PGSessionStore) List(ctx context.Context, agentID string) []store.Sessi
 	}
 
 	var scanned []sessionListRow
-	if err := pkgSqlxDB.SelectContext(ctx, &scanned,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned,
 		"SELECT session_key, messages, created_at, updated_at, label, channel, user_id, COALESCE(metadata, '{}') AS metadata FROM sessions"+where+" ORDER BY updated_at DESC",
 		args...); err != nil {
 		return nil
@@ -122,7 +122,7 @@ func (s *PGSessionStore) ListPaged(ctx context.Context, opts store.SessionListOp
 	// Count total
 	var total int
 	countQ := "SELECT COUNT(*) FROM sessions" + where
-	if err := s.db.QueryRowContext(ctx, countQ, whereArgs...).Scan(&total); err != nil {
+	if err := s.dbFor(ctx).QueryRowContext(ctx, countQ, whereArgs...).Scan(&total); err != nil {
 		return store.SessionListResult{Sessions: []store.SessionInfo{}, Total: 0}
 	}
 
@@ -133,7 +133,7 @@ func (s *PGSessionStore) ListPaged(ctx context.Context, opts store.SessionListOp
 	selectArgs := append(append([]any{}, whereArgs...), limit, offset)
 
 	var scanned []sessionPagedRow
-	if err := pkgSqlxDB.SelectContext(ctx, &scanned, selectQ, selectArgs...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned, selectQ, selectArgs...); err != nil {
 		return store.SessionListResult{Sessions: []store.SessionInfo{}, Total: total}
 	}
 
@@ -157,7 +157,7 @@ func (s *PGSessionStore) ListPagedRich(ctx context.Context, opts store.SessionLi
 	// Count total
 	var total int
 	countQ := "SELECT COUNT(*) FROM sessions s" + where
-	if err := s.db.QueryRowContext(ctx, countQ, whereArgs...).Scan(&total); err != nil {
+	if err := s.dbFor(ctx).QueryRowContext(ctx, countQ, whereArgs...).Scan(&total); err != nil {
 		return store.SessionListRichResult{Sessions: []store.SessionInfoRich{}, Total: 0}
 	}
 
@@ -180,7 +180,7 @@ func (s *PGSessionStore) ListPagedRich(ctx context.Context, opts store.SessionLi
 	selectArgs := append(append([]any{}, whereArgs...), limit, offset)
 
 	var scanned []sessionRichRow
-	if err := pkgSqlxDB.SelectContext(ctx, &scanned, selectQ, selectArgs...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned, selectQ, selectArgs...); err != nil {
 		return store.SessionListRichResult{Sessions: []store.SessionInfoRich{}, Total: total}
 	}
 
@@ -223,7 +223,7 @@ func (s *PGSessionStore) Save(ctx context.Context, key string) error {
 		metaJSON, _ = json.Marshal(snapshot.Metadata)
 	}
 
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE sessions SET
 			messages = $1, summary = $2, model = $3, provider = $4, channel = $5,
 			input_tokens = $6, output_tokens = $7, compaction_count = $8,
@@ -245,7 +245,7 @@ func (s *PGSessionStore) Save(ctx context.Context, key string) error {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		// Session not yet in DB (e.g. cron/heartbeat sessions) — insert it.
-		_, err = s.db.ExecContext(ctx,
+		_, err = s.dbFor(ctx).ExecContext(ctx,
 			`INSERT INTO sessions (id, session_key, messages, summary, model, provider, channel,
 				input_tokens, output_tokens, compaction_count,
 				memory_flush_compaction_count, memory_flush_at,
@@ -320,7 +320,7 @@ func (s *PGSessionStore) ListOverThreshold(ctx context.Context, threshold float6
 		%s ORDER BY s.updated_at DESC`, richCols, where)
 
 	var scanned []sessionRichRow
-	if err := pkgSqlxDB.SelectContext(ctx, &scanned, selectQ, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned, selectQ, args...); err != nil {
 		return nil, err
 	}
 
@@ -335,7 +335,7 @@ func (s *PGSessionStore) LastUsedChannel(ctx context.Context, agentID string) (s
 	prefix := "agent:" + agentID + ":%"
 	tid := tenantIDForInsert(ctx)
 	var sessionKey string
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT session_key FROM sessions
 		 WHERE session_key LIKE $1
 		   AND session_key NOT LIKE $2
@@ -382,7 +382,7 @@ func (s *PGSessionStore) getOrInit(ctx context.Context, key string) *store.Sessi
 	s.cache[sessionCacheKey(ctx, key)] = data
 
 	msgsJSON, _ := json.Marshal([]providers.Message{})
-	s.db.ExecContext(ctx,
+	s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO sessions (id, session_key, messages, created_at, updated_at, tenant_id)
 		 VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (tenant_id, session_key) DO NOTHING`,
 		uuid.Must(uuid.NewV7()), key, msgsJSON, now, now, tenantIDForInsert(ctx),
@@ -402,7 +402,7 @@ func (s *PGSessionStore) loadFromDB(ctx context.Context, key string) *store.Sess
 	var metaJSON *[]byte
 
 	tid := tenantIDForInsert(ctx)
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT session_key, messages, summary, model, provider, channel,
 		 input_tokens, output_tokens, compaction_count,
 		 memory_flush_compaction_count, memory_flush_at,

@@ -368,6 +368,12 @@
   "auth.session.refreshEnabled": "Refresh Token",
   "auth.session.refreshTip": "Cấp refresh token để người dùng duy trì đăng nhập giữa các phiên.",
 
+  "tabs.database": "Cơ sở dữ liệu",
+  "database.title": "Cơ sở dữ liệu",
+  "database.description": "Cài đặt mặc định cho kết nối cơ sở dữ liệu tenant",
+  "database.sslMode": "Chế độ SSL DB Tenant",
+  "database.sslModeTip": "Chế độ SSL mặc định cho cơ sở dữ liệu tenant tự động tạo. 'prefer' thử TLS rồi fallback. 'require' bắt buộc TLS.",
+
   "toast": {
     "saved": "Đã lưu cấu hình",
     "saveFailed": "Không thể lưu cấu hình"

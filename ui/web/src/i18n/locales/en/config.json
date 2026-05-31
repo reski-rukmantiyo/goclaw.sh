@@ -368,6 +368,12 @@
   "auth.session.refreshEnabled": "Refresh Tokens",
   "auth.session.refreshTip": "Issue refresh tokens so users can stay logged in across sessions.",
 
+  "tabs.database": "Database",
+  "database.title": "Database",
+  "database.description": "Default settings for tenant database connections",
+  "database.sslMode": "Tenant DB SSL Mode",
+  "database.sslModeTip": "Default SSL mode for auto-generated tenant databases. 'prefer' tries TLS then falls back. 'require' enforces TLS.",
+
   "toast": {
     "saved": "Config saved",
     "saveFailed": "Failed to save config"

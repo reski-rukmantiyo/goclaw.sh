@@ -29,5 +29,10 @@
   "roleMember": "Thành viên",
   "roleViewer": "Người xem",
   "noUsers": "Không có người dùng trong tổ chức này",
-  "created": "Ngày tạo"
+  "created": "Ngày tạo",
+  "editName": "Sửa tên",
+  "deleteTenant": "Xóa tổ chức",
+  "deleteConfirm": "Bạn có chắc muốn xóa tổ chức này? Hành động này không thể hoàn tác.",
+  "deleteWarning": "Tất cả dữ liệu liên quan đến tổ chức này sẽ bị xóa vĩnh viễn.",
+  "typeToConfirm": "Nhập '{{name}}' để xác nhận"
 }

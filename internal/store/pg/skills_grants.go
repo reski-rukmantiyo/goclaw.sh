@@ -28,7 +28,7 @@ func (s *PGSkillStore) GrantToAgent(ctx context.Context, skillID, agentID uuid.U
 	now := time.Now()
 	var err error
 	if len(canManage) > 0 {
-		_, err = s.db.ExecContext(ctx,
+		_, err = s.dbFor(ctx).ExecContext(ctx,
 			`INSERT INTO skill_agent_grants (id, skill_id, agent_id, pinned_version, granted_by, can_manage, created_at, tenant_id)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			 ON CONFLICT (skill_id, agent_id) DO UPDATE SET
@@ -38,7 +38,7 @@ func (s *PGSkillStore) GrantToAgent(ctx context.Context, skillID, agentID uuid.U
 			store.GenNewID(), skillID, agentID, version, grantedBy, canManage[0], now, tid,
 		)
 	} else {
-		_, err = s.db.ExecContext(ctx,
+		_, err = s.dbFor(ctx).ExecContext(ctx,
 			`INSERT INTO skill_agent_grants (id, skill_id, agent_id, pinned_version, granted_by, created_at, tenant_id)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7)
 			 ON CONFLICT (skill_id, agent_id) DO UPDATE SET
@@ -52,7 +52,7 @@ func (s *PGSkillStore) GrantToAgent(ctx context.Context, skillID, agentID uuid.U
 	}
 
 	// Auto-promote: private → internal (so ListAccessible query includes it for granted agents)
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE skills SET visibility = 'internal', updated_at = NOW() WHERE id = $1 AND visibility = 'private'`,
 		skillID)
 	if err != nil {
@@ -70,7 +70,7 @@ func (s *PGSkillStore) verifySkillGrantScope(ctx context.Context, skillID, agent
 	}
 
 	var agentTenantID uuid.UUID
-	if err := s.db.QueryRowContext(ctx,
+	if err := s.dbFor(ctx).QueryRowContext(ctx,
 		"SELECT tenant_id FROM agents WHERE id = $1", agentID,
 	).Scan(&agentTenantID); err != nil {
 		return fmt.Errorf("agent not found")
@@ -84,7 +84,7 @@ func (s *PGSkillStore) verifySkillGrantScope(ctx context.Context, skillID, agent
 func (s *PGSkillStore) verifySkillInGrantScope(ctx context.Context, skillID, tenantID uuid.UUID) error {
 	var skillTenantID uuid.UUID
 	var isSystem bool
-	if err := s.db.QueryRowContext(ctx,
+	if err := s.dbFor(ctx).QueryRowContext(ctx,
 		"SELECT tenant_id, is_system FROM skills WHERE id = $1", skillID,
 	).Scan(&skillTenantID, &isSystem); err != nil {
 		return fmt.Errorf("skill not found")
@@ -102,7 +102,7 @@ func (s *PGSkillStore) RevokeFromAgent(ctx context.Context, skillID, agentID uui
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		"DELETE FROM skill_agent_grants WHERE skill_id = $1 AND agent_id = $2"+tClause,
 		append([]any{skillID, agentID}, tArgs...)...)
 	if err != nil {
@@ -112,7 +112,7 @@ func (s *PGSkillStore) RevokeFromAgent(ctx context.Context, skillID, agentID uui
 	// Atomic auto-demote: set internal → private only if zero remaining grants.
 	// Uses NOT EXISTS subquery so the check + update is a single atomic SQL statement,
 	// avoiding a race window between COUNT and UPDATE.
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE skills SET visibility = 'private', updated_at = NOW()
 		 WHERE id = $1 AND visibility = 'internal'
 		   AND NOT EXISTS (SELECT 1 FROM skill_agent_grants WHERE skill_id = $1)`,
@@ -132,7 +132,7 @@ func (s *PGSkillStore) ListAgentGrants(ctx context.Context, agentID uuid.UUID) (
 		return nil, err
 	}
 	var result []SkillGrantInfo
-	err = pkgSqlxDB.SelectContext(ctx, &result,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &result,
 		"SELECT skill_id, pinned_version, granted_by FROM skill_agent_grants WHERE agent_id = $1"+tClause,
 		append([]any{agentID}, tArgs...)...)
 	if err != nil {
@@ -149,7 +149,7 @@ func (s *PGSkillStore) GrantToUser(ctx context.Context, skillID uuid.UUID, userI
 	if err := store.ValidateUserID(grantedBy); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO skill_user_grants (id, skill_id, user_id, granted_by, created_at, tenant_id)
 		 VALUES ($1, $2, $3, $4, $5, $6)
 		 ON CONFLICT (skill_id, user_id) DO NOTHING`,
@@ -164,7 +164,7 @@ func (s *PGSkillStore) RevokeFromUser(ctx context.Context, skillID uuid.UUID, us
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		"DELETE FROM skill_user_grants WHERE skill_id = $1 AND user_id = $2"+tClause,
 		append([]any{skillID, userID}, tArgs...)...)
 	return err
@@ -205,7 +205,7 @@ func (s *PGSkillStore) ListAccessible(ctx context.Context, agentID uuid.UUID, us
 		stcJoin = fmt.Sprintf(" LEFT JOIN skill_tenant_configs stc ON s.id = stc.skill_id AND stc.tenant_id = $%d", 4)
 		stcFilter = " AND (stc.enabled IS NULL OR stc.enabled = true)"
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT DISTINCT s.name, s.slug, s.description, s.version, s.file_path FROM skills s
 		LEFT JOIN skill_agent_grants sag ON s.id = sag.skill_id AND sag.agent_id = $1
 		LEFT JOIN skill_user_grants sug ON s.id = sug.skill_id AND (sug.user_id = $2 OR sug.user_id = $3)`+stcJoin+`
@@ -253,7 +253,7 @@ func (s *PGSkillStore) ListWithGrantStatus(ctx context.Context, agentID uuid.UUI
 	if tc != "" {
 		tenantCond = fmt.Sprintf(" AND (s.is_system = true OR s.tenant_id = $%d)", 2)
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT s.id, s.name, s.slug, COALESCE(s.description, ''), s.visibility, s.version,
 		        (sag.id IS NOT NULL) AS granted,
 		        sag.pinned_version,
@@ -322,7 +322,7 @@ func (s *PGSkillStore) attachSkillAgentMetadata(ctx context.Context, skills []st
 	if err != nil {
 		return
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT sag.skill_id, sag.agent_id, COALESCE(a.agent_key, ''), COALESCE(a.display_name, '')
 		   FROM skill_agent_grants sag
 		   LEFT JOIN agents a ON a.id = sag.agent_id
@@ -367,7 +367,7 @@ func (s *PGSkillStore) attachVerifiedCreatorAgents(
 	if err != nil {
 		return
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT a.id, COALESCE(a.agent_key, ''), COALESCE(a.display_name, '')
 		   FROM agents a
 		  WHERE a.deleted_at IS NULL AND (a.id = ANY($1) OR a.agent_key = ANY($2))`+tClause,

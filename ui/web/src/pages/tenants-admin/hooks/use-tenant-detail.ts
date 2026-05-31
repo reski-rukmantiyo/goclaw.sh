@@ -21,6 +21,11 @@ export function useTenantDetail(tenantId: string) {
     staleTime: 60_000,
   });
 
+  const invalidateTenant = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.tenants.detail(tenantId) }),
+    [queryClient, tenantId],
+  );
+
   const { data: users = [], isLoading: usersLoading, isFetching: usersRefreshing } = useQuery({
     queryKey: queryKeys.tenants.users(tenantId),
     queryFn: async () => {
@@ -64,6 +69,34 @@ export function useTenantDetail(tenantId: string) {
     [ws, tenantId, invalidateUsers],
   );
 
+  const updateTenantName = useCallback(
+    async (name: string) => {
+      try {
+        await ws.call(Methods.TENANTS_UPDATE, { id: tenantId, name });
+        await invalidateTenant();
+        toast.success(i18next.t("tenants:editName"));
+      } catch (err) {
+        toast.error(i18next.t("tenants:editName"), err instanceof Error ? err.message : "");
+        throw err;
+      }
+    },
+    [ws, tenantId, invalidateTenant],
+  );
+
+  const deleteTenant = useCallback(
+    async () => {
+      try {
+        await ws.call(Methods.TENANTS_DELETE, { tenant_id: tenantId });
+        queryClient.invalidateQueries({ queryKey: queryKeys.tenants.list() });
+        toast.success(i18next.t("tenants:deleteTenant"));
+      } catch (err) {
+        toast.error(i18next.t("tenants:deleteTenant"), err instanceof Error ? err.message : "");
+        throw err;
+      }
+    },
+    [ws, tenantId, queryClient],
+  );
+
   return {
     tenant,
     tenantLoading,
@@ -73,5 +106,7 @@ export function useTenantDetail(tenantId: string) {
     refreshUsers: invalidateUsers,
     addUser,
     removeUser,
+    updateTenantName,
+    deleteTenant,
   };
 }

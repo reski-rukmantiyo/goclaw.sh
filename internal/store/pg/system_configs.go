@@ -22,6 +22,14 @@ func NewPGSystemConfigStore(db *sql.DB) *PGSystemConfigStore {
 	return &PGSystemConfigStore{db: db}
 }
 
+func (s *PGSystemConfigStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 // resolveTenantID returns the tenant ID from context.
 // Returns uuid.Nil if no tenant in context — callers must handle this explicitly.
 func resolveTenantID(ctx context.Context) uuid.UUID {
@@ -35,7 +43,7 @@ func (s *PGSystemConfigStore) Get(ctx context.Context, key string) (string, erro
 	}
 
 	var val string
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		"SELECT value FROM system_configs WHERE key = $1 AND tenant_id = $2",
 		key, tid,
 	).Scan(&val)
@@ -59,7 +67,7 @@ func (s *PGSystemConfigStore) Set(ctx context.Context, key, value string) error 
 }
 
 func (s *PGSystemConfigStore) upsert(ctx context.Context, key, value string, tenantID uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO system_configs (key, value, tenant_id, updated_at)
 		 VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (key, tenant_id) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
@@ -73,7 +81,7 @@ func (s *PGSystemConfigStore) Delete(ctx context.Context, key string) error {
 	if tid == uuid.Nil {
 		return fmt.Errorf("system config delete: tenant_id required")
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		"DELETE FROM system_configs WHERE key = $1 AND tenant_id = $2",
 		key, tid,
 	)
@@ -86,7 +94,7 @@ func (s *PGSystemConfigStore) List(ctx context.Context) (map[string]string, erro
 		return nil, fmt.Errorf("system config list: tenant_id required")
 	}
 
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		"SELECT key, value FROM system_configs WHERE tenant_id = $1 ORDER BY key",
 		tid,
 	)

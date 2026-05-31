@@ -21,12 +21,20 @@ func NewPGEvolutionSuggestionStore(db *sql.DB) *PGEvolutionSuggestionStore {
 	return &PGEvolutionSuggestionStore{db: db}
 }
 
+func (s *PGEvolutionSuggestionStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGEvolutionSuggestionStore) CreateSuggestion(ctx context.Context, sg store.EvolutionSuggestion) error {
 	tenantID := store.TenantIDFromContext(ctx)
 	if tenantID == uuid.Nil {
 		return fmt.Errorf("evolution.CreateSuggestion: tenant_id required in context")
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO agent_evolution_suggestions
 		 (id, tenant_id, agent_id, suggestion_type, suggestion, rationale, parameters, status)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
@@ -53,7 +61,7 @@ func (s *PGEvolutionSuggestionStore) ListSuggestions(ctx context.Context, agentI
 	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d", len(args)+1)
 	args = append(args, limit)
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +85,7 @@ func (s *PGEvolutionSuggestionStore) ListSuggestions(ctx context.Context, agentI
 func (s *PGEvolutionSuggestionStore) UpdateSuggestionStatus(ctx context.Context, id uuid.UUID, status, reviewedBy string) error {
 	tenantID := store.TenantIDFromContext(ctx)
 	now := time.Now().UTC()
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE agent_evolution_suggestions
 		 SET status = $1, reviewed_by = $2, reviewed_at = $3
 		 WHERE id = $4 AND tenant_id = $5`,
@@ -93,7 +101,7 @@ func (s *PGEvolutionSuggestionStore) UpdateSuggestionStatus(ctx context.Context,
 
 func (s *PGEvolutionSuggestionStore) UpdateSuggestionParameters(ctx context.Context, id uuid.UUID, params json.RawMessage) error {
 	tenantID := store.TenantIDFromContext(ctx)
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE agent_evolution_suggestions SET parameters = $1
 		 WHERE id = $2 AND tenant_id = $3`,
 		params, id, tenantID)
@@ -110,7 +118,7 @@ func (s *PGEvolutionSuggestionStore) GetSuggestion(ctx context.Context, id uuid.
 	tenantID := store.TenantIDFromContext(ctx)
 	var sg store.EvolutionSuggestion
 	var reviewedBy sql.NullString
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT id, tenant_id, agent_id, suggestion_type, suggestion, rationale,
 		        parameters, status, reviewed_by, reviewed_at, created_at
 		 FROM agent_evolution_suggestions WHERE id = $1 AND tenant_id = $2`,

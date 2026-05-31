@@ -24,6 +24,14 @@ func NewPGRawMessageChunkStore(db *sql.DB) *PGRawMessageChunkStore {
 	return &PGRawMessageChunkStore{db: db}
 }
 
+func (s *PGRawMessageChunkStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGRawMessageChunkStore) SetEmbeddingProvider(provider store.EmbeddingProvider) {
 	s.provider = provider
 }
@@ -76,7 +84,7 @@ func (s *PGRawMessageChunkStore) StoreChunks(ctx context.Context, chunks []store
 			embArg, msgIDs, tid, now, now)
 	}
 
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO raw_message_chunks
 			(id, agent_id, graph_id, chat_id, chat_name, sender, sender_id,
 			 msg_time_from, msg_time_to, chunk_index, text, content_hash,
@@ -201,7 +209,7 @@ func (s *PGRawMessageChunkStore) ftsSearch(ctx context.Context, query string, ag
 	args = append(args, tcArgs...)
 	args = append(args, limit)
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +276,7 @@ func (s *PGRawMessageChunkStore) vectorSearch(ctx context.Context, embedding []f
 	args = append(args, tcArgs...)
 	args = append(args, vecStr, limit)
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -352,7 +360,7 @@ func (s *PGRawMessageChunkStore) DeleteByGraphID(ctx context.Context, agentID, g
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM raw_message_chunks WHERE agent_id = $1 AND graph_id = $2`+tc,
 		append([]any{agentID, graphID}, tcArgs...)...,
 	)
@@ -567,7 +575,7 @@ func (s *PGRawMessageChunkStore) List(ctx context.Context, opts store.RawMessage
 	pageArgs = append(pageArgs, limit, offset)
 
 	var rows []chunkRow
-	if err := pkgSqlxDB.SelectContext(ctx, &rows,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows,
 		`SELECT id, agent_id, graph_id, chat_id, chat_name, sender, sender_id,
 		        msg_time_from, msg_time_to, chunk_index, text, content_hash,
 		        source_msg_ids, created_at,

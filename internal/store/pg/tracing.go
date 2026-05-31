@@ -22,6 +22,14 @@ func NewPGTracingStore(db *sql.DB) *PGTracingStore {
 	return &PGTracingStore{db: db}
 }
 
+func (s *PGTracingStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGTracingStore) CreateTrace(ctx context.Context, trace *store.TraceData) error {
 	if trace.ID == uuid.Nil {
 		trace.ID = store.GenNewID()
@@ -30,7 +38,7 @@ func (s *PGTracingStore) CreateTrace(ctx context.Context, trace *store.TraceData
 	if tenantID == uuid.Nil {
 		tenantID = store.MasterTenantID
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO traces (id, parent_trace_id, agent_id, user_id, session_key, run_id, start_time, end_time,
 		 duration_ms, name, channel, input_preview, output_preview,
 		 total_input_tokens, total_output_tokens, total_cost, span_count, llm_call_count, tool_call_count,
@@ -48,13 +56,13 @@ func (s *PGTracingStore) CreateTrace(ctx context.Context, trace *store.TraceData
 
 func (s *PGTracingStore) UpdateTrace(ctx context.Context, traceID uuid.UUID, updates map[string]any) error {
 	if store.IsCrossTenant(ctx) {
-		return execMapUpdate(ctx, s.db, "traces", traceID, updates)
+		return execMapUpdate(ctx, s.dbFor(ctx), "traces", traceID, updates)
 	}
 	tid := store.TenantIDFromContext(ctx)
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required for update")
 	}
-	return execMapUpdateWhereTenant(ctx, s.db, "traces", updates, traceID, tid)
+	return execMapUpdateWhereTenant(ctx, s.dbFor(ctx), "traces", updates, traceID, tid)
 }
 
 func (s *PGTracingStore) GetTrace(ctx context.Context, traceID uuid.UUID) (*store.TraceData, error) {
@@ -74,7 +82,7 @@ func (s *PGTracingStore) GetTrace(ctx context.Context, traceID uuid.UUID) (*stor
 	}
 
 	var row traceRow
-	if err := pkgSqlxDB.GetContext(ctx, &row, query, qArgs...); err != nil {
+	if err := SqlxDBFor(ctx).GetContext(ctx, &row, query, qArgs...); err != nil {
 		return nil, err
 	}
 	d := row.toTraceData()
@@ -132,7 +140,7 @@ func buildTraceWhere(ctx context.Context, opts store.TraceListOpts) (string, []a
 func (s *PGTracingStore) CountTraces(ctx context.Context, opts store.TraceListOpts) (int, error) {
 	where, args := buildTraceWhere(ctx, opts)
 	var count int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM traces"+where, args...).Scan(&count)
+	err := s.dbFor(ctx).QueryRowContext(ctx, "SELECT COUNT(*) FROM traces"+where, args...).Scan(&count)
 	return count, err
 }
 
@@ -152,7 +160,7 @@ func (s *PGTracingStore) ListTraces(ctx context.Context, opts store.TraceListOpt
 	q += fmt.Sprintf(" ORDER BY created_at DESC OFFSET %d LIMIT %d", opts.Offset, limit)
 
 	var rows []traceRow
-	if err := pkgSqlxDB.SelectContext(ctx, &rows, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows, q, args...); err != nil {
 		return nil, err
 	}
 	return traceRowsToData(rows), nil
@@ -177,7 +185,7 @@ func (s *PGTracingStore) ListChildTraces(ctx context.Context, parentTraceID uuid
 	q += " ORDER BY created_at"
 
 	var rows []traceRow
-	if err := pkgSqlxDB.SelectContext(ctx, &rows, q, qArgs...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows, q, qArgs...); err != nil {
 		return nil, err
 	}
 	return traceRowsToData(rows), nil
@@ -191,7 +199,7 @@ func (s *PGTracingStore) CreateSpan(ctx context.Context, span *store.SpanData) e
 	if tenantID == uuid.Nil {
 		tenantID = store.MasterTenantID
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO spans (id, trace_id, parent_span_id, agent_id, span_type, name,
 		 start_time, end_time, duration_ms, status, error, level,
 		 model, provider, input_tokens, output_tokens, finish_reason,
@@ -209,12 +217,12 @@ func (s *PGTracingStore) CreateSpan(ctx context.Context, span *store.SpanData) e
 }
 
 func (s *PGTracingStore) UpdateSpan(ctx context.Context, spanID uuid.UUID, updates map[string]any) error {
-	return execMapUpdate(ctx, s.db, "spans", spanID, updates)
+	return execMapUpdate(ctx, s.dbFor(ctx), "spans", spanID, updates)
 }
 
 func (s *PGTracingStore) GetTraceSpans(ctx context.Context, traceID uuid.UUID) ([]store.SpanData, error) {
 	var rows []spanRow
-	err := pkgSqlxDB.SelectContext(ctx, &rows,
+	err := SqlxDBFor(ctx).SelectContext(ctx, &rows,
 		`SELECT id, trace_id, parent_span_id, agent_id, span_type, name,
 		 start_time, end_time, duration_ms, status, error, level,
 		 model, provider, input_tokens, output_tokens, finish_reason,
@@ -272,7 +280,7 @@ func (s *PGTracingStore) BatchCreateSpans(ctx context.Context, spans []store.Spa
 		 system_prompt_preview, metadata, team_id, created_at, tenant_id)
 		 VALUES ` + strings.Join(valueGroups, ", ")
 
-	_, err := s.db.ExecContext(ctx, q, args...)
+	_, err := s.dbFor(ctx).ExecContext(ctx, q, args...)
 	if err == nil {
 		return nil
 	}
@@ -292,7 +300,7 @@ func (s *PGTracingStore) BatchCreateSpans(ctx context.Context, spans []store.Spa
 }
 
 func (s *PGTracingStore) BatchUpdateTraceAggregates(ctx context.Context, traceID uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.dbFor(ctx).ExecContext(ctx, `
 		UPDATE traces SET
 			span_count = (SELECT COUNT(*) FROM spans WHERE trace_id = $1),
 			llm_call_count = (SELECT COUNT(*) FROM spans WHERE trace_id = $1 AND span_type = 'llm_call'),
@@ -328,7 +336,7 @@ func (s *PGTracingStore) GetMonthlyAgentCost(ctx context.Context, agentID uuid.U
 	}
 
 	var cost float64
-	err := s.db.QueryRowContext(ctx, q, qArgs...).Scan(&cost)
+	err := s.dbFor(ctx).QueryRowContext(ctx, q, qArgs...).Scan(&cost)
 	return cost, err
 }
 
@@ -374,7 +382,7 @@ func (s *PGTracingStore) GetCostSummary(ctx context.Context, opts store.CostSumm
 		  FROM traces` + where + ` GROUP BY agent_id ORDER BY SUM(total_cost) DESC`
 
 	var result []store.CostSummaryRow
-	if err := pkgSqlxDB.SelectContext(ctx, &result, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &result, q, args...); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -384,13 +392,13 @@ func (s *PGTracingStore) GetCostSummary(ctx context.Context, opts store.CostSumm
 // Spans are deleted first (FK), then traces. Returns total traces deleted.
 func (s *PGTracingStore) DeleteTracesOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
 	// Delete spans belonging to old traces.
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM spans WHERE trace_id IN (SELECT id FROM traces WHERE created_at < $1)`, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("delete old spans: %w", err)
 	}
 
-	res, err := s.db.ExecContext(ctx, `DELETE FROM traces WHERE created_at < $1`, cutoff)
+	res, err := s.dbFor(ctx).ExecContext(ctx, `DELETE FROM traces WHERE created_at < $1`, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("delete old traces: %w", err)
 	}
@@ -401,7 +409,7 @@ func (s *PGTracingStore) DeleteTracesOlderThan(ctx context.Context, cutoff time.
 // Also recovers their stuck spans. Called on startup to fix orphans from crashes.
 func (s *PGTracingStore) RecoverStaleRunningTraces(ctx context.Context, cutoff time.Time) (int64, error) {
 	// Recover stuck spans first.
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE spans SET status = 'error', error = 'recovered: server restart',
 		   end_time = NOW(), duration_ms = EXTRACT(EPOCH FROM (NOW() - start_time))::int * 1000
 		 WHERE status = 'running' AND start_time < $1`, cutoff)
@@ -409,7 +417,7 @@ func (s *PGTracingStore) RecoverStaleRunningTraces(ctx context.Context, cutoff t
 		return 0, fmt.Errorf("recover stale spans: %w", err)
 	}
 
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE traces SET status = 'error',
 		   error = 'recovered: stuck in running state (server restart)',
 		   end_time = NOW(), duration_ms = EXTRACT(EPOCH FROM (NOW() - start_time))::int * 1000

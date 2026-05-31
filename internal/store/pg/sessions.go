@@ -37,6 +37,13 @@ func NewPGSessionStore(db *sql.DB) *PGSessionStore {
 	return s
 }
 
+func (s *PGSessionStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
 // migrateLegacyWSKeys renames old WS session keys from non-canonical format
 // (agent:X:ws-userId-ts) to canonical format (agent:X:ws:direct:ts).
 // The last hyphen-delimited segment is the base36 timestamp used as convId.
@@ -141,7 +148,7 @@ func (s *PGSessionStore) GetOrCreate(ctx context.Context, key string) *store.Ses
 	s.cache[sessionCacheKey(ctx, key)] = data
 
 	msgsJSON, _ := json.Marshal([]providers.Message{})
-	s.db.ExecContext(ctx,
+	s.db.ExecContext(context.Background(),
 		`INSERT INTO sessions (id, session_key, messages, created_at, updated_at, team_id, tenant_id)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (tenant_id, session_key) DO NOTHING`,
 		uuid.Must(uuid.NewV7()), key, msgsJSON, now, now, teamID, tenantIDForInsert(ctx),

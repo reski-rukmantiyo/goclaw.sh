@@ -39,6 +39,13 @@ func NewPGCronStore(db *sql.DB) *PGCronStore {
 	return &PGCronStore{db: db, cacheTTL: defaultCronCacheTTL, retryCfg: cron.DefaultRetryConfig()}
 }
 
+func (s *PGCronStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
 // SetRetryConfig overrides the default retry configuration.
 func (s *PGCronStore) SetRetryConfig(cfg cron.RetryConfig) {
 	s.mu.Lock()

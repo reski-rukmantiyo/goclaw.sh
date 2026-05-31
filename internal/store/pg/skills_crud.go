@@ -274,7 +274,7 @@ func (s *PGSkillStore) ToggleSkill(ctx context.Context, id uuid.UUID, enabled bo
 		}
 	}
 
-	_, err := s.db.ExecContext(ctx, q, args...)
+	_, err := s.dbFor(ctx).ExecContext(ctx, q, args...)
 	if err == nil {
 		s.BumpVersion()
 	}

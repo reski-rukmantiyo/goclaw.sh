@@ -149,10 +149,7 @@ func (s *PGGroupStore) ListGroups(ctx context.Context, tenantID uuid.UUID, param
 	if limit <= 0 {
 		limit = 50
 	}
-	offset := params.Offset
-	if offset < 0 {
-		offset = 0
-	}
+	offset := max(params.Offset, 0)
 
 	where := "WHERE " + strings.Join(conditions, " AND ")
 

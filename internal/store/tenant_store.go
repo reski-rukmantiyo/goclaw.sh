@@ -60,6 +60,9 @@ type TenantStore interface {
 	ListTenants(ctx context.Context) ([]TenantData, error)
 	UpdateTenant(ctx context.Context, id uuid.UUID, updates map[string]any) error
 
+	// DeleteTenant removes a tenant and all its data.
+	DeleteTenant(ctx context.Context, id uuid.UUID) error
+
 	// Tenant-user membership
 	AddUser(ctx context.Context, tenantID uuid.UUID, userID, role string) error
 	RemoveUser(ctx context.Context, tenantID uuid.UUID, userID string) error

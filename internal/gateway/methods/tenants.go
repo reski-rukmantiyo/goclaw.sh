@@ -2,6 +2,7 @@ package methods
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"log/slog"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/permissions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/store/pg"
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
 
@@ -22,14 +24,19 @@ var slugRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 
 // TenantsMethods handles tenant management RPC methods.
 type TenantsMethods struct {
-	tenantStore store.TenantStore
-	msgBus      *bus.MessageBus
-	workspace   string // base workspace directory for tenant dirs
+	tenantStore       store.TenantStore
+	tenantDBConnStore store.TenantDBConnectionStore
+	tenantDBManager   store.TenantDBManager
+	masterDB          *sql.DB
+	msgBus            *bus.MessageBus
+	workspace         string // base workspace directory for tenant dirs
+	defaultSSLMode    string // default sslmode for auto-generated tenant DBs
+	masterDSN         string // master DSN for superuser schema operations on tenant DBs
 }
 
 // NewTenantsMethods creates a new TenantsMethods handler.
-func NewTenantsMethods(tenantStore store.TenantStore, msgBus *bus.MessageBus, workspace string) *TenantsMethods {
-	return &TenantsMethods{tenantStore: tenantStore, msgBus: msgBus, workspace: workspace}
+func NewTenantsMethods(tenantStore store.TenantStore, tenantDBConnStore store.TenantDBConnectionStore, tenantDBManager store.TenantDBManager, masterDB *sql.DB, msgBus *bus.MessageBus, workspace string, defaultSSLMode string, masterDSN string) *TenantsMethods {
+	return &TenantsMethods{tenantStore: tenantStore, tenantDBConnStore: tenantDBConnStore, tenantDBManager: tenantDBManager, masterDB: masterDB, msgBus: msgBus, workspace: workspace, defaultSSLMode: defaultSSLMode, masterDSN: masterDSN}
 }
 
 // Register registers tenant management RPC methods.
@@ -41,6 +48,7 @@ func (m *TenantsMethods) Register(router *gateway.MethodRouter) {
 	router.Register("tenants.users.list", m.handleUsersList)
 	router.Register("tenants.users.add", m.handleUsersAdd)
 	router.Register("tenants.users.remove", m.handleUsersRemove)
+	router.Register("tenants.delete", m.handleDelete)
 	router.Register("tenants.mine", m.handleMine)
 }
 
@@ -102,9 +110,17 @@ func (m *TenantsMethods) handleCreate(ctx context.Context, client *gateway.Clien
 	}
 
 	var params struct {
-		Name     string `json:"name"`
-		Slug     string `json:"slug"`
-		Settings any    `json:"settings"`
+		Name        string `json:"name"`
+		Slug        string `json:"slug"`
+		Settings    any    `json:"settings"`
+		DBConnection *struct {
+			Host         string `json:"host"`
+			Port         int    `json:"port"`
+			DatabaseName string `json:"database_name"`
+			Username     string `json:"username"`
+			Password     string `json:"password"`
+			SSLMode      string `json:"ssl_mode"`
+		} `json:"db_connection,omitempty"`
 	}
 	if req.Params != nil {
 		if err := json.Unmarshal(req.Params, &params); err != nil {
@@ -137,6 +153,36 @@ func (m *TenantsMethods) handleCreate(ctx context.Context, client *gateway.Clien
 		slog.Error("tenants.create failed", "error", err)
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToCreate, "tenant", err.Error())))
 		return
+	}
+
+	// Provision tenant database if infrastructure available
+	if m.tenantDBConnStore != nil && m.masterDB != nil {
+		var dbConn *store.TenantDBConnection
+		if params.DBConnection != nil {
+			dbConn = &store.TenantDBConnection{
+				TenantID:     tenant.ID,
+				Host:         params.DBConnection.Host,
+				Port:         params.DBConnection.Port,
+				DatabaseName: params.DBConnection.DatabaseName,
+				Username:     params.DBConnection.Username,
+				Password:     params.DBConnection.Password,
+				SSLMode:      params.DBConnection.SSLMode,
+			}
+		}
+		provisionedConn, err := pg.ProvisionTenantDB(ctx, m.masterDB, tenant.ID, tenant.Slug, dbConn, "", m.defaultSSLMode, m.masterDSN)
+		if err != nil {
+			slog.Error("tenants.create: db provision failed", "tenant_id", tenant.ID, "error", err)
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgTenantDBProvisionFailed, err.Error())))
+			return
+		}
+		if err := m.tenantDBConnStore.Create(ctx, provisionedConn); err != nil {
+			slog.Error("tenants.create: failed to save db connection", "tenant_id", tenant.ID, "error", err)
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToCreate, "tenant db connection", err.Error())))
+			return
+		}
+		if m.tenantDBManager != nil {
+			m.tenantDBManager.Invalidate(tenant.ID)
+		}
 	}
 
 	// Create workspace directory for the tenant.
@@ -334,6 +380,40 @@ func (m *TenantsMethods) handleUsersRemove(ctx context.Context, client *gateway.
 		Payload: map[string]string{"user_id": params.UserID, "tenant_id": tid.String()},
 	})
 
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]string{"ok": "true"}))
+}
+
+func (m *TenantsMethods) handleDelete(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	if !client.IsOwner() {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrUnauthorized, i18n.T(locale, i18n.MsgPermissionDenied, "tenants.delete")))
+		return
+	}
+
+	var params struct {
+		TenantID string `json:"tenant_id"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidJSON)))
+			return
+		}
+	}
+
+	tid, err := uuid.Parse(params.TenantID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidID, "tenant_id")))
+		return
+	}
+
+	if err := m.tenantStore.DeleteTenant(ctx, tid); err != nil {
+		slog.Error("tenants.delete failed", "error", err)
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToDelete, "tenant", err.Error())))
+		return
+	}
+
+	m.emitCacheInvalidate(bus.CacheKindTenantUsers, tid.String())
+	m.emitCacheInvalidate(bus.CacheKindTenants, "")
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]string{"ok": "true"}))
 }
 

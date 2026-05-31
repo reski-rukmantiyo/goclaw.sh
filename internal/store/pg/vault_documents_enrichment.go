@@ -29,7 +29,7 @@ func (s *PGVaultStore) ListUnenrichedDocs(ctx context.Context, tenantID string, 
 	}
 
 	var rows []vaultDocRow
-	if err := pkgSqlxDB.SelectContext(ctx, &rows, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows, q, args...); err != nil {
 		return nil, fmt.Errorf("vault.list_unenriched: %w", err)
 	}
 	return vaultDocRowsToDocs(rows), nil
@@ -48,7 +48,7 @@ func (s *PGVaultStore) UpdateSummaryAndReembed(ctx context.Context, tenantID, do
 
 	// Fetch title+path to build embed text.
 	var title, path string
-	err = s.db.QueryRowContext(ctx,
+	err = s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT title, path FROM vault_documents WHERE id = $1 AND tenant_id = $2`,
 		did, tid,
 	).Scan(&title, &path)
@@ -66,7 +66,7 @@ func (s *PGVaultStore) UpdateSummaryAndReembed(ctx context.Context, tenantID, do
 		}
 	}
 
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.dbFor(ctx).ExecContext(ctx, `
 		UPDATE vault_documents
 		SET summary = $1, embedding = COALESCE($2, embedding), updated_at = $3
 		WHERE id = $4 AND tenant_id = $5`,
@@ -94,7 +94,7 @@ func (s *PGVaultStore) FindSimilarDocs(ctx context.Context, tenantID, agentID, d
 
 	// Fetch source embedding.
 	var embStr *string
-	err = s.db.QueryRowContext(ctx,
+	err = s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT embedding::text FROM vault_documents WHERE id = $1 AND tenant_id = $2`,
 		did, tid,
 	).Scan(&embStr)
@@ -119,7 +119,7 @@ func (s *PGVaultStore) FindSimilarDocs(ctx context.Context, tenantID, agentID, d
 	args = append(args, limit)
 
 	var scanned []vaultSearchRow
-	if err := pkgSqlxDB.SelectContext(ctx, &scanned, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned, q, args...); err != nil {
 		return nil, fmt.Errorf("vault.find_similar: %w", err)
 	}
 	return vaultSearchRowsToResults(scanned, "vault"), nil

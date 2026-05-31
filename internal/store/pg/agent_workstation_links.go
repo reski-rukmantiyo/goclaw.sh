@@ -21,6 +21,14 @@ func NewPGAgentWorkstationLinkStore(db *sql.DB) *PGAgentWorkstationLinkStore {
 	return &PGAgentWorkstationLinkStore{db: db}
 }
 
+func (s *PGAgentWorkstationLinkStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGAgentWorkstationLinkStore) Link(ctx context.Context, link *store.AgentWorkstationLink) error {
 	tid := store.TenantIDFromContext(ctx)
 	if tid == uuid.Nil {
@@ -28,7 +36,7 @@ func (s *PGAgentWorkstationLinkStore) Link(ctx context.Context, link *store.Agen
 	}
 	link.TenantID = tid
 	link.CreatedAt = time.Now()
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO agent_workstation_links (agent_id, workstation_id, tenant_id, is_default, created_at)
 		 VALUES ($1,$2,$3,$4,$5)
 		 ON CONFLICT (agent_id, workstation_id) DO NOTHING`,
@@ -42,7 +50,7 @@ func (s *PGAgentWorkstationLinkStore) Unlink(ctx context.Context, agentID, works
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required")
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM agent_workstation_links WHERE agent_id = $1 AND workstation_id = $2 AND tenant_id = $3`,
 		agentID, workstationID, tid,
 	)
@@ -54,7 +62,7 @@ func (s *PGAgentWorkstationLinkStore) SetDefault(ctx context.Context, agentID, w
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -84,7 +92,7 @@ func (s *PGAgentWorkstationLinkStore) ListForAgent(ctx context.Context, agentID 
 	if tid == uuid.Nil {
 		return nil, nil
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT agent_id, workstation_id, tenant_id, is_default, created_at
 		 FROM agent_workstation_links WHERE agent_id = $1 AND tenant_id = $2`,
 		agentID, tid,
@@ -100,7 +108,7 @@ func (s *PGAgentWorkstationLinkStore) ListForWorkstation(ctx context.Context, wo
 	if tid == uuid.Nil {
 		return nil, nil
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT agent_id, workstation_id, tenant_id, is_default, created_at
 		 FROM agent_workstation_links WHERE workstation_id = $1 AND tenant_id = $2`,
 		workstationID, tid,

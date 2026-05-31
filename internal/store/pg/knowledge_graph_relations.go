@@ -32,7 +32,7 @@ func (s *PGKnowledgeGraphStore) UpsertRelation(ctx context.Context, relation *st
 	id := uuid.Must(uuid.NewV7())
 	now := time.Now()
 	tid := tenantIDForInsert(ctx)
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.dbFor(ctx).ExecContext(ctx, `
 		INSERT INTO kg_relations
 			(id, agent_id, user_id, source_entity_id, relation_type, target_entity_id, confidence, properties, tenant_id, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -61,7 +61,7 @@ func (s *PGKnowledgeGraphStore) DeleteRelation(ctx context.Context, agentID, use
 		return err
 	}
 	args = append(args, tcArgs...)
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM kg_relations WHERE id = $1 AND agent_id = $2`+userWhere+tc,
 		args...,
 	)
@@ -96,7 +96,7 @@ func (s *PGKnowledgeGraphStore) ListRelations(ctx context.Context, agentID, user
 		ORDER BY created_at DESC`, userWhere, eidIdx, eidIdx)
 
 	var rRows []relationRow
-	if err := pkgSqlxDB.SelectContext(ctx, &rRows, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rRows, q, args...); err != nil {
 		return nil, err
 	}
 	result := make([]store.Relation, len(rRows))
@@ -139,7 +139,7 @@ func (s *PGKnowledgeGraphStore) ListAllRelations(ctx context.Context, agentID, u
 		FROM kg_relations WHERE %s
 		ORDER BY created_at DESC LIMIT $%d`, where, idx)
 	var rRows []relationRow
-	if err = pkgSqlxDB.SelectContext(ctx, &rRows, q, args...); err != nil {
+	if err = SqlxDBFor(ctx).SelectContext(ctx, &rRows, q, args...); err != nil {
 		return nil, err
 	}
 	result := make([]store.Relation, len(rRows))
@@ -154,7 +154,7 @@ func (s *PGKnowledgeGraphStore) IngestExtraction(ctx context.Context, agentID, u
 	if err != nil {
 		return nil, fmt.Errorf("kg ingest extraction: agent: %w", err)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +277,7 @@ func (s *PGKnowledgeGraphStore) PruneByConfidence(ctx context.Context, agentID, 
 	args = append(args, tcArgs...)
 
 	var res sql.Result
-	res, err = s.db.ExecContext(ctx,
+	res, err = s.dbFor(ctx).ExecContext(ctx,
 		fmt.Sprintf(`DELETE FROM kg_entities WHERE agent_id = $1%s AND confidence < $%d`, userWhere, confIdx)+tc,
 		args...,
 	)
@@ -303,7 +303,7 @@ func (s *PGKnowledgeGraphStore) ClearAll(ctx context.Context, agentID, userID st
 
 	where := fmt.Sprintf("WHERE agent_id = $1%s", userWhere) + tc
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -343,18 +343,18 @@ func (s *PGKnowledgeGraphStore) Stats(ctx context.Context, agentID, userID strin
 	tenantFilter := tc
 	args = append(args, tcArgs...)
 
-	if err := s.db.QueryRowContext(ctx,
+	if err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM kg_entities WHERE agent_id = $1 AND valid_until IS NULL`+userFilter+tenantFilter, args...,
 	).Scan(&stats.EntityCount); err != nil {
 		return nil, err
 	}
-	if err := s.db.QueryRowContext(ctx,
+	if err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM kg_relations WHERE agent_id = $1 AND valid_until IS NULL`+userFilter+tenantFilter, args...,
 	).Scan(&stats.RelationCount); err != nil {
 		return nil, err
 	}
 
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT entity_type, COUNT(*) FROM kg_entities WHERE agent_id = $1 AND valid_until IS NULL`+userFilter+tenantFilter+` GROUP BY entity_type`, args...,
 	)
 	if err != nil {
@@ -372,7 +372,7 @@ func (s *PGKnowledgeGraphStore) Stats(ctx context.Context, agentID, userID strin
 
 	// Fetch distinct user IDs (only when not filtering by specific user)
 	if userID == "" {
-		uidRows, uidErr := s.db.QueryContext(ctx,
+		uidRows, uidErr := s.dbFor(ctx).QueryContext(ctx,
 			`SELECT DISTINCT user_id FROM kg_entities WHERE agent_id = $1`+tenantFilter+` AND user_id != '' ORDER BY user_id`,
 			append([]any{aid}, tcArgs...)...,
 		)

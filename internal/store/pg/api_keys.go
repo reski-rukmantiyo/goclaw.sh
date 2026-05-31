@@ -23,6 +23,14 @@ func NewPGAPIKeyStore(db *sql.DB) *PGAPIKeyStore {
 	return &PGAPIKeyStore{db: db}
 }
 
+func (s *PGAPIKeyStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGAPIKeyStore) Create(ctx context.Context, key *store.APIKeyData) error {
 	var ownerID *string
 	if key.OwnerID != "" {
@@ -32,7 +40,7 @@ func (s *PGAPIKeyStore) Create(ctx context.Context, key *store.APIKeyData) error
 	if key.TenantID != uuid.Nil {
 		tenantID = &key.TenantID
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO api_keys (id, name, prefix, key_hash, scopes, owner_id, tenant_id, expires_at, created_by, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		key.ID, key.Name, key.Prefix, key.KeyHash, pq.Array(key.Scopes),
@@ -44,7 +52,7 @@ func (s *PGAPIKeyStore) Create(ctx context.Context, key *store.APIKeyData) error
 // Get fetches a key by ID without revoked/expired filtering. No tenant scoping
 // at store layer — callers must enforce their own ownership rules.
 func (s *PGAPIKeyStore) Get(ctx context.Context, id uuid.UUID) (*store.APIKeyData, error) {
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT id, name, prefix, key_hash, scopes, owner_id, tenant_id, expires_at, last_used_at, revoked, created_by, created_at, updated_at
 		 FROM api_keys
 		 WHERE id = $1`,
@@ -76,7 +84,7 @@ func (s *PGAPIKeyStore) Get(ctx context.Context, id uuid.UUID) (*store.APIKeyDat
 }
 
 func (s *PGAPIKeyStore) GetByHash(ctx context.Context, keyHash string) (*store.APIKeyData, error) {
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT id, name, prefix, key_hash, scopes, owner_id, tenant_id, expires_at, last_used_at, revoked, created_by, created_at, updated_at
 		 FROM api_keys
 		 WHERE key_hash = $1 AND NOT revoked AND (expires_at IS NULL OR expires_at > now())`,
@@ -134,7 +142,7 @@ func (s *PGAPIKeyStore) List(ctx context.Context, ownerID string) ([]store.APIKe
 		where = " WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT id, name, prefix, scopes, owner_id, tenant_id, expires_at, last_used_at, revoked, created_by, created_at, updated_at
 		 FROM api_keys`+where+`
 		 ORDER BY created_at DESC`,
@@ -190,7 +198,7 @@ func (s *PGAPIKeyStore) Revoke(ctx context.Context, id uuid.UUID, ownerID string
 		}
 	}
 
-	res, err := s.db.ExecContext(ctx, q, args...)
+	res, err := s.dbFor(ctx).ExecContext(ctx, q, args...)
 	if err != nil {
 		return err
 	}
@@ -202,7 +210,7 @@ func (s *PGAPIKeyStore) Revoke(ctx context.Context, id uuid.UUID, ownerID string
 }
 
 func (s *PGAPIKeyStore) TouchLastUsed(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE api_keys SET last_used_at = $2 WHERE id = $1`,
 		id, time.Now(),
 	)

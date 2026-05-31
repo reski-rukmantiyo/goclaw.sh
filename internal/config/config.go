@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -122,10 +123,11 @@ type TailscaleConfig struct {
 // DatabaseConfig configures the database connection and optional Redis cache.
 // DSN fields are NEVER read from config.json (secrets) — only from env vars.
 type DatabaseConfig struct {
-	PostgresDSN    string `json:"-"` // from env GOCLAW_POSTGRES_DSN only
-	RedisDSN       string `json:"-"` // from env GOCLAW_REDIS_DSN only (optional, requires -tags redis)
-	StorageBackend string `json:"-"` // from env GOCLAW_STORAGE_BACKEND only ("postgres" or "sqlite", default "postgres")
-	SQLitePath     string `json:"-"` // from env GOCLAW_SQLITE_PATH only (default: {dataDir}/goclaw.db)
+	PostgresDSN     string `json:"-"` // from env GOCLAW_POSTGRES_DSN only
+	RedisDSN        string `json:"-"` // from env GOCLAW_REDIS_DSN only (optional, requires -tags redis)
+	StorageBackend  string `json:"-"` // from env GOCLAW_STORAGE_BACKEND only ("postgres" or "sqlite", default "postgres")
+	SQLitePath      string `json:"-"` // from env GOCLAW_SQLITE_PATH only (default: {dataDir}/goclaw.db)
+	TenantDBSSLMode string `json:"tenant_db_ssl_mode,omitempty"` // default sslmode for auto-generated tenant DBs
 }
 
 // SkillsConfig configures the skills storage system.
@@ -186,8 +188,8 @@ type AgentDefaults struct {
 // CompactionConfig configures session compaction behaviour.
 // Matching TS agents.defaults.compaction.
 type CompactionConfig struct {
-	ReserveTokensFloor int                `json:"reserveTokensFloor,omitempty"` // min reserve tokens (default 20000)
-	MaxHistoryShare    float64            `json:"maxHistoryShare,omitempty"`    // max share of context for history (default 0.85)
+	ReserveTokensFloor   int                `json:"reserveTokensFloor,omitempty"`   // min reserve tokens (default 20000)
+	MaxHistoryShare      float64            `json:"maxHistoryShare,omitempty"`      // max share of context for history (default 0.85)
 	KeepLastMessages     int                `json:"keepLastMessages,omitempty"`     // messages to keep after compaction (default 4)
 	AutoCompactThreshold float64            `json:"autoCompactThreshold,omitempty"` // auto-compact idle sessions when estimatedTokens >= threshold * contextWindow (default 0.75, 0 = disabled)
 	MemoryFlush          *MemoryFlushConfig `json:"memoryFlush,omitempty"`          // pre-compaction flush
@@ -454,21 +456,21 @@ type SubagentsConfig struct {
 // AgentSpec is the per-agent configuration override.
 // All fields optional — zero values mean "inherit from defaults".
 type AgentSpec struct {
-	DisplayName       string          `json:"displayName,omitempty"`
-	Provider          string          `json:"provider,omitempty"`
-	Model             string          `json:"model,omitempty"`
-	MaxTokens         int             `json:"max_tokens,omitempty"`
-	Temperature       float64         `json:"temperature,omitempty"`
-	MaxToolIterations int             `json:"max_tool_iterations,omitempty"`
-	ContextWindow     int             `json:"context_window,omitempty"`
-	MaxToolCalls      int             `json:"max_tool_calls,omitempty"` // per-agent override
-	AgentType         string          `json:"agent_type,omitempty"`     // "open" or "predefined"
-	Skills            []string        `json:"skills,omitempty"`         // nil = all skills allowed
-	Tools             *ToolPolicySpec `json:"tools,omitempty"`          // per-agent tool policy
-	Workspace         string          `json:"workspace,omitempty"`
-	Default           bool            `json:"default,omitempty"`
-	Sandbox           *SandboxConfig  `json:"sandbox,omitempty"`
-	Identity          *IdentityConfig `json:"identity,omitempty"`
+	DisplayName       string              `json:"displayName,omitempty"`
+	Provider          string              `json:"provider,omitempty"`
+	Model             string              `json:"model,omitempty"`
+	MaxTokens         int                 `json:"max_tokens,omitempty"`
+	Temperature       float64             `json:"temperature,omitempty"`
+	MaxToolIterations int                 `json:"max_tool_iterations,omitempty"`
+	ContextWindow     int                 `json:"context_window,omitempty"`
+	MaxToolCalls      int                 `json:"max_tool_calls,omitempty"` // per-agent override
+	AgentType         string              `json:"agent_type,omitempty"`     // "open" or "predefined"
+	Skills            []string            `json:"skills,omitempty"`         // nil = all skills allowed
+	Tools             *ToolPolicySpec     `json:"tools,omitempty"`          // per-agent tool policy
+	Workspace         string              `json:"workspace,omitempty"`
+	Default           bool                `json:"default,omitempty"`
+	Sandbox           *SandboxConfig      `json:"sandbox,omitempty"`
+	Identity          *IdentityConfig     `json:"identity,omitempty"`
 	ContextGuard      *ContextGuardConfig `json:"context_guard,omitempty"`
 }
 
@@ -496,10 +498,8 @@ func (c *Config) ReplaceFrom(src *Config) {
 func (c *Config) AddExecAlwaysAllow(bin string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for _, existing := range c.Tools.ExecApproval.Allowlist {
-		if existing == bin {
-			return
-		}
+	if slices.Contains(c.Tools.ExecApproval.Allowlist, bin) {
+		return
 	}
 	c.Tools.ExecApproval.Allowlist = append(c.Tools.ExecApproval.Allowlist, bin)
 }

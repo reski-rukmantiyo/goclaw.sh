@@ -46,6 +46,14 @@ func NewPGMemoryStore(db *sql.DB, cfg PGMemoryConfig) *PGMemoryStore {
 	return &PGMemoryStore{db: db, cfg: cfg}
 }
 
+func (s *PGMemoryStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGMemoryStore) GetDocument(ctx context.Context, agentID, userID, path string) (string, error) {
 	aid, err := parseUUID(agentID)
 	if err != nil {
@@ -59,7 +67,7 @@ func (s *PGMemoryStore) GetDocument(ctx context.Context, agentID, userID, path s
 		if tcErr != nil {
 			return "", tcErr
 		}
-		err = s.db.QueryRowContext(ctx,
+		err = s.dbFor(ctx).QueryRowContext(ctx,
 			"SELECT content FROM memory_documents WHERE agent_id = $1 AND path = $2"+tc+" ORDER BY updated_at DESC LIMIT 1",
 			append([]any{aid, path}, tcArgs...)...).Scan(&content)
 	} else if userID == "" {
@@ -67,7 +75,7 @@ func (s *PGMemoryStore) GetDocument(ctx context.Context, agentID, userID, path s
 		if tcErr != nil {
 			return "", tcErr
 		}
-		err = s.db.QueryRowContext(ctx,
+		err = s.dbFor(ctx).QueryRowContext(ctx,
 			"SELECT content FROM memory_documents WHERE agent_id = $1 AND path = $2 AND user_id IS NULL"+tc,
 			append([]any{aid, path}, tcArgs...)...).Scan(&content)
 	} else {
@@ -75,7 +83,7 @@ func (s *PGMemoryStore) GetDocument(ctx context.Context, agentID, userID, path s
 		if tcErr != nil {
 			return "", tcErr
 		}
-		err = s.db.QueryRowContext(ctx,
+		err = s.dbFor(ctx).QueryRowContext(ctx,
 			"SELECT content FROM memory_documents WHERE agent_id = $1 AND path = $2 AND user_id = $3"+tc,
 			append([]any{aid, path, userID}, tcArgs...)...).Scan(&content)
 	}
@@ -100,7 +108,7 @@ func (s *PGMemoryStore) PutDocument(ctx context.Context, agentID, userID, path, 
 		uid = &userID
 	}
 
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO memory_documents (id, agent_id, user_id, path, content, hash, tenant_id, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		 ON CONFLICT (agent_id, COALESCE(user_id, ''), path)
@@ -122,7 +130,7 @@ func (s *PGMemoryStore) DeleteDocument(ctx context.Context, agentID, userID, pat
 		if tcErr != nil {
 			return tcErr
 		}
-		res, err = s.db.ExecContext(ctx,
+		res, err = s.dbFor(ctx).ExecContext(ctx,
 			"DELETE FROM memory_documents WHERE agent_id = $1 AND path = $2"+tc,
 			append([]any{aid, path}, tcArgs...)...)
 	} else if userID == "" {
@@ -130,7 +138,7 @@ func (s *PGMemoryStore) DeleteDocument(ctx context.Context, agentID, userID, pat
 		if tcErr != nil {
 			return tcErr
 		}
-		res, err = s.db.ExecContext(ctx,
+		res, err = s.dbFor(ctx).ExecContext(ctx,
 			"DELETE FROM memory_documents WHERE agent_id = $1 AND path = $2 AND user_id IS NULL"+tc,
 			append([]any{aid, path}, tcArgs...)...)
 	} else {
@@ -138,7 +146,7 @@ func (s *PGMemoryStore) DeleteDocument(ctx context.Context, agentID, userID, pat
 		if tcErr != nil {
 			return tcErr
 		}
-		res, err = s.db.ExecContext(ctx,
+		res, err = s.dbFor(ctx).ExecContext(ctx,
 			"DELETE FROM memory_documents WHERE agent_id = $1 AND path = $2 AND user_id = $3"+tc,
 			append([]any{aid, path, userID}, tcArgs...)...)
 	}
@@ -185,7 +193,7 @@ func (s *PGMemoryStore) ListDocuments(ctx context.Context, agentID, userID strin
 	}
 
 	var rows []documentInfoRow
-	if err := pkgSqlxDB.SelectContext(ctx, &rows, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows, q, args...); err != nil {
 		return nil, err
 	}
 	result := make([]store.DocumentInfo, len(rows))
@@ -216,7 +224,7 @@ func (s *PGMemoryStore) IndexDocument(ctx context.Context, agentID, userID, path
 		if tcErr != nil {
 			return tcErr
 		}
-		err = s.db.QueryRowContext(ctx,
+		err = s.dbFor(ctx).QueryRowContext(ctx,
 			"SELECT id FROM memory_documents WHERE agent_id = $1 AND path = $2"+tc+" ORDER BY updated_at DESC LIMIT 1",
 			append([]any{aid, path}, tcArgs...)...).Scan(&docID)
 	} else if userID == "" {
@@ -224,7 +232,7 @@ func (s *PGMemoryStore) IndexDocument(ctx context.Context, agentID, userID, path
 		if tcErr != nil {
 			return tcErr
 		}
-		err = s.db.QueryRowContext(ctx,
+		err = s.dbFor(ctx).QueryRowContext(ctx,
 			"SELECT id FROM memory_documents WHERE agent_id = $1 AND path = $2 AND user_id IS NULL"+tc,
 			append([]any{aid, path}, tcArgs...)...).Scan(&docID)
 	} else {
@@ -232,7 +240,7 @@ func (s *PGMemoryStore) IndexDocument(ctx context.Context, agentID, userID, path
 		if tcErr != nil {
 			return tcErr
 		}
-		err = s.db.QueryRowContext(ctx,
+		err = s.dbFor(ctx).QueryRowContext(ctx,
 			"SELECT id FROM memory_documents WHERE agent_id = $1 AND path = $2 AND user_id = $3"+tc,
 			append([]any{aid, path, userID}, tcArgs...)...).Scan(&docID)
 	}
@@ -241,7 +249,7 @@ func (s *PGMemoryStore) IndexDocument(ctx context.Context, agentID, userID, path
 	}
 
 	// Delete old chunks
-	s.db.ExecContext(ctx, "DELETE FROM memory_chunks WHERE document_id = $1", docID)
+	s.dbFor(ctx).ExecContext(ctx, "DELETE FROM memory_chunks WHERE document_id = $1", docID)
 
 	// Resolve chunk parameters: per-agent override → global default
 	chunkLen, chunkOverlap := s.chunkConfig()
@@ -363,14 +371,14 @@ func (s *PGMemoryStore) IndexDocument(ctx context.Context, agentID, userID, path
 
 		if embeddings != nil && i < len(embeddings) && embeddings[i] != nil {
 			// Insert with embedding via raw SQL (pgvector)
-			s.db.ExecContext(ctx,
+			s.dbFor(ctx).ExecContext(ctx,
 				`INSERT INTO memory_chunks (id, agent_id, document_id, user_id, path, start_line, end_line, hash, text, embedding, tenant_id, updated_at)
 				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::vector, $11, $12)`,
 				chunkID, aid, docID, uid, path, tc.StartLine, tc.EndLine, hash, tc.Text,
 				vectorToString(embeddings[i]), tid, now,
 			)
 		} else {
-			s.db.ExecContext(ctx,
+			s.dbFor(ctx).ExecContext(ctx,
 				`INSERT INTO memory_chunks (id, agent_id, document_id, user_id, path, start_line, end_line, hash, text, tenant_id, updated_at)
 				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 				 ON CONFLICT DO NOTHING`,
@@ -432,7 +440,7 @@ func (s *PGMemoryStore) BackfillEmbeddings(ctx context.Context) (int, error) {
 			Text string    `db:"text"`
 		}
 		var chunks []backfillRow
-		if err := pkgSqlxDB.SelectContext(ctx, &chunks,
+		if err := SqlxDBFor(ctx).SelectContext(ctx, &chunks,
 			"SELECT id, text FROM memory_chunks WHERE embedding IS NULL ORDER BY id ASC LIMIT $1", batchSize); err != nil {
 			return total, fmt.Errorf("query chunks without embeddings: %w", err)
 		}

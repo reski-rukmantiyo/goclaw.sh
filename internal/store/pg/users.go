@@ -34,7 +34,12 @@ func (s *PGUserStore) Create(ctx context.Context, user *store.UserData) error {
 		user.TenantID, user.AuthProvider,
 		sql.NullString{String: derefStr(user.PasswordHash), Valid: user.PasswordHash != nil && *user.PasswordHash != ""},
 		user.Status,
-		sql.NullTime{Time: func() time.Time { if user.LastLoginAt != nil { return *user.LastLoginAt }; return time.Time{} }(), Valid: user.LastLoginAt != nil && !user.LastLoginAt.IsZero()},
+		sql.NullTime{Time: func() time.Time {
+			if user.LastLoginAt != nil {
+				return *user.LastLoginAt
+			}
+			return time.Time{}
+		}(), Valid: user.LastLoginAt != nil && !user.LastLoginAt.IsZero()},
 		user.CreatedAt, user.UpdatedAt,
 	)
 	return err
@@ -118,10 +123,7 @@ func (s *PGUserStore) List(ctx context.Context, tenantID uuid.UUID, params store
 	if limit <= 0 {
 		limit = 50
 	}
-	offset := params.Offset
-	if offset < 0 {
-		offset = 0
-	}
+	offset := max(params.Offset, 0)
 
 	where := "WHERE " + strings.Join(conditions, " AND ")
 
@@ -190,7 +192,12 @@ func (s *PGUserStore) CreateIdentity(ctx context.Context, identity *store.UserId
 		identity.ID, identity.UserID, identity.Provider, identity.ProviderSubject,
 		sql.NullString{String: derefStr(identity.ProviderTenant), Valid: identity.ProviderTenant != nil && *identity.ProviderTenant != ""},
 		identity.Email, identity.LinkedAt,
-		sql.NullTime{Time: func() time.Time { if identity.LastUsedAt != nil { return *identity.LastUsedAt }; return time.Time{} }(), Valid: identity.LastUsedAt != nil && !identity.LastUsedAt.IsZero()},
+		sql.NullTime{Time: func() time.Time {
+			if identity.LastUsedAt != nil {
+				return *identity.LastUsedAt
+			}
+			return time.Time{}
+		}(), Valid: identity.LastUsedAt != nil && !identity.LastUsedAt.IsZero()},
 	)
 	return err
 }

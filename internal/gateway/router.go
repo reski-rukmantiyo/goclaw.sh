@@ -113,6 +113,16 @@ func (r *MethodRouter) Handle(ctx context.Context, client *Client, req *protocol
 		ctx = store.WithRole(ctx, string(role))
 	}
 
+	// Resolve tenant DB if available (greenfield tenants with tenant_db_connection)
+	if r.server != nil && r.server.tenantDBManager != nil {
+		tid := client.TenantID()
+		if tid != uuid.Nil && !store.IsMasterScope(ctx) {
+			if db, err := r.server.tenantDBManager.GetPool(ctx, tid); err == nil && db != nil {
+				ctx = store.WithTenantDB(ctx, db)
+			}
+		}
+	}
+
 	slog.Debug("handling method", "method", req.Method, "client", client.id, "req_id", req.ID)
 	handler(ctx, client, req)
 }

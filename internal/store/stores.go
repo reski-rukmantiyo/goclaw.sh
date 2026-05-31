@@ -5,6 +5,8 @@ import "database/sql"
 // Stores is the top-level container for all storage backends.
 type Stores struct {
 	DB        *sql.DB // underlying connection
+	TenantDBManager       TenantDBManager       // nil for SQLite / single-DB mode
+	TenantDBConnections   TenantDBConnectionStore // master-only
 	Sessions  SessionStore
 	Memory    MemoryStore
 	Cron      CronStore

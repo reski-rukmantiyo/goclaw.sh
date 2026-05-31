@@ -32,6 +32,14 @@ func NewPGWorkstationStore(db *sql.DB, encryptionKey string) *PGWorkstationStore
 	return &PGWorkstationStore{db: db, encKey: encryptionKey}
 }
 
+func (s *PGWorkstationStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 // SetPermStore wires the permission store so Create can seed defaults atomically.
 // Call this after both stores are initialised (avoids circular construction).
 func (s *PGWorkstationStore) SetPermStore(ps store.WorkstationPermissionStore) {
@@ -225,7 +233,7 @@ func (s *PGWorkstationStore) Delete(ctx context.Context, id uuid.UUID) error {
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required")
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM workstations WHERE id = $1 AND tenant_id = $2`, id, tid)
 	return err
 }

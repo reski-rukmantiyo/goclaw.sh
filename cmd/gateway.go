@@ -324,6 +324,7 @@ func runGateway() {
 	server.SetDB(pgStores.DB)
 	server.SetPolicyEngine(permPE)
 	server.SetPairingService(pgStores.Pairing)
+	server.SetTenantDBManager(pgStores.TenantDBManager)
 	server.SetMessageBus(msgBus)
 	server.SetOAuthHandler(httpapi.NewOAuthHandler(pgStores.Providers, pgStores.ConfigSecrets, providerRegistry, msgBus))
 
@@ -642,7 +643,7 @@ func runGateway() {
 
 	// Tenant management RPC + HTTP
 	if pgStores.Tenants != nil {
-		methods.NewTenantsMethods(pgStores.Tenants, msgBus, workspace).Register(server.Router())
+		methods.NewTenantsMethods(pgStores.Tenants, pgStores.TenantDBConnections, pgStores.TenantDBManager, pgStores.DB, msgBus, workspace, cfg.Database.TenantDBSSLMode, cfg.Database.PostgresDSN).Register(server.Router())
 		server.SetTenantsHandler(httpapi.NewTenantsHandler(pgStores.Tenants, msgBus, workspace))
 		server.Router().SetTenantStore(pgStores.Tenants)
 		// Permission cache for tenant membership checks. Store on deps so
@@ -656,6 +657,7 @@ func runGateway() {
 		})
 		server.Router().SetPermissionCache(permCache)
 		httpapi.InitTenantStore(pgStores.Tenants, msgBus)
+		httpapi.InitTenantDBManager(pgStores.TenantDBManager)
 		httpapi.InitOwnerIDs(cfg.Gateway.OwnerIDs)
 	}
 

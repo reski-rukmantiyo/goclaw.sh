@@ -22,7 +22,7 @@ func (s *PGMCPServerStore) GrantToAgent(ctx context.Context, g *store.MCPAgentGr
 		g.ID = store.GenNewID()
 	}
 	g.CreatedAt = time.Now()
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO mcp_agent_grants (id, server_id, agent_id, enabled, tool_allow, tool_deny, config_overrides, granted_by, created_at, tenant_id)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 		 ON CONFLICT (server_id, agent_id) DO UPDATE SET
@@ -41,7 +41,7 @@ func (s *PGMCPServerStore) RevokeFromAgent(ctx context.Context, serverID, agentI
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		"DELETE FROM mcp_agent_grants WHERE server_id = $1 AND agent_id = $2"+tClause,
 		append([]any{serverID, agentID}, tArgs...)...)
 	return err
@@ -53,7 +53,7 @@ func (s *PGMCPServerStore) ListAgentGrants(ctx context.Context, agentID uuid.UUI
 		return nil, err
 	}
 	var result []store.MCPAgentGrant
-	err = pkgSqlxDB.SelectContext(ctx, &result,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &result,
 		`SELECT id, server_id, agent_id, enabled,
 		 COALESCE(tool_allow, 'null'::jsonb) AS tool_allow,
 		 COALESCE(tool_deny, 'null'::jsonb) AS tool_deny,
@@ -70,7 +70,7 @@ func (s *PGMCPServerStore) ListServerGrants(ctx context.Context, serverID uuid.U
 		return nil, err
 	}
 	result := make([]store.MCPAgentGrant, 0)
-	err = pkgSqlxDB.SelectContext(ctx, &result,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &result,
 		`SELECT id, server_id, agent_id, enabled,
 		 COALESCE(tool_allow, '[]'::jsonb) AS tool_allow,
 		 COALESCE(tool_deny, '[]'::jsonb) AS tool_deny,
@@ -88,7 +88,7 @@ func (s *PGMCPServerStore) CountAgentGrantsByServer(ctx context.Context) (map[uu
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT server_id, COUNT(*) FROM mcp_agent_grants WHERE 1=1`+tClause+` GROUP BY server_id`,
 		tArgs...)
 	if err != nil {
@@ -121,7 +121,7 @@ func (s *PGMCPServerStore) GrantToUser(ctx context.Context, g *store.MCPUserGran
 		g.ID = store.GenNewID()
 	}
 	g.CreatedAt = time.Now()
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO mcp_user_grants (id, server_id, user_id, enabled, tool_allow, tool_deny, granted_by, created_at, tenant_id)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		 ON CONFLICT (server_id, user_id) DO UPDATE SET
@@ -139,7 +139,7 @@ func (s *PGMCPServerStore) RevokeFromUser(ctx context.Context, serverID uuid.UUI
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		"DELETE FROM mcp_user_grants WHERE server_id = $1 AND user_id = $2"+tClause,
 		append([]any{serverID, userID}, tArgs...)...)
 	return err
@@ -152,7 +152,7 @@ func (s *PGMCPServerStore) ListAccessible(ctx context.Context, agentID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT ms.id, ms.name, ms.display_name, ms.transport, ms.command, ms.args, ms.url, ms.headers, ms.env,
 		 ms.api_key, ms.tool_prefix, ms.timeout_sec, ms.settings, ms.enabled, ms.created_by, ms.created_at, ms.updated_at,
 		 mag.tool_allow, mag.tool_deny
@@ -221,7 +221,7 @@ func (s *PGMCPServerStore) CreateRequest(ctx context.Context, req *store.MCPAcce
 	}
 	req.Status = "pending"
 	req.CreatedAt = time.Now()
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO mcp_access_requests (id, server_id, agent_id, user_id, scope, status, reason, tool_allow, requested_by, created_at, tenant_id)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		req.ID, req.ServerID, nilUUID(req.AgentID), nilStr(req.UserID),
@@ -237,7 +237,7 @@ func (s *PGMCPServerStore) ListPendingRequests(ctx context.Context) ([]store.MCP
 		return nil, err
 	}
 	var scanned []mcpAccessRequestRow
-	if err := pkgSqlxDB.SelectContext(ctx, &scanned,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned,
 		`SELECT id, server_id, agent_id, user_id, scope, status, reason, tool_allow, requested_by,
 		 reviewed_by, reviewed_at, review_note, created_at
 		 FROM mcp_access_requests WHERE status = 'pending'`+tClause+` ORDER BY created_at`,
@@ -256,7 +256,7 @@ func (s *PGMCPServerStore) ReviewRequest(ctx context.Context, requestID uuid.UUI
 		return err
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}

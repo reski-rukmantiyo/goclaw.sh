@@ -31,6 +31,14 @@ func NewPGHeartbeatStore(db *sql.DB) *PGHeartbeatStore {
 	return &PGHeartbeatStore{db: db, cacheTTL: defaultHeartbeatCacheTTL}
 }
 
+func (s *PGHeartbeatStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGHeartbeatStore) SetOnEvent(fn func(store.HeartbeatEvent)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -55,7 +63,7 @@ func (s *PGHeartbeatStore) InvalidateCache() {
 
 func (s *PGHeartbeatStore) Get(ctx context.Context, agentID uuid.UUID) (*store.AgentHeartbeat, error) {
 	var hb store.AgentHeartbeat
-	err := pkgSqlxDB.GetContext(ctx, &hb,
+	err := SqlxDBFor(ctx).GetContext(ctx, &hb,
 		`SELECT id, agent_id, enabled, interval_sec, prompt, provider_id, model,
 		        isolated_session, light_context, ack_max_chars, max_retries,
 		        active_hours_start, active_hours_end, timezone,
@@ -129,7 +137,7 @@ func (s *PGHeartbeatStore) ListDue(ctx context.Context, now time.Time) ([]store.
 	s.mu.Unlock()
 
 	var all []store.AgentHeartbeat
-	err := pkgSqlxDB.SelectContext(ctx, &all,
+	err := SqlxDBFor(ctx).SelectContext(ctx, &all,
 		`SELECT id, agent_id, enabled, interval_sec, prompt, provider_id, model,
 		        isolated_session, light_context, ack_max_chars, max_retries,
 		        active_hours_start, active_hours_end, timezone,
@@ -213,7 +221,7 @@ func (s *PGHeartbeatStore) ListLogs(ctx context.Context, agentID uuid.UUID, limi
 	}
 
 	var logs []store.HeartbeatRunLog
-	err = pkgSqlxDB.SelectContext(ctx, &logs,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &logs,
 		`SELECT id, heartbeat_id, agent_id, status, summary, error,
 		        duration_ms, input_tokens, output_tokens, skip_reason, metadata, ran_at, created_at
 		 FROM heartbeat_run_logs WHERE agent_id = $1

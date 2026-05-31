@@ -23,6 +23,14 @@ func NewPGListenRawMessageStore(db *sql.DB) *PGListenRawMessageStore {
 	return &PGListenRawMessageStore{db: db}
 }
 
+func (s *PGListenRawMessageStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGListenRawMessageStore) AppendBatch(ctx context.Context, msgs []store.ListenRawMessage) error {
 	if len(msgs) == 0 {
 		return nil
@@ -47,7 +55,7 @@ func (s *PGListenRawMessageStore) AppendBatch(ctx context.Context, msgs []store.
 			msgs[i].Body, msgs[i].MsgTimestamp, msgs[i].AgentID, now, tid, mediaJSON)
 	}
 
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO listen_raw_messages (id, channel_name, chat_id, chat_name, graph_id, sender, sender_id, body, msg_timestamp, agent_id, created_at, tenant_id, media_refs)
 					 VALUES `+strings.Join(placeholders, ","),
 		args...,
@@ -113,7 +121,7 @@ func (s *PGListenRawMessageStore) ListPending(ctx context.Context, agentID, grap
 		return nil, err
 	}
 	var rows []rawMsgRow
-	err = pkgSqlxDB.SelectContext(ctx, &rows,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &rows,
 		`SELECT id, channel_name, chat_id, chat_name, graph_id, sender, sender_id, body, msg_timestamp, agent_id, created_at, processed_at, media_refs,
 		        extraction_status, extraction_error, extraction_attempts, last_attempted_at
 		 FROM listen_raw_messages
@@ -147,7 +155,7 @@ func (s *PGListenRawMessageStore) MarkProcessed(ctx context.Context, ids []uuid.
 		placeholders[i] = fmt.Sprintf("$%d", i+3)
 		args[i+2] = id
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE listen_raw_messages SET processed_at = $1, extraction_status = $2, extraction_error = NULL WHERE id IN (`+strings.Join(placeholders, ",")+`)`,
 		args...,
 	)
@@ -166,7 +174,7 @@ func (s *PGListenRawMessageStore) MarkFailed(ctx context.Context, ids []uuid.UUI
 		placeholders[i] = fmt.Sprintf("$%d", i+4)
 		args = append(args, id)
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE listen_raw_messages
 		 SET extraction_status = $1, extraction_error = $2,
 		     extraction_attempts = extraction_attempts + 1,
@@ -184,7 +192,7 @@ func (s *PGListenRawMessageStore) ListPendingGroups(ctx context.Context) ([]stor
 		return nil, err
 	}
 	var result []store.ListenRawMessageGroup
-	err = pkgSqlxDB.SelectContext(ctx, &result,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &result,
 		`SELECT DISTINCT agent_id, graph_id
 		 FROM listen_raw_messages
 		 WHERE (extraction_status = $1 OR (extraction_status = $2 AND extraction_attempts < $3))`+tClause,
@@ -219,7 +227,7 @@ func (s *PGListenRawMessageStore) ResetProcessed(ctx context.Context, agentID, g
 	q := `UPDATE listen_raw_messages SET processed_at = NULL, extraction_status = 'pending', extraction_error = NULL WHERE ` + where + tClause
 	args = append(args, tArgs...)
 
-	res, err := s.db.ExecContext(ctx, q, args...)
+	res, err := s.dbFor(ctx).ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -243,7 +251,7 @@ func (s *PGListenRawMessageStore) ResetProcessedByIDs(ctx context.Context, ids [
 	}
 	args = append(args, tArgs...)
 	q := `UPDATE listen_raw_messages SET processed_at = NULL, extraction_status = 'pending', extraction_error = NULL WHERE id IN (` + strings.Join(placeholders, ",") + `) AND processed_at IS NOT NULL` + tClause
-	res, err := s.db.ExecContext(ctx, q, args...)
+	res, err := s.dbFor(ctx).ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -256,7 +264,7 @@ func (s *PGListenRawMessageStore) ListPendingEmbeddings(ctx context.Context, age
 		return nil, err
 	}
 	var rows []rawMsgRow
-	err = pkgSqlxDB.SelectContext(ctx, &rows,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &rows,
 		`SELECT id, channel_name, chat_id, chat_name, graph_id, sender, sender_id, body, msg_timestamp, agent_id, created_at, processed_at, media_refs,
 		        extraction_status, extraction_error, extraction_attempts, last_attempted_at
 		 FROM listen_raw_messages
@@ -281,7 +289,7 @@ func (s *PGListenRawMessageStore) ListPendingEmbeddingGroups(ctx context.Context
 		return nil, err
 	}
 	var result []store.ListenRawMessageGroup
-	err = pkgSqlxDB.SelectContext(ctx, &result,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &result,
 		`SELECT DISTINCT agent_id, graph_id FROM listen_raw_messages WHERE embedded_at IS NULL`+tClause,
 		tArgs...,
 	)
@@ -299,7 +307,7 @@ func (s *PGListenRawMessageStore) MarkEmbedded(ctx context.Context, ids []uuid.U
 		placeholders[i] = fmt.Sprintf("$%d", i+2)
 		args[i+1] = id
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE listen_raw_messages SET embedded_at = $1 WHERE id IN (`+strings.Join(placeholders, ",")+`)`,
 		args...,
 	)
@@ -312,7 +320,7 @@ func (s *PGListenRawMessageStore) ExtractionStats(ctx context.Context) (map[stri
 		return nil, err
 	}
 	q := `SELECT extraction_status, COUNT(*) FROM listen_raw_messages WHERE 1=1` + tc + ` GROUP BY extraction_status`
-	rows, err := s.db.QueryContext(ctx, q, tArgs...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, tArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +344,7 @@ func (s *PGListenRawMessageStore) EmbeddingStats(ctx context.Context) (int, int,
 	}
 	q := `SELECT COUNT(*) FILTER (WHERE embedded_at IS NULL), COUNT(*) FILTER (WHERE embedded_at IS NOT NULL) FROM listen_raw_messages WHERE 1=1` + tc
 	var pending, embedded int
-	if err := s.db.QueryRowContext(ctx, q, tArgs...).Scan(&pending, &embedded); err != nil {
+	if err := s.dbFor(ctx).QueryRowContext(ctx, q, tArgs...).Scan(&pending, &embedded); err != nil {
 		return 0, 0, err
 	}
 	return pending, embedded, nil
@@ -348,7 +356,7 @@ func (s *PGListenRawMessageStore) ListAbandonedGroups(ctx context.Context) ([]st
 		return nil, err
 	}
 	var result []store.ListenRawMessageGroup
-	err = pkgSqlxDB.SelectContext(ctx, &result,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &result,
 		`SELECT DISTINCT agent_id, graph_id
 		 FROM listen_raw_messages
 		 WHERE extraction_status = $1 AND extraction_attempts >= $2`+tClause,
@@ -363,7 +371,7 @@ func (s *PGListenRawMessageStore) ListAbandonedIDs(ctx context.Context, agentID,
 		return nil, err
 	}
 	var ids []uuid.UUID
-	err = pkgSqlxDB.SelectContext(ctx, &ids,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &ids,
 		`SELECT id FROM listen_raw_messages
 		 WHERE agent_id = $1 AND graph_id = $2
 		   AND extraction_status = $3 AND extraction_attempts >= $4`+tClause+`
@@ -446,7 +454,7 @@ func (s *PGListenRawMessageStore) List(ctx context.Context, opts store.ListenRaw
 	// Count total.
 	var total int
 	countArgs := append(tArgs, args...)
-	err = s.db.QueryRowContext(ctx,
+	err = s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM listen_raw_messages WHERE 1=1`+tClause+whereClause,
 		countArgs...,
 	).Scan(&total)
@@ -460,7 +468,7 @@ func (s *PGListenRawMessageStore) List(ctx context.Context, opts store.ListenRaw
 	pageArgs = append(pageArgs, limit, offset)
 
 	var rows []rawMsgRow
-	err = pkgSqlxDB.SelectContext(ctx, &rows,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &rows,
 		`SELECT m.id, m.channel_name, m.chat_id, m.chat_name, m.graph_id, m.sender, m.sender_id, m.body, m.msg_timestamp, m.agent_id, m.created_at, m.processed_at, m.media_refs,
 		        m.extraction_status, m.extraction_error, m.extraction_attempts, m.last_attempted_at,
 		        COALESCE(a.display_name, a.agent_key, '') AS agent_name

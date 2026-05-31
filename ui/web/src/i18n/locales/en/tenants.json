@@ -29,5 +29,10 @@
   "roleMember": "Member",
   "roleViewer": "Viewer",
   "noUsers": "No users in this tenant",
-  "created": "Created"
+  "created": "Created",
+  "editName": "Edit Name",
+  "deleteTenant": "Delete Tenant",
+  "deleteConfirm": "Are you sure you want to delete this tenant? This action cannot be undone.",
+  "deleteWarning": "All data associated with this tenant will be permanently deleted.",
+  "typeToConfirm": "Type '{{name}}' to confirm"
 }

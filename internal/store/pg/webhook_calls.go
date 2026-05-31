@@ -25,6 +25,14 @@ func NewPGWebhookCallStore(db *sql.DB) *PGWebhookCallStore {
 	return &PGWebhookCallStore{db: db}
 }
 
+func (s *PGWebhookCallStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 // webhookCallColumns is the canonical SELECT column list for webhook_calls.
 const webhookCallColumns = `id, tenant_id, webhook_id, agent_id, delivery_id,
 	idempotency_key, mode, status, callback_url, attempts,
@@ -52,7 +60,7 @@ func scanWebhookCallRow(row interface {
 }
 
 func (s *PGWebhookCallStore) Create(ctx context.Context, call *store.WebhookCallData) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO webhook_calls
 		 (id, tenant_id, webhook_id, agent_id, delivery_id,
 		  idempotency_key, mode, status, callback_url, attempts,
@@ -79,7 +87,7 @@ func (s *PGWebhookCallStore) GetByID(ctx context.Context, id uuid.UUID) (*store.
 	if err != nil {
 		return nil, err
 	}
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT `+webhookCallColumns+`
 		 FROM webhook_calls
 		 WHERE id = $1 AND tenant_id = $2`,
@@ -93,7 +101,7 @@ func (s *PGWebhookCallStore) GetByIdempotency(ctx context.Context, webhookID uui
 	if err != nil {
 		return nil, err
 	}
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT `+webhookCallColumns+`
 		 FROM webhook_calls
 		 WHERE webhook_id = $1 AND idempotency_key = $2 AND tenant_id = $3`,
@@ -109,7 +117,7 @@ func (s *PGWebhookCallStore) UpdateStatus(ctx context.Context, id uuid.UUID, upd
 	}
 	// webhook_calls has no updated_at column — use BuildMapUpdateWhereTenant without auto-timestamp.
 	// We call the lower-level helper directly and build query ourselves to avoid updated_at injection.
-	return execMapUpdateWhereTenantNoUpdatedAt(ctx, s.db, "webhook_calls", updates, id, tid)
+	return execMapUpdateWhereTenantNoUpdatedAt(ctx, s.dbFor(ctx), "webhook_calls", updates, id, tid)
 }
 
 // UpdateStatusCAS applies updates with an optimistic-concurrency guard on lease_token.
@@ -119,14 +127,14 @@ func (s *PGWebhookCallStore) UpdateStatusCAS(ctx context.Context, id uuid.UUID, 
 	if err != nil {
 		return err
 	}
-	return execMapUpdateWhereTenantLease(ctx, s.db, "webhook_calls", updates, id, tid, lease)
+	return execMapUpdateWhereTenantLease(ctx, s.dbFor(ctx), "webhook_calls", updates, id, tid, lease)
 }
 
 // ClaimNext atomically claims the next queued call due for delivery.
 // Uses SELECT ... FOR UPDATE SKIP LOCKED to prevent double-claiming under concurrency.
 // Sets status='running' and started_at=now. Does NOT touch attempts.
 func (s *PGWebhookCallStore) ClaimNext(ctx context.Context, tenantID uuid.UUID, now time.Time) (*store.WebhookCallData, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("webhook_calls ClaimNext begin tx: %w", err)
 	}
@@ -202,7 +210,7 @@ func (s *PGWebhookCallStore) List(ctx context.Context, f store.WebhookCallListFi
 	q += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, n, n+1)
 	args = append(args, limit, f.Offset)
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -224,13 +232,13 @@ func (s *PGWebhookCallStore) DeleteOlderThan(ctx context.Context, tenantID uuid.
 	var err error
 	if tenantID == uuid.Nil {
 		// Retention worker: cross-tenant sweep.
-		res, err = s.db.ExecContext(ctx,
+		res, err = s.dbFor(ctx).ExecContext(ctx,
 			`DELETE FROM webhook_calls
 			 WHERE status IN ('done','failed','dead') AND created_at < $1`,
 			ts,
 		)
 	} else {
-		res, err = s.db.ExecContext(ctx,
+		res, err = s.dbFor(ctx).ExecContext(ctx,
 			`DELETE FROM webhook_calls
 			 WHERE tenant_id = $1 AND status IN ('done','failed','dead') AND created_at < $2`,
 			tenantID, ts,
@@ -248,7 +256,7 @@ func (s *PGWebhookCallStore) DeleteOlderThan(ctx context.Context, tenantID uuid.
 // Cross-tenant: no tenant_id filter — the retention worker sweeps the whole table.
 func (s *PGWebhookCallStore) ReclaimStale(ctx context.Context, staleThreshold time.Time) (int64, error) {
 	// Clear lease_token so any in-flight UpdateStatusCAS from the crashed worker returns ErrLeaseExpired.
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE webhook_calls
 		 SET status = 'queued', started_at = NULL, lease_token = NULL
 		 WHERE status = 'running' AND started_at < $1`,

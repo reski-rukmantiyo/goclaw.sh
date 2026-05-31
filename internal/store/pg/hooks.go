@@ -40,6 +40,14 @@ func NewPGHookStore(db *sql.DB) *PGHookStore {
 	}
 }
 
+func (s *PGHookStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 // ─── Create ─────────────────────────────────────────────────────────────────
 
 func (s *PGHookStore) Create(ctx context.Context, cfg hooks.HookConfig) (uuid.UUID, error) {
@@ -78,7 +86,7 @@ func (s *PGHookStore) Create(ctx context.Context, cfg hooks.HookConfig) (uuid.UU
 		name = &cfg.Name
 	}
 
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.dbFor(ctx).ExecContext(ctx, `
 		INSERT INTO hooks
 		  (id, tenant_id, scope, event, handler_type,
 		   config, matcher, if_expr, timeout_ms, on_timeout,
@@ -99,7 +107,7 @@ func (s *PGHookStore) Create(ctx context.Context, cfg hooks.HookConfig) (uuid.UU
 		agentIDs = []uuid.UUID{*cfg.AgentID}
 	}
 	for _, aid := range agentIDs {
-		if _, err := s.db.ExecContext(ctx,
+		if _, err := s.dbFor(ctx).ExecContext(ctx,
 			`INSERT INTO hook_agents (hook_id, agent_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
 			id, aid); err != nil {
 			return uuid.Nil, fmt.Errorf("insert hook agent link: %w", err)
@@ -131,7 +139,7 @@ func (s *PGHookStore) GetByID(ctx context.Context, id uuid.UUID) (*hooks.HookCon
 		args = append(args, tid, store.MasterTenantID)
 	}
 
-	row := s.db.QueryRowContext(ctx, q, args...)
+	row := s.dbFor(ctx).QueryRowContext(ctx, q, args...)
 	cfg, err := scanHookPGRow(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -193,7 +201,7 @@ func (s *PGHookStore) List(ctx context.Context, filter hooks.ListFilter) ([]hook
 	_ = n
 	q += " ORDER BY priority DESC, created_at ASC"
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list hooks: %w", err)
 	}
@@ -300,7 +308,7 @@ func (s *PGHookStore) Update(ctx context.Context, id uuid.UUID, updates map[stri
 		args = append(args, tid)
 	}
 
-	res, err := s.db.ExecContext(ctx, q, args...)
+	res, err := s.dbFor(ctx).ExecContext(ctx, q, args...)
 	if err != nil {
 		return fmt.Errorf("update hook: %w", err)
 	}
@@ -338,7 +346,7 @@ func (s *PGHookStore) Delete(ctx context.Context, id uuid.UUID) error {
 		args = append(args, tid)
 	}
 
-	res, err := s.db.ExecContext(ctx, q, args...)
+	res, err := s.dbFor(ctx).ExecContext(ctx, q, args...)
 	if err != nil {
 		return fmt.Errorf("delete hook: %w", err)
 	}
@@ -358,7 +366,7 @@ func (s *PGHookStore) ResolveForEvent(ctx context.Context, event hooks.Event) ([
 
 	// Check max version in DB to validate cache freshness.
 	var maxVersion int
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT COALESCE(MAX(version),0) FROM hooks
 		 WHERE enabled = TRUE AND event = $1
 		   AND (tenant_id = $2 OR tenant_id = $3)
@@ -384,7 +392,7 @@ func (s *PGHookStore) ResolveForEvent(ctx context.Context, event hooks.Event) ([
 		return entry.result, nil
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.dbFor(ctx).QueryContext(ctx, `
 		SELECT id, tenant_id, scope, event, handler_type,
 		       config, matcher, if_expr, timeout_ms, on_timeout,
 		       priority, enabled, version, source, metadata, name, created_by,
@@ -457,7 +465,7 @@ func (s *PGHookStore) WriteExecution(ctx context.Context, exec hooks.HookExecuti
 		errStr = &exec.Error
 	}
 
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.dbFor(ctx).ExecContext(ctx, `
 		INSERT INTO hook_executions
 		  (id, hook_id, session_id, event, input_hash, decision,
 		   duration_ms, retry, dedup_key, error, error_detail, metadata, created_at)
@@ -502,7 +510,7 @@ func parseAgentIDsFromAny(raw any) ([]uuid.UUID, error) {
 // ─── N:M junction: hook_agents ────────────────────────────────────────
 
 func (s *PGHookStore) SetHookAgents(ctx context.Context, hookID uuid.UUID, agentIDs []uuid.UUID) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -523,7 +531,7 @@ func (s *PGHookStore) SetHookAgents(ctx context.Context, hookID uuid.UUID, agent
 }
 
 func (s *PGHookStore) GetHookAgents(ctx context.Context, hookID uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		"SELECT agent_id FROM hook_agents WHERE hook_id = $1", hookID)
 	if err != nil {
 		return nil, fmt.Errorf("get hook agents: %w", err)
