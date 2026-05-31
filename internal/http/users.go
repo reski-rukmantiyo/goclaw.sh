@@ -15,12 +15,13 @@ import (
 
 // UsersHandler handles user management endpoints.
 type UsersHandler struct {
-	users store.UserStore
+	users  store.UserStore
+	groups store.GroupStore
 }
 
 // NewUsersHandler creates a handler for user management endpoints.
-func NewUsersHandler(users store.UserStore) *UsersHandler {
-	return &UsersHandler{users: users}
+func NewUsersHandler(users store.UserStore, groups store.GroupStore) *UsersHandler {
+	return &UsersHandler{users: users, groups: groups}
 }
 
 // RegisterRoutes registers all user management routes on the given mux.
@@ -176,6 +177,15 @@ func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, "password is required"))
 		return
 	}
+	lengthOK, hasUpper, hasSymbol := auth.ValidatePasswordComplexity(input.Password)
+	if !lengthOK {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgAuthPasswordTooShort, auth.MinPasswordLength))
+		return
+	}
+	if !hasUpper || !hasSymbol {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgAuthPasswordComplexity))
+		return
+	}
 
 	// Check for duplicate email within tenant.
 	existing, err := h.users.GetByEmail(ctx, tenantID, input.Email)
@@ -216,10 +226,27 @@ func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, user)
 }
 
+// checkUserTenantScope fetches a user by ID and verifies it belongs to the caller's tenant.
+// Returns the user if accessible, nil + writes error response if not.
+func (h *UsersHandler) checkUserTenantScope(w http.ResponseWriter, r *http.Request, id uuid.UUID) *store.UserData {
+	locale := extractLocale(r)
+	ctx := r.Context()
+
+	user, err := h.users.GetByID(ctx, id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "user", id.String()))
+		return nil
+	}
+	if tid := store.TenantIDFromContext(ctx); tid != uuid.Nil && user.TenantID != tid {
+		writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "user", id.String()))
+		return nil
+	}
+	return user
+}
+
 // handleGet returns a single user by ID.
 func (h *UsersHandler) handleGet(w http.ResponseWriter, r *http.Request) {
 	locale := extractLocale(r)
-	ctx := r.Context()
 
 	idStr := r.PathValue("id")
 	id, err := uuid.Parse(idStr)
@@ -228,10 +255,8 @@ func (h *UsersHandler) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.users.GetByID(ctx, id)
-	if err != nil {
-		slog.Error("users.get failed", "error", err, "id", idStr)
-		writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "user", idStr))
+	user := h.checkUserTenantScope(w, r, id)
+	if user == nil {
 		return
 	}
 
@@ -247,6 +272,10 @@ func (h *UsersHandler) handleStatusChange(w http.ResponseWriter, r *http.Request
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidID, "user"))
+		return
+	}
+
+	if h.checkUserTenantScope(w, r, id) == nil {
 		return
 	}
 
@@ -285,6 +314,24 @@ func (h *UsersHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidID, "user"))
 		return
+	}
+
+	if h.checkUserTenantScope(w, r, id) == nil {
+		return
+	}
+
+	// Block delete if user has group memberships.
+	if h.groups != nil {
+		groups, err := h.groups.GetUserGroups(ctx, id)
+		if err != nil {
+			slog.Error("users.delete check groups failed", "error", err, "id", idStr)
+			writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToDelete, "user"))
+			return
+		}
+		if len(groups) > 0 {
+			writeError(w, http.StatusConflict, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgUserHasGroups, len(groups)))
+			return
+		}
 	}
 
 	if err := h.users.Delete(ctx, id); err != nil {

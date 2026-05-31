@@ -75,6 +75,7 @@
     "memberAdded": "Member added",
     "memberRemoved": "Member removed",
     "roleUpdated": "Role updated",
+    "failedRoleChange": "Failed to change role",
     "requestReviewed": "Request reviewed"
   }
 }

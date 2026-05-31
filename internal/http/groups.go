@@ -183,20 +183,35 @@ func (h *GroupsHandler) handleTree(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, tree)
 }
 
+// checkGroupTenantScope fetches a group by ID and verifies it belongs to the caller's tenant.
+// Returns the group if accessible, nil + writes error response if not.
+func (h *GroupsHandler) checkGroupTenantScope(w http.ResponseWriter, r *http.Request, id uuid.UUID) *store.GroupData {
+	locale := extractLocale(r)
+	ctx := r.Context()
+
+	group, err := h.groups.GetGroup(ctx, id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "group", id.String()))
+		return nil
+	}
+	if tid := store.TenantIDFromContext(ctx); tid != uuid.Nil && group.TenantID != tid {
+		writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "group", id.String()))
+		return nil
+	}
+	return group
+}
+
 // handleGet returns a single group by ID.
 func (h *GroupsHandler) handleGet(w http.ResponseWriter, r *http.Request) {
 	locale := extractLocale(r)
-	ctx := r.Context()
 
 	id, ok := parsePathUUID(w, r, "id", locale, "group")
 	if !ok {
 		return
 	}
 
-	group, err := h.groups.GetGroup(ctx, id)
-	if err != nil {
-		slog.Error("groups.get failed", "error", err, "id", id)
-		writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "group", id.String()))
+	group := h.checkGroupTenantScope(w, r, id)
+	if group == nil {
 		return
 	}
 
@@ -213,10 +228,8 @@ func (h *GroupsHandler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	group, err := h.groups.GetGroup(ctx, id)
-	if err != nil {
-		slog.Error("groups.update get failed", "error", err, "id", id)
-		writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "group", id.String()))
+	group := h.checkGroupTenantScope(w, r, id)
+	if group == nil {
 		return
 	}
 
@@ -284,6 +297,10 @@ func (h *GroupsHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.checkGroupTenantScope(w, r, id) == nil {
+		return
+	}
+
 	if err := h.groups.DeleteGroup(ctx, id); err != nil {
 		slog.Error("groups.delete failed", "error", err, "id", id)
 		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToDelete, "group"))
@@ -300,6 +317,10 @@ func (h *GroupsHandler) handleListMembers(w http.ResponseWriter, r *http.Request
 
 	id, ok := parsePathUUID(w, r, "id", locale, "group")
 	if !ok {
+		return
+	}
+
+	if h.checkGroupTenantScope(w, r, id) == nil {
 		return
 	}
 
@@ -324,6 +345,10 @@ func (h *GroupsHandler) handleAddMember(w http.ResponseWriter, r *http.Request) 
 
 	groupID, ok := parsePathUUID(w, r, "id", locale, "group")
 	if !ok {
+		return
+	}
+
+	if h.checkGroupTenantScope(w, r, groupID) == nil {
 		return
 	}
 
@@ -380,6 +405,10 @@ func (h *GroupsHandler) handleRemoveMember(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if h.checkGroupTenantScope(w, r, groupID) == nil {
+		return
+	}
+
 	userIDStr := r.PathValue("userId")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
@@ -403,6 +432,10 @@ func (h *GroupsHandler) handleRoleChange(w http.ResponseWriter, r *http.Request)
 
 	groupID, ok := parsePathUUID(w, r, "id", locale, "group")
 	if !ok {
+		return
+	}
+
+	if h.checkGroupTenantScope(w, r, groupID) == nil {
 		return
 	}
 
@@ -448,6 +481,10 @@ func (h *GroupsHandler) handleListJoinRequests(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if h.checkGroupTenantScope(w, r, id) == nil {
+		return
+	}
+
 	status := r.URL.Query().Get("status")
 	requests, err := h.groups.ListJoinRequests(ctx, id, status)
 	if err != nil {
@@ -468,8 +505,12 @@ func (h *GroupsHandler) handleReviewJoinRequest(w http.ResponseWriter, r *http.R
 	locale := extractLocale(r)
 	ctx := r.Context()
 
-	_, ok := parsePathUUID(w, r, "id", locale, "group")
+	groupID, ok := parsePathUUID(w, r, "id", locale, "group")
 	if !ok {
+		return
+	}
+
+	if h.checkGroupTenantScope(w, r, groupID) == nil {
 		return
 	}
 

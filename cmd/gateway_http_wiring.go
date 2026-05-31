@@ -204,7 +204,7 @@ func (d *gatewayDeps) wireHTTPHandlersOnServer(
 
 	// Multi-auth module handlers (user, group, audit)
 	if d.pgStores != nil {
-		d.server.SetUsersHandler(httpapi.NewUsersHandler(d.pgStores.Users))
+		d.server.SetUsersHandler(httpapi.NewUsersHandler(d.pgStores.Users, d.pgStores.Groups))
 		d.server.SetGroupsHandler(httpapi.NewGroupsHandler(d.pgStores.Groups))
 		d.server.SetAuditHandler(httpapi.NewAuditHandler(d.pgStores.Audit))
 

@@ -39,6 +39,7 @@
   "global": "Toàn cục",
   "invalidJson": "Cú pháp JSON không hợp lệ",
   "items": "mục",
+  "totalItems": "{{count}} mục",
   "live": "Trực tiếp",
   "loading": "Đang tải...",
   "loadingModels": "Đang tải model...",

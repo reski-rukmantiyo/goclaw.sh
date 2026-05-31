@@ -305,6 +305,8 @@ const (
 	MsgAuthRefreshTokenInvalid = "error.auth_refresh_token_invalid" // "invalid or expired refresh token"
 	MsgAuthPasswordMismatch    = "error.auth_password_mismatch"     // "current password is incorrect"
 	MsgAuthPasswordTooShort    = "error.auth_password_too_short"    // "password must be at least %d characters"
+	MsgAuthPasswordComplexity  = "error.auth_password_complexity"   // "password must contain uppercase letter and symbol"
+	MsgUserHasGroups           = "error.user_has_groups"            // "user is member of %d group(s), remove from groups first"
 	MsgAuthOIDCFailed          = "error.auth_oidc_failed"           // "OIDC authentication failed: %s"
 	MsgAuthStateInvalid        = "error.auth_state_invalid"         // "invalid or expired OAuth state"
 )

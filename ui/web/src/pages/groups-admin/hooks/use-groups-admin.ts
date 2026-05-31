@@ -188,13 +188,13 @@ export function useGroupMembers(groupId: string | null) {
       userId: string;
       role: string;
     }) => {
-      await http.patch(`/v1/groups/${groupId}/members/${userId}`, {
+      await http.patch(`/v1/groups/${groupId}/members/${userId}/role`, {
         role,
       });
     },
     onSuccess: () => {
       invalidate();
-      toast.success(i18next.t("groups-admin:toast.roleChanged"));
+      toast.success(i18next.t("groups-admin:toast.roleUpdated"));
     },
     onError: (err: Error) => {
       toast.error(

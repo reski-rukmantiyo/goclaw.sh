@@ -281,6 +281,8 @@ func init() {
 		MsgAuthRefreshTokenInvalid: "刷新令牌无效或已过期",
 		MsgAuthPasswordMismatch:    "当前密码不正确",
 		MsgAuthPasswordTooShort:    "密码至少需要 %d 个字符",
+		MsgAuthPasswordComplexity:  "密码必须包含至少一个大写字母和一个特殊字符",
+		MsgUserHasGroups:           "用户是 %d 个组的成员，请先从组中移除",
 		MsgAuthOIDCFailed:          "OIDC 认证失败：%s",
 		MsgAuthStateInvalid:        "无效或过期的 OAuth 状态",
 	})

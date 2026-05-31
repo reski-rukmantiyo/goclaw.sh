@@ -240,8 +240,13 @@ func (h *AuthHandler) handlePasswordChange(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid_request", i18n.T(locale, i18n.MsgRequired, "current_password and new_password"))
 		return
 	}
-	if len(req.NewPassword) < 8 {
-		writeError(w, http.StatusBadRequest, "password_too_short", i18n.T(locale, i18n.MsgAuthPasswordTooShort, 8))
+	if len(req.NewPassword) < auth.MinPasswordLength {
+		writeError(w, http.StatusBadRequest, "password_too_short", i18n.T(locale, i18n.MsgAuthPasswordTooShort, auth.MinPasswordLength))
+		return
+	}
+	_, hasUpper, hasSymbol := auth.ValidatePasswordComplexity(req.NewPassword)
+	if !hasUpper || !hasSymbol {
+		writeError(w, http.StatusBadRequest, "password_complexity", i18n.T(locale, i18n.MsgAuthPasswordComplexity))
 		return
 	}
 

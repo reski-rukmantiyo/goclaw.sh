@@ -75,6 +75,7 @@
     "memberAdded": "Đã thêm thành viên",
     "memberRemoved": "Đã xóa thành viên",
     "roleUpdated": "Đã cập nhật vai trò",
+    "failedRoleChange": "Không thể thay đổi vai trò",
     "requestReviewed": "Đã xem xét yêu cầu"
   }
 }

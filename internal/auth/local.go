@@ -3,11 +3,29 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"unicode"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
-const bcryptCost = 12
+const (
+	bcryptCost        = 12
+	MinPasswordLength = 8
+)
+
+// ValidatePasswordComplexity checks minimum length, uppercase letter, and symbol.
+func ValidatePasswordComplexity(password string) (lengthOK, hasUpper, hasSymbol bool) {
+	lengthOK = len(password) >= MinPasswordLength
+	for _, r := range password {
+		if unicode.IsUpper(r) {
+			hasUpper = true
+		}
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			hasSymbol = true
+		}
+	}
+	return
+}
 
 // HashPassword hashes a plaintext password using bcrypt.
 func HashPassword(password string) (string, error) {

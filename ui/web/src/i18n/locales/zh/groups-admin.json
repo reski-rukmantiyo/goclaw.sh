@@ -75,6 +75,7 @@
     "memberAdded": "成员已添加",
     "memberRemoved": "成员已移除",
     "roleUpdated": "角色已更新",
+    "failedRoleChange": "更改角色失败",
     "requestReviewed": "请求已审核"
   }
 }

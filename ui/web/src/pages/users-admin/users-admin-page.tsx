@@ -345,6 +345,7 @@ function UsersAdminPage() {
                 placeholder={t("passwordPlaceholder")}
                 className="text-base md:text-sm"
               />
+              <p className="text-xs text-muted-foreground mt-1">{t("passwordHint")}</p>
             </div>
           </div>
           <DialogFooter>
