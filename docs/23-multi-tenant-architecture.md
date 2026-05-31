@@ -145,6 +145,8 @@ sequenceDiagram
 
 Each tenant gets isolated: **agents, sessions, teams, memory, LLM providers, MCP servers, skills**. A tenant-bound API key automatically scopes every request — no extra headers needed.
 
+> **User vs tenant user:** The `users` table stores global identity (email, auth provider, status). The `tenant_users` table stores per-tenant membership (role, display name override, metadata). One user can belong to many tenants. See [26 — Users, Roles, and Membership](26-users-roles-and-membership.md) for the full role matrix.
+
 ---
 
 ## Tenant Resolution
@@ -361,7 +363,7 @@ erDiagram
     TENANT_USERS {
         uuid tenant_id FK
         string user_id
-        string role
+        string role         // owner | admin | operator | member | viewer
     }
 
     API_KEYS {
@@ -374,6 +376,8 @@ erDiagram
 ```
 
 40+ tables carry `tenant_id` with NOT NULL constraint. Exception: `api_keys.tenant_id` is nullable — NULL means system-level cross-tenant key.
+
+For the complete user/role reference — including agent shares, team grants, and group roles — see [26 — Users, Roles, and Membership](26-users-roles-and-membership.md).
 
 ### v3 Tenant-Scoped Stores
 
