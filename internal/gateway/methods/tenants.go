@@ -31,11 +31,12 @@ type TenantsMethods struct {
 	msgBus            *bus.MessageBus
 	workspace         string // base workspace directory for tenant dirs
 	defaultSSLMode    string // default sslmode for auto-generated tenant DBs
+	masterDSN         string // master DSN for superuser schema operations on tenant DBs
 }
 
 // NewTenantsMethods creates a new TenantsMethods handler.
-func NewTenantsMethods(tenantStore store.TenantStore, tenantDBConnStore store.TenantDBConnectionStore, tenantDBManager store.TenantDBManager, masterDB *sql.DB, msgBus *bus.MessageBus, workspace string, defaultSSLMode string) *TenantsMethods {
-	return &TenantsMethods{tenantStore: tenantStore, tenantDBConnStore: tenantDBConnStore, tenantDBManager: tenantDBManager, masterDB: masterDB, msgBus: msgBus, workspace: workspace, defaultSSLMode: defaultSSLMode}
+func NewTenantsMethods(tenantStore store.TenantStore, tenantDBConnStore store.TenantDBConnectionStore, tenantDBManager store.TenantDBManager, masterDB *sql.DB, msgBus *bus.MessageBus, workspace string, defaultSSLMode string, masterDSN string) *TenantsMethods {
+	return &TenantsMethods{tenantStore: tenantStore, tenantDBConnStore: tenantDBConnStore, tenantDBManager: tenantDBManager, masterDB: masterDB, msgBus: msgBus, workspace: workspace, defaultSSLMode: defaultSSLMode, masterDSN: masterDSN}
 }
 
 // Register registers tenant management RPC methods.
@@ -168,7 +169,7 @@ func (m *TenantsMethods) handleCreate(ctx context.Context, client *gateway.Clien
 				SSLMode:      params.DBConnection.SSLMode,
 			}
 		}
-		provisionedConn, err := pg.ProvisionTenantDB(ctx, m.masterDB, tenant.ID, tenant.Slug, dbConn, "", m.defaultSSLMode)
+		provisionedConn, err := pg.ProvisionTenantDB(ctx, m.masterDB, tenant.ID, tenant.Slug, dbConn, "", m.defaultSSLMode, m.masterDSN)
 		if err != nil {
 			slog.Error("tenants.create: db provision failed", "tenant_id", tenant.ID, "error", err)
 			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgTenantDBProvisionFailed, err.Error())))
