@@ -320,13 +320,7 @@ func (s *PGRoleStore) ListGroupRoles(ctx context.Context, groupID uuid.UUID) ([]
 
 func (s *PGRoleStore) GetUserEffectivePermissions(ctx context.Context, userID string, tenantID uuid.UUID) ([]string, error) {
 	// group_members.user_id is UUID in PG, while user_roles.user_id is VARCHAR.
-	// Passing userID as uuid.UUID satisfies both: VARCHAR = UUID works (implicit cast),
-	// but UUID = TEXT does not.
-	uid, err := uuid.Parse(userID)
-	if err != nil {
-		return nil, err
-	}
-
+	// We pass userID as string and cast to uuid for group_members comparisons.
 	// Union of:
 	// 1. Direct role permissions
 	// 2. Group role permissions (all groups user belongs to)
@@ -342,7 +336,7 @@ func (s *PGRoleStore) GetUserEffectivePermissions(ctx context.Context, userID st
 			SELECT gr.role_id
 			 FROM group_roles gr
 			 JOIN group_members gm ON gm.group_id = gr.group_id
-			 WHERE gm.user_id = $2
+			 WHERE gm.user_id = $2::uuid
 			UNION
 			-- ancestor group roles
 			SELECT gr.role_id
@@ -352,7 +346,7 @@ func (s *PGRoleStore) GetUserEffectivePermissions(ctx context.Context, userID st
 					SELECT g.parent_group_id
 					FROM groups g
 					JOIN group_members gm ON gm.group_id = g.id
-					WHERE gm.user_id = $2
+					WHERE gm.user_id = $2::uuid
 					UNION ALL
 					SELECT g.parent_group_id
 					FROM groups g
@@ -362,7 +356,7 @@ func (s *PGRoleStore) GetUserEffectivePermissions(ctx context.Context, userID st
 			)
 		 )
 		 ORDER BY rp.permission`,
-		tenantID, uid,
+		tenantID, userID,
 	)
 	if err != nil {
 		return nil, err

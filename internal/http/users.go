@@ -131,8 +131,10 @@ func (h *UsersHandler) handleGetMyPermissions(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	isOwner := false
-	if h.tenants != nil {
+	// Check owner via context role first (covers gateway token / system users),
+	// then fall back to DB is_owner flag.
+	isOwner := store.IsOwnerRole(ctx)
+	if !isOwner && h.tenants != nil {
 		isOwner, _ = h.tenants.IsOwner(ctx, tenantID, userID)
 	}
 
