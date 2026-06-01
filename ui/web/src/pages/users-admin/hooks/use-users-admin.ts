@@ -78,16 +78,29 @@ export function useUsersAdmin(params: UserListParams = {}) {
     },
   });
 
-  const toggleAdmin = useMutation({
-    mutationFn: async (userId: string) => {
-      return http.patch<{ role: string }>(`/v1/users/${userId}/admin`, {});
+  const assignRole = useMutation({
+    mutationFn: async ({ userId, roleId }: { userId: string; roleId: string }) => {
+      await http.post(`/v1/users/${userId}/roles`, { role_id: roleId });
     },
     onSuccess: () => {
       invalidate();
-      toast.success(i18next.t("users-admin:toast.adminToggled"));
+      toast.success(i18next.t("users-admin:toast.roleAssigned"));
     },
     onError: (err: Error) => {
-      toast.error(i18next.t("users-admin:toast.failedAdminToggle"), err.message);
+      toast.error(i18next.t("users-admin:toast.failedRoleAssign"), err.message);
+    },
+  });
+
+  const unassignRole = useMutation({
+    mutationFn: async ({ userId, roleId }: { userId: string; roleId: string }) => {
+      await http.delete(`/v1/users/${userId}/roles/${roleId}`);
+    },
+    onSuccess: () => {
+      invalidate();
+      toast.success(i18next.t("users-admin:toast.roleUnassigned"));
+    },
+    onError: (err: Error) => {
+      toast.error(i18next.t("users-admin:toast.failedRoleUnassign"), err.message);
     },
   });
 
@@ -99,10 +112,12 @@ export function useUsersAdmin(params: UserListParams = {}) {
     changeStatus: changeStatus.mutateAsync,
     deactivateUser: deactivateUser.mutateAsync,
     createUser: createUser.mutateAsync,
-    toggleAdmin: toggleAdmin.mutateAsync,
+    assignRole: assignRole.mutateAsync,
+    unassignRole: unassignRole.mutateAsync,
     isStatusChanging: changeStatus.isPending,
     isDeactivating: deactivateUser.isPending,
     isCreating: createUser.isPending,
-    isTogglingAdmin: toggleAdmin.isPending,
+    isAssigningRole: assignRole.isPending,
+    isUnassigningRole: unassignRole.isPending,
   };
 }

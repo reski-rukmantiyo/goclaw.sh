@@ -10,6 +10,15 @@ import { TEAM_RELATED_EVENTS, Methods } from "@/api/protocol";
 import { useTeamEventStore } from "@/stores/use-team-event-store";
 import type { TenantMembership } from "@/types/tenant";
 
+async function fetchPermissions(http: HttpClient) {
+  try {
+    const res = await http.get<{ is_owner: boolean; permissions: string[] }>("/v1/users/me/permissions");
+    useAuthStore.getState().setPermissions(res.permissions ?? []);
+  } catch {
+    // Non-critical: silently ignore
+  }
+}
+
 // In dev mode, connect directly to backend WS (bypass Vite proxy).
 // In production, use relative "/ws" path.
 const WS_URL = import.meta.env.VITE_WS_URL || "/ws";
@@ -41,6 +50,8 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
           store.setRole(client.role || "");
           store.setTenant(client.tenantId, client.tenantName, client.tenantSlug, client.isOwner);
           store.setConnectInfo({ isMasterScope: client.isMasterScope, edition: client.edition });
+          // Fetch permissions asynchronously
+          fetchPermissions(http);
           // Fetch tenant memberships asynchronously
           client.call<{ tenants: TenantMembership[] }>(Methods.TENANTS_MINE)
             .then((res) => {
@@ -80,6 +91,7 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
           store.setRole("");
           store.setTenant("", "", "", false);
           store.setConnectInfo({ isMasterScope: false, edition: "standard" });
+          store.setPermissions([]);
           store.setAvailableTenants([]);
           store.setTenantSelected(false);
         }

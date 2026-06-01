@@ -140,16 +140,9 @@ export function useGroupMembers(groupId: string | null) {
   }, [queryClient, groupId]);
 
   const addMember = useMutation({
-    mutationFn: async ({
-      userId,
-      role,
-    }: {
-      userId: string;
-      role: string;
-    }) => {
+    mutationFn: async (userId: string) => {
       await http.post(`/v1/groups/${groupId}/members`, {
         user_id: userId,
-        role,
       });
     },
     onSuccess: () => {
@@ -180,25 +173,33 @@ export function useGroupMembers(groupId: string | null) {
     },
   });
 
-  const changeMemberRole = useMutation({
-    mutationFn: async ({
-      userId,
-      role,
-    }: {
-      userId: string;
-      role: string;
-    }) => {
-      await http.patch(`/v1/groups/${groupId}/members/${userId}/role`, {
-        role,
-      });
+  const assignRole = useMutation({
+    mutationFn: async ({ roleId }: { roleId: string }) => {
+      await http.post(`/v1/groups/${groupId}/roles`, { role_id: roleId });
     },
     onSuccess: () => {
       invalidate();
-      toast.success(i18next.t("groups-admin:toast.roleUpdated"));
+      toast.success(i18next.t("groups-admin:toast.roleAssigned"));
     },
     onError: (err: Error) => {
       toast.error(
-        i18next.t("groups-admin:toast.failedRoleChange"),
+        i18next.t("groups-admin:toast.failedRoleAssign"),
+        err.message,
+      );
+    },
+  });
+
+  const unassignRole = useMutation({
+    mutationFn: async ({ roleId }: { roleId: string }) => {
+      await http.delete(`/v1/groups/${groupId}/roles/${roleId}`);
+    },
+    onSuccess: () => {
+      invalidate();
+      toast.success(i18next.t("groups-admin:toast.roleUnassigned"));
+    },
+    onError: (err: Error) => {
+      toast.error(
+        i18next.t("groups-admin:toast.failedRoleUnassign"),
         err.message,
       );
     },
@@ -210,9 +211,12 @@ export function useGroupMembers(groupId: string | null) {
     refresh: invalidate,
     addMember: addMember.mutateAsync,
     removeMember: removeMember.mutateAsync,
-    changeMemberRole: changeMemberRole.mutateAsync,
+    assignRole: assignRole.mutateAsync,
+    unassignRole: unassignRole.mutateAsync,
     isAddingMember: addMember.isPending,
     isRemovingMember: removeMember.isPending,
+    isAssigningRole: assignRole.isPending,
+    isUnassigningRole: unassignRole.isPending,
   };
 }
 

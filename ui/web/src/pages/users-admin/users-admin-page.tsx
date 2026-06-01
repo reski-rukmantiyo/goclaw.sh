@@ -62,8 +62,6 @@ function UsersAdminPage() {
     deactivateUser,
     createUser,
     isCreating,
-    toggleAdmin,
-    isTogglingAdmin,
   } = useUsersAdmin({ search, status: statusFilter });
 
   const spinning = useMinLoading(loading);
@@ -86,7 +84,6 @@ function UsersAdminPage() {
         email: email.trim(),
         display_name: displayName.trim(),
         password: password.trim(),
-        role: "member",
       });
       setCreateOpen(false);
       setEmail("");
@@ -244,9 +241,7 @@ function UsersAdminPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge variant="secondary" className="text-xs">
-                        {t("role.member")}
-                      </Badge>
+                      <span className="text-muted-foreground text-xs">—</span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {user.last_login_at
@@ -281,15 +276,6 @@ function UsersAdminPage() {
                             <ShieldCheck className="h-3.5 w-3.5" />
                           </Button>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => toggleAdmin(user.id)}
-                          disabled={isTogglingAdmin}
-                          title={t("actions.toggleRole")}
-                        >
-                          <ShieldCheck className="h-3.5 w-3.5" />
-                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"

@@ -8,7 +8,6 @@ import {
   Trash2,
   Users,
   UserPlus,
-  ShieldCheck,
   CheckCircle,
   XCircle,
   LayoutList,
@@ -92,7 +91,6 @@ function GroupsAdminPage() {
   // Member management dialog state
   const [memberGroup, setMemberGroup] = useState<string | null>(null);
   const [addMemberUserId, setAddMemberUserId] = useState("");
-  const [addMemberRole, setAddMemberRole] = useState("member");
 
   // Join requests dialog state
   const [requestGroup, setRequestGroup] = useState<string | null>(null);
@@ -103,7 +101,6 @@ function GroupsAdminPage() {
     loading: membersLoading,
     addMember,
     removeMember,
-    changeMemberRole,
     isAddingMember,
   } = useGroupMembers(memberGroup);
 
@@ -201,9 +198,8 @@ function GroupsAdminPage() {
   const handleAddMember = async () => {
     if (!addMemberUserId.trim() || !memberGroup) return;
     try {
-      await addMember({ userId: addMemberUserId.trim(), role: addMemberRole });
+      await addMember(addMemberUserId.trim());
       setAddMemberUserId("");
-      setAddMemberRole("member");
     } catch {
       // error handled by mutation
     }
@@ -237,7 +233,6 @@ function GroupsAdminPage() {
   useEffect(() => {
     if (!memberGroup) {
       setAddMemberUserId("");
-      setAddMemberRole("member");
     }
   }, [memberGroup]);
 
@@ -580,22 +575,6 @@ function GroupsAdminPage() {
                 placeholder={t("members.addPlaceholder")}
                 className="flex-1"
               />
-              <Select
-                value={addMemberRole}
-                onValueChange={setAddMemberRole}
-              >
-                <SelectTrigger size="sm" className="w-[110px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="member">
-                    {t("members.role.member")}
-                  </SelectItem>
-                  <SelectItem value="admin">
-                    {t("members.role.admin")}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
               <Button
                 size="sm"
                 onClick={handleAddMember}
@@ -650,50 +629,10 @@ function GroupsAdminPage() {
                           </div>
                         </td>
                         <td className="px-3 py-2">
-                          <Badge
-                            variant={
-                              member.role === "admin" ? "default" : "secondary"
-                            }
-                            className="text-xs gap-1"
-                          >
-                            {member.role === "admin" && (
-                              <ShieldCheck className="h-3 w-3" />
-                            )}
-                            {t(`members.role.${member.role}`)}
-                          </Badge>
+                          <span className="text-muted-foreground text-xs">—</span>
                         </td>
                         <td className="px-3 py-2 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            {member.role === "member" && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  changeMemberRole({
-                                    userId: member.user_id,
-                                    role: "admin",
-                                  })
-                                }
-                                title={t("members.promoteToAdmin")}
-                              >
-                                <ShieldCheck className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                            {member.role === "admin" && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  changeMemberRole({
-                                    userId: member.user_id,
-                                    role: "member",
-                                  })
-                                }
-                                title={t("members.demoteToMember")}
-                              >
-                                <Users className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
                             <Button
                               variant="ghost"
                               size="sm"

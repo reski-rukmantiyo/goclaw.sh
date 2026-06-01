@@ -293,5 +293,11 @@ func init() {
 		MsgUserDeleteBlockedTenants: "用户已注册 %d 个租户，请先取消注册",
 		MsgAuthOIDCFailed:          "OIDC 认证失败：%s",
 		MsgAuthStateInvalid:        "无效或过期的 OAuth 状态",
+
+		// Roles
+		MsgRoleAssigned:               "已分配角色",
+		MsgRoleUnassigned:             "已取消分配角色",
+		MsgRoleDeleteBlocked:          "无法删除角色：已分配给 %d 个用户或组",
+		MsgGroupDeleteBlockedChildren: "无法删除组：包含 %d 个子组",
 	})
 }

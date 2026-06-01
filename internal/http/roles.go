@@ -113,7 +113,7 @@ func (h *RolesHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		ID:          uuid.New(),
 		TenantID:    tenantID,
 		Name:        input.Name,
-		Description: strPtr(input.Description),
+		Description: roleStrPtr(input.Description),
 		Permissions: []string{},
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
@@ -567,7 +567,7 @@ func (h *RolesHandler) handleUnassignGroupRole(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, map[string]string{"status": "unassigned"})
 }
 
-func strPtr(s string) *string {
+func roleStrPtr(s string) *string {
 	if s == "" {
 		return nil
 	}

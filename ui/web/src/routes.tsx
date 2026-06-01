@@ -140,6 +140,9 @@ const GroupsAdminPage = lazyWithRetry(() =>
 const AuditLogPage = lazyWithRetry(() =>
   import("@/pages/audit-log/audit-log-page"),
 );
+const RoleManagementPage = lazyWithRetry(() =>
+  import("@/pages/role-management/role-management-page"),
+);
 const ProfilePage = lazyWithRetry(() =>
   import("@/pages/profile/profile-page").then((m) => ({ default: m.ProfilePage })),
 );
@@ -232,6 +235,7 @@ export function AppRoutes() {
             <Route path="admin/groups" element={<RequireAdmin><GroupsAdminPage /></RequireAdmin>} />
             <Route path="admin/groups/:id" element={<RequireAdmin><GroupsAdminPage /></RequireAdmin>} />
             <Route path="admin/audit" element={<RequireAdmin><AuditLogPage /></RequireAdmin>} />
+            <Route path="admin/roles" element={<RequireAdmin><RoleManagementPage /></RequireAdmin>} />
 
             {/* Operator+ pages */}
             <Route path="traces" element={<TracesPage key="list" />} />

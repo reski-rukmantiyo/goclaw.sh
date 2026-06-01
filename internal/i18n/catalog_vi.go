@@ -290,8 +290,14 @@ func init() {
 		MsgAuthPasswordTooShort:    "mật khẩu phải có ít nhất %d ký tự",
 		MsgAuthPasswordComplexity:  "mật khẩu phải chứa ít nhất một chữ hoa và một ký tự đặc biệt",
 		MsgUserHasGroups:           "người dùng là thành viên của %d nhóm, vui lòng xóa khỏi nhóm trước",
-		MsgUserDeleteBlockedTenants: "ngườI really need to continue implementing. Let me add the translations and then check the build.",
+		MsgUserDeleteBlockedTenants: "người dùng đã đăng ký %d tenant, vui lòng hủy đăng ký trước",
 		MsgAuthOIDCFailed:          "xác thực OIDC thất bại: %s",
 		MsgAuthStateInvalid:        "OAuth state không hợp lệ hoặc đã hết hạn",
+
+		// Roles
+		MsgRoleAssigned:               "đã gán vai trò",
+		MsgRoleUnassigned:             "đã bỏ gán vai trò",
+		MsgRoleDeleteBlocked:          "không thể xóa vai trò: đã gán cho %d thành viên hoặc nhóm",
+		MsgGroupDeleteBlockedChildren: "không thể xóa nhóm: có %d nhóm con",
 	})
 }

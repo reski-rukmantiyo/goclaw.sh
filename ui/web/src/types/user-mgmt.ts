@@ -101,3 +101,14 @@ export interface LoginResponse {
 export interface AuthProvidersResponse {
   providers: AuthProvider[];
 }
+
+export interface Role {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description?: string | null;
+  is_system: boolean;
+  permissions: string[];
+  created_at: string;
+  updated_at: string;
+}

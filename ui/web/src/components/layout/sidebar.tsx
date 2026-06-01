@@ -140,6 +140,7 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
         <SidebarGroup label={t("groups.system")} collapsed={collapsed}>
           <SidebarItem to={route(currentTenantSlug, ROUTES.USER_MGMT)} icon={Users} label={t("nav.userMgmt")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.GROUPS)} icon={FolderTree} label={t("nav.groups")} collapsed={collapsed} />
+          <SidebarItem to={route(currentTenantSlug, ROUTES.ROLE_MGMT)} icon={ShieldCheck} label={t("nav.roles")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.AUDIT_LOG)} icon={FileText} label={t("nav.auditLog")} collapsed={collapsed} />
           {isOwner && (
             <SidebarItem to={route(currentTenantSlug, ROUTES.TENANTS)} icon={Building2} label={t("nav.tenants")} collapsed={collapsed} />

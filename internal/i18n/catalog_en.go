@@ -293,5 +293,11 @@ func init() {
 		MsgUserDeleteBlockedTenants: "user is enrolled in %d tenant(s), unenroll first",
 		MsgAuthOIDCFailed:          "OIDC authentication failed: %s",
 		MsgAuthStateInvalid:        "invalid or expired OAuth state",
+
+		// Roles
+		MsgRoleAssigned:               "role assigned",
+		MsgRoleUnassigned:             "role unassigned",
+		MsgRoleDeleteBlocked:          "cannot delete role: assigned to %d user(s) or group(s)",
+		MsgGroupDeleteBlockedChildren: "cannot delete group: has %d child group(s)",
 	})
 }

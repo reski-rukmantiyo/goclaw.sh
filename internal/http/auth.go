@@ -233,8 +233,9 @@ func resolveAuthWithBearer(r *http.Request, bearer string) authResult {
 			if tenantID == uuid.Nil {
 				tenantID = store.MasterTenantID
 			}
+			role := resolveJWTRole(r.Context(), claims.Subject, tenantID)
 			return authResult{
-				Role:          permissions.RoleAdmin,
+				Role:          role,
 				Authenticated: true,
 				TenantID:      tenantID,
 				TenantSlug:    resolveTenantSlug(r.Context(), tenantID),
@@ -293,6 +294,40 @@ func resolveTenantSlug(ctx context.Context, tenantID uuid.UUID) string {
 		return tenant.Slug
 	}
 	return ""
+}
+
+// resolveJWTRole derives a legacy role string for a JWT-authenticated user.
+// It checks is_owner first, then falls back to effective permissions.
+func resolveJWTRole(ctx context.Context, userID string, tenantID uuid.UUID) permissions.Role {
+	// Owner bypass
+	if pkgTenantCache != nil {
+		if isOwner, err := pkgTenantCache.store.IsOwner(ctx, tenantID, userID); err == nil && isOwner {
+			return permissions.RoleOwner
+		}
+	}
+	// Permission-based derivation
+	if pkgPermCache != nil {
+		perms, err := pkgPermCache.EffectivePermissions(ctx, userID, tenantID)
+		if err == nil && len(perms) > 0 {
+			if perms[string(permissions.PermSystemManageSettings)] {
+				return permissions.RoleAdmin
+			}
+			// Any write permission → operator; otherwise viewer
+			hasWrite := false
+			for p := range perms {
+				if !strings.HasSuffix(p, ".list") && !strings.HasSuffix(p, ".get") {
+					hasWrite = true
+					break
+				}
+			}
+			if hasWrite {
+				return permissions.RoleOperator
+			}
+			return permissions.RoleViewer
+		}
+	}
+	// Safe fallback when caches are unavailable
+	return permissions.RoleViewer
 }
 
 func resolveTenantHint(ctx context.Context, hint, userID string) (uuid.UUID, bool) {

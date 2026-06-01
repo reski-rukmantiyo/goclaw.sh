@@ -318,4 +318,10 @@ const (
 	MsgUserDeleteBlockedTenants = "error.user_delete_blocked_tenants" // "user is enrolled in %d tenant(s), unenroll first"
 	MsgAuthOIDCFailed          = "error.auth_oidc_failed"           // "OIDC authentication failed: %s"
 	MsgAuthStateInvalid        = "error.auth_state_invalid"         // "invalid or expired OAuth state"
+
+	// --- Roles ---
+	MsgRoleAssigned           = "role.assigned"            // "role assigned"
+	MsgRoleUnassigned         = "role.unassigned"          // "role unassigned"
+	MsgRoleDeleteBlocked      = "role.delete_blocked"      // "cannot delete role: assigned to %d user(s) or group(s)"
+	MsgGroupDeleteBlockedChildren = "group.delete_blocked_children" // "cannot delete group: has %d child group(s)"
 )
