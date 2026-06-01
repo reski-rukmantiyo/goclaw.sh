@@ -124,6 +124,15 @@ func (m *ConfigMethods) handleApply(ctx context.Context, client *gateway.Client,
 		return
 	}
 
+	// Reject auth changes — auth is now tenant-scoped
+	var applyMap map[string]any
+	if err := json5.Unmarshal([]byte(params.Raw), &applyMap); err == nil {
+		if _, ok := applyMap["auth"]; ok {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, "auth config is tenant-scoped")))
+			return
+		}
+	}
+
 	// Extract secrets → save to config_secrets table, strip all from file
 	m.saveSecretsToStore(ctx, newCfg)
 	newCfg.StripSecrets()
@@ -190,6 +199,17 @@ func (m *ConfigMethods) handlePatch(ctx context.Context, client *gateway.Client,
 	if err := json.Unmarshal(currentJSON, merged); err != nil {
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgInternalError, "failed to clone config")))
 		return
+	}
+
+	// Reject auth patches — auth is now tenant-scoped
+	if raw := params.Raw; raw != "" {
+		var patchMap map[string]any
+		if err := json5.Unmarshal([]byte(raw), &patchMap); err == nil {
+			if _, ok := patchMap["auth"]; ok {
+				client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, "auth config is tenant-scoped")))
+				return
+			}
+		}
 	}
 
 	// Apply patch on top

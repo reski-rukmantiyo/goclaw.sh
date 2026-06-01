@@ -42,6 +42,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/sessionclear"
 	"github.com/nextlevelbuilder/goclaw/internal/skills"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/tenantauth"
 	"github.com/nextlevelbuilder/goclaw/internal/tools"
 	"github.com/nextlevelbuilder/goclaw/internal/vault"
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
@@ -643,7 +644,8 @@ func runGateway() {
 
 	// Tenant management RPC + HTTP
 	if pgStores.Tenants != nil {
-		methods.NewTenantsMethods(pgStores.Tenants, pgStores.TenantDBConnections, pgStores.TenantDBManager, pgStores.DB, msgBus, workspace, cfg.Database.TenantDBSSLMode, cfg.Database.PostgresDSN).Register(server.Router())
+		tenantAuthLoader := tenantauth.NewSystemConfigLoader(pgStores.SystemConfigs, cfg.Auth, os.Getenv("GOCLAW_ENCRYPTION_KEY"))
+		methods.NewTenantsMethods(pgStores.Tenants, pgStores.TenantDBConnections, pgStores.TenantDBManager, pgStores.DB, msgBus, workspace, cfg.Database.TenantDBSSLMode, cfg.Database.PostgresDSN, pgStores.SystemConfigs, tenantAuthLoader, os.Getenv("GOCLAW_ENCRYPTION_KEY")).Register(server.Router())
 		server.SetTenantsHandler(httpapi.NewTenantsHandler(pgStores.Tenants, msgBus, workspace))
 		server.Router().SetTenantStore(pgStores.Tenants)
 		// Permission cache for tenant membership checks. Store on deps so

@@ -116,6 +116,9 @@ const TenantsAdminPage = lazyWithRetry(() =>
 const TenantDetailPage = lazyWithRetry(() =>
   import("@/pages/tenants-admin/tenant-detail-page").then((m) => ({ default: m.TenantDetailPage })),
 );
+const TenantAuthPage = lazyWithRetry(() =>
+  import("@/pages/tenant-auth/tenant-auth-page").then((m) => ({ default: m.TenantAuthPage })),
+);
 const BackupRestorePage = lazyWithRetry(() =>
   import("@/pages/backup-restore/backup-restore-page").then((m) => ({ default: m.BackupRestorePage })),
 );
@@ -221,6 +224,7 @@ export function AppRoutes() {
             <Route path="tts" element={<RequireCrossTenant><TtsPage /></RequireCrossTenant>} />
             <Route path="storage" element={<RequireAdmin><StoragePage /></RequireAdmin>} />
             <Route path="packages" element={<RequireAdmin><PackagesPage /></RequireAdmin>} />
+            <Route path="authentication" element={<RequireAdmin><TenantAuthPage /></RequireAdmin>} />
             <Route path="admin/tenants" element={<RequireCrossTenant><TenantsAdminPage /></RequireCrossTenant>} />
             <Route path="admin/tenants/:id" element={<RequireCrossTenant><TenantDetailPage /></RequireCrossTenant>} />
             <Route path="admin/users" element={<RequireAdmin><UsersAdminPage /></RequireAdmin>} />
@@ -262,6 +266,7 @@ export function AppRoutes() {
         <Route path={ROUTES.CRON} element={<LegacyRedirect />} />
         <Route path={ROUTES.CRON_DETAIL} element={<LegacyRedirect />} />
         <Route path={ROUTES.CONFIG} element={<LegacyRedirect />} />
+        <Route path={ROUTES.AUTHENTICATION} element={<LegacyRedirect />} />
         <Route path={ROUTES.PROVIDERS} element={<LegacyRedirect />} />
         <Route path={ROUTES.PROVIDER_DETAIL} element={<LegacyRedirect />} />
         <Route path={ROUTES.API_KEYS} element={<LegacyRedirect />} />

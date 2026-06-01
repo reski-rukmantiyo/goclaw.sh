@@ -14,6 +14,7 @@ interface LocalAuthConfig {
 interface EntraIDAuthConfig {
   enabled: boolean;
   client_id?: string;
+  client_secret?: string;
   tenant_id?: string;
   redirect_uri?: string;
 }
@@ -21,6 +22,7 @@ interface EntraIDAuthConfig {
 interface GoogleAuthConfig {
   enabled: boolean;
   client_id?: string;
+  client_secret?: string;
   redirect_uri?: string;
 }
 
@@ -146,6 +148,16 @@ export function AuthSection({ data, onSave, saving }: Props) {
             />
           </div>
 
+          <div className="grid gap-1.5">
+            <InfoLabel tip={t("auth.entra.clientSecretTip")}>{t("auth.entra.clientSecret")}</InfoLabel>
+            <Input
+              type="password"
+              value={entra?.client_secret ?? ""}
+              onChange={(e) => updateProviders("entra_id", { client_secret: e.target.value })}
+              placeholder="••••••••"
+            />
+          </div>
+
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <KeyRound className="h-3.5 w-3.5" />
             <span>{t("auth.entra.secretManaged")}</span>
@@ -185,6 +197,16 @@ export function AuthSection({ data, onSave, saving }: Props) {
                 placeholder="https://your-domain.com/auth/google/callback"
               />
             </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <InfoLabel tip={t("auth.google.clientSecretTip")}>{t("auth.google.clientSecret")}</InfoLabel>
+            <Input
+              type="password"
+              value={google?.client_secret ?? ""}
+              onChange={(e) => updateProviders("google", { client_secret: e.target.value })}
+              placeholder="••••••••"
+            />
           </div>
 
           <div className="flex items-center gap-2 text-xs text-muted-foreground">

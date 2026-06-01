@@ -151,6 +151,7 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
           {isOwner && (
             <SidebarItem to={route(currentTenantSlug, ROUTES.CONFIG)} icon={Settings} label={t("nav.config")} collapsed={collapsed} />
           )}
+          <SidebarItem to={route(currentTenantSlug, ROUTES.AUTHENTICATION)} icon={ShieldCheck} label={t("nav.authentication")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.APPROVALS)} icon={ShieldCheck} label={t("nav.approvals")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.IMPORT_EXPORT)} icon={ArrowLeftRight} label={t("nav.importExport")} collapsed={collapsed} />
           {isOwner && (

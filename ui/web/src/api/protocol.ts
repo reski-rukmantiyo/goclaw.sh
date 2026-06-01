@@ -183,6 +183,10 @@ export const Methods = {
   TENANTS_USERS_REMOVE: "tenants.users.remove",
   TENANTS_DELETE: "tenants.delete",
 
+  // Tenant auth config
+  TENANT_AUTH_GET: "tenant.auth.get",
+  TENANT_AUTH_PATCH: "tenant.auth.patch",
+
   // WhatsApp
   WHATSAPP_GROUPS_REFRESH: "whatsapp.groups.refresh",
 

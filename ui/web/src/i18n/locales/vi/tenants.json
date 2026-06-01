@@ -34,5 +34,9 @@
   "deleteTenant": "Xóa tổ chức",
   "deleteConfirm": "Bạn có chắc muốn xóa tổ chức này? Hành động này không thể hoàn tác.",
   "deleteWarning": "Tất cả dữ liệu liên quan đến tổ chức này sẽ bị xóa vĩnh viễn.",
-  "typeToConfirm": "Nhập '{{name}}' để xác nhận"
+  "typeToConfirm": "Nhập '{{name}}' để xác nhận",
+  "authentication": "Xác thực",
+  "authenticationDescription": "Cấu hình phương thức đăng nhập và cài đặt phiên cho tổ chức này.",
+  "authSaved": "Đã lưu cài đặt xác thực",
+  "authSaveFailed": "Không thể lưu cài đặt xác thực"
 }

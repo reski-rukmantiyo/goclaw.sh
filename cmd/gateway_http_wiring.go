@@ -17,6 +17,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/media"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/internal/store/pg"
+	"github.com/nextlevelbuilder/goclaw/internal/tenantauth"
 	"github.com/nextlevelbuilder/goclaw/internal/tools"
 )
 
@@ -217,34 +218,19 @@ func (d *gatewayDeps) wireHTTPHandlersOnServer(
 				httpapi.InitJWTManager(jwtManager)
 					d.server.Router().SetJWTManager(jwtManager)
 
-				authH := httpapi.NewAuthHandler(d.pgStores.Users, d.pgStores.Tenants, jwtManager, &d.cfg.Auth)
+				// Per-tenant auth config loader
+				tenantAuthLoader := tenantauth.NewSystemConfigLoader(d.pgStores.SystemConfigs, d.cfg.Auth, os.Getenv("GOCLAW_ENCRYPTION_KEY"))
+
+				authH := httpapi.NewAuthHandler(d.pgStores.Users, d.pgStores.Tenants, jwtManager, tenantAuthLoader)
 				d.server.SetAuthHandler(authH)
 
 				// Permission cache for RBAC
 				permCache := httpapi.NewPermissionCache(d.pgStores.Users, d.pgStores.Groups, d.pgStores.Tenants, 5*time.Minute)
 				httpapi.InitPermCache(permCache)
 
-				// OIDC handler (only if providers configured)
-				var oidcProviders []*auth.OIDCProvider
-				if d.cfg.Auth.EntraIDEnabled() {
-					oidcProviders = append(oidcProviders, auth.NewEntraIDProvider(
-						d.cfg.Auth.Providers.EntraID.ClientID,
-						d.cfg.Auth.Providers.EntraID.ClientSecret,
-						d.cfg.Auth.Providers.EntraID.RedirectURI,
-					))
-				}
-				if d.cfg.Auth.GoogleEnabled() {
-					oidcProviders = append(oidcProviders, auth.NewGoogleProvider(
-						d.cfg.Auth.Providers.Google.ClientID,
-						d.cfg.Auth.Providers.Google.ClientSecret,
-						d.cfg.Auth.Providers.Google.RedirectURI,
-					))
-				}
-				if len(oidcProviders) > 0 {
-					validator := auth.NewOIDCValidator(oidcProviders)
-					oidcH := httpapi.NewOIDCHandler(d.pgStores.Users, d.pgStores.Groups, d.pgStores.Tenants, validator, jwtManager, oidcProviders)
-					d.server.SetOIDCHandler(oidcH)
-				}
+				// OIDC handler — always mount; providers resolved per-tenant at runtime
+				oidcH := httpapi.NewOIDCHandler(d.pgStores.Users, d.pgStores.Groups, d.pgStores.Tenants, tenantAuthLoader, jwtManager)
+				d.server.SetOIDCHandler(oidcH)
 			}
 		}
 	}

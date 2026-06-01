@@ -34,5 +34,9 @@
   "deleteTenant": "删除租户",
   "deleteConfirm": "确定要删除此租户吗？此操作无法撤销。",
   "deleteWarning": "与此租户关联的所有数据将被永久删除。",
-  "typeToConfirm": "输入 '{{name}}' 以确认"
+  "typeToConfirm": "输入 '{{name}}' 以确认",
+  "authentication": "认证",
+  "authenticationDescription": "配置此租户的登录方式和会话设置。",
+  "authSaved": "认证设置已保存",
+  "authSaveFailed": "保存认证设置失败"
 }

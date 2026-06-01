@@ -18,6 +18,7 @@
     "contacts": "联系人",
     "chat": "对话",
     "config": "配置",
+    "authentication": "认证",
     "cron": "定时任务",
     "hooks": "Hooks",
     "customTools": "自定义工具",

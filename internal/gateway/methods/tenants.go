@@ -12,11 +12,13 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
+	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/gateway"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/permissions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/internal/store/pg"
+	"github.com/nextlevelbuilder/goclaw/internal/tenantauth"
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
 
@@ -27,6 +29,9 @@ type TenantsMethods struct {
 	tenantStore       store.TenantStore
 	tenantDBConnStore store.TenantDBConnectionStore
 	tenantDBManager   store.TenantDBManager
+	systemConfigStore store.SystemConfigStore
+	authLoader        tenantauth.Loader
+	encKey            string
 	masterDB          *sql.DB
 	msgBus            *bus.MessageBus
 	workspace         string // base workspace directory for tenant dirs
@@ -35,8 +40,8 @@ type TenantsMethods struct {
 }
 
 // NewTenantsMethods creates a new TenantsMethods handler.
-func NewTenantsMethods(tenantStore store.TenantStore, tenantDBConnStore store.TenantDBConnectionStore, tenantDBManager store.TenantDBManager, masterDB *sql.DB, msgBus *bus.MessageBus, workspace string, defaultSSLMode string, masterDSN string) *TenantsMethods {
-	return &TenantsMethods{tenantStore: tenantStore, tenantDBConnStore: tenantDBConnStore, tenantDBManager: tenantDBManager, masterDB: masterDB, msgBus: msgBus, workspace: workspace, defaultSSLMode: defaultSSLMode, masterDSN: masterDSN}
+func NewTenantsMethods(tenantStore store.TenantStore, tenantDBConnStore store.TenantDBConnectionStore, tenantDBManager store.TenantDBManager, masterDB *sql.DB, msgBus *bus.MessageBus, workspace string, defaultSSLMode string, masterDSN string, systemConfigStore store.SystemConfigStore, authLoader tenantauth.Loader, encKey string) *TenantsMethods {
+	return &TenantsMethods{tenantStore: tenantStore, tenantDBConnStore: tenantDBConnStore, tenantDBManager: tenantDBManager, masterDB: masterDB, msgBus: msgBus, workspace: workspace, defaultSSLMode: defaultSSLMode, masterDSN: masterDSN, systemConfigStore: systemConfigStore, authLoader: authLoader, encKey: encKey}
 }
 
 // Register registers tenant management RPC methods.
@@ -50,6 +55,20 @@ func (m *TenantsMethods) Register(router *gateway.MethodRouter) {
 	router.Register("tenants.users.remove", m.handleUsersRemove)
 	router.Register("tenants.delete", m.handleDelete)
 	router.Register("tenants.mine", m.handleMine)
+	router.Register(protocol.MethodTenantAuthGet, m.requireAdmin(m.handleAuthGet))
+	router.Register(protocol.MethodTenantAuthPatch, m.requireAdmin(m.handleAuthPatch))
+}
+
+// requireAdmin gates handlers to admin+owner roles.
+func (m *TenantsMethods) requireAdmin(next gateway.MethodHandler) gateway.MethodHandler {
+	return func(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+		if !permissions.HasMinRole(client.Role(), permissions.RoleAdmin) {
+			locale := store.LocaleFromContext(ctx)
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrUnauthorized, i18n.T(locale, i18n.MsgPermissionDenied, req.Method)))
+			return
+		}
+		next(ctx, client, req)
+	}
 }
 
 func (m *TenantsMethods) handleList(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
@@ -244,6 +263,19 @@ func (m *TenantsMethods) handleUpdate(ctx context.Context, client *gateway.Clien
 		slog.Error("tenants.update failed", "error", err)
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToUpdate, "tenant", err.Error())))
 		return
+	}
+
+	// Sync auth settings to system_configs if present
+	if authRaw, ok := params.Settings["auth"]; ok && m.systemConfigStore != nil {
+		authJSON, _ := json.Marshal(authRaw)
+		var authCfg config.AuthConfig
+		if err := json.Unmarshal(authJSON, &authCfg); err == nil {
+			if err := tenantauth.SyncAuthConfigToSystemConfigs(ctx, m.systemConfigStore, id, &authCfg, m.encKey); err != nil {
+				slog.Warn("tenants.update: failed to sync auth config", "tenant_id", id, "error", err)
+			} else {
+				m.authLoader.Invalidate(id)
+			}
+		}
 	}
 
 	m.emitCacheInvalidate(bus.CacheKindTenantUsers, id.String())
@@ -496,6 +528,57 @@ func (m *TenantsMethods) handleMine(ctx context.Context, client *gateway.Client,
 		}
 
 		client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"tenants": entries}))
+}
+
+func (m *TenantsMethods) handleAuthGet(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	tenantID := client.TenantID()
+	if tenantID == uuid.Nil {
+		tenantID = store.MasterTenantID
+	}
+
+	cfg, err := m.authLoader.LoadAuthConfig(ctx, tenantID)
+	if err != nil {
+		slog.Error("tenant.auth.get failed", "tenant_id", tenantID, "error", err)
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgInternalError, "auth config")))
+		return
+	}
+
+	// Mask secrets before sending to client
+	if cfg.Providers.EntraID != nil && cfg.Providers.EntraID.ClientSecret != "" {
+		cfg.Providers.EntraID.ClientSecret = "***"
+	}
+	if cfg.Providers.Google != nil && cfg.Providers.Google.ClientSecret != "" {
+		cfg.Providers.Google.ClientSecret = "***"
+	}
+
+	client.SendResponse(protocol.NewOKResponse(req.ID, cfg))
+}
+
+func (m *TenantsMethods) handleAuthPatch(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	tenantID := client.TenantID()
+	if tenantID == uuid.Nil {
+		tenantID = store.MasterTenantID
+	}
+
+	var params config.AuthConfig
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidJSON)))
+			return
+		}
+	}
+
+	if err := tenantauth.SyncAuthConfigToSystemConfigs(ctx, m.systemConfigStore, tenantID, &params, m.encKey); err != nil {
+		slog.Error("tenant.auth.patch sync failed", "tenant_id", tenantID, "error", err)
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToUpdate, "auth config", err.Error())))
+		return
+	}
+
+	m.authLoader.Invalidate(tenantID)
+	m.emitCacheInvalidate(bus.CacheKindTenants, tenantID.String())
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]string{"ok": "true"}))
 }
 
 func (m *TenantsMethods) emitCacheInvalidate(kind, key string) {

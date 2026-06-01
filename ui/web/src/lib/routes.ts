@@ -23,6 +23,7 @@ export const ROUTES = {
   CRON: "/cron",
   CRON_DETAIL: "/cron/:id",
   CONFIG: "/config",
+  AUTHENTICATION: "/authentication",
   TRACES: "/traces",
   TRACE_DETAIL: "/traces/:id",
   EVENTS: "/events",

@@ -34,6 +34,7 @@
     "storage": "Lưu trữ",
     "providers": "Provider",
     "config": "Cấu hình",
+    "authentication": "Xác thực",
     "approvals": "Phê duyệt",
     "importExport": "Import & Export",
     "nodes": "Nodes",

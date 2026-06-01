@@ -9,22 +9,42 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nextlevelbuilder/goclaw/internal/auth"
-	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/tenantauth"
 )
 
 // AuthHandler handles authentication session endpoints.
 type AuthHandler struct {
-	users   store.UserStore
+	users  store.UserStore
 	tenants store.TenantStore
 	jwt     *auth.JWTManager
-	cfg     *config.AuthConfig
+	loader  tenantauth.Loader
 }
 
 // NewAuthHandler creates a handler for auth session endpoints.
-func NewAuthHandler(users store.UserStore, tenants store.TenantStore, jwt *auth.JWTManager, cfg *config.AuthConfig) *AuthHandler {
-	return &AuthHandler{users: users, tenants: tenants, jwt: jwt, cfg: cfg}
+func NewAuthHandler(users store.UserStore, tenants store.TenantStore, jwt *auth.JWTManager, loader tenantauth.Loader) *AuthHandler {
+	return &AuthHandler{users: users, tenants: tenants, jwt: jwt, loader: loader}
+}
+
+// resolveTenantForAuth extracts tenant ID from request context, headers, or query params.
+// Falls back to master tenant if no tenant is specified.
+func resolveTenantForAuth(r *http.Request) uuid.UUID {
+	ctx := r.Context()
+	if tid := store.TenantIDFromContext(ctx); tid != uuid.Nil {
+		return tid
+	}
+	if h := r.Header.Get("X-GoClaw-Tenant-Id"); h != "" {
+		if tid, err := uuid.Parse(h); err == nil {
+			return tid
+		}
+	}
+	if s := r.URL.Query().Get("tenant"); s != "" {
+		if tid, err := uuid.Parse(s); err == nil {
+			return tid
+		}
+	}
+	return store.MasterTenantID
 }
 
 // RegisterRoutes registers all auth session routes on the given mux.
@@ -62,20 +82,29 @@ func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenantID := store.TenantIDFromContext(ctx)
-	if tenantID == uuid.Nil {
-		tenantID = store.MasterTenantID
+	tenantID := resolveTenantForAuth(r)
+
+	cfg, err := h.loader.LoadAuthConfig(ctx, tenantID)
+	if err != nil {
+		slog.Error("auth.load_config_failed", "tenant_id", tenantID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", i18n.T(locale, i18n.MsgInternalError, "auth config"))
+		return
+	}
+
+	if !cfg.LocalEnabled() {
+		writeError(w, http.StatusForbidden, "auth_disabled", i18n.T(locale, i18n.MsgInvalidRequest, "local auth is disabled for this tenant"))
+		return
 	}
 
 	user, err := h.users.GetByEmail(ctx, tenantID, req.Email)
 	if err != nil || user == nil {
-		slog.Warn("auth.login_failed", "email", req.Email, "error", err)
+		slog.Warn("auth.login_failed", "email", req.Email, "tenant_id", tenantID, "error", err)
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", i18n.T(locale, i18n.MsgAuthInvalidCredentials))
 		return
 	}
 
 	if user.PasswordHash == nil || !auth.CheckPassword(req.Password, *user.PasswordHash) {
-		slog.Warn("auth.login_failed", "email", req.Email, "reason", "password_mismatch")
+		slog.Warn("auth.login_failed", "email", req.Email, "tenant_id", tenantID, "reason", "password_mismatch")
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", i18n.T(locale, i18n.MsgAuthInvalidCredentials))
 		return
 	}
@@ -98,7 +127,7 @@ func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Issue refresh token
 	var refreshToken string
-	if h.cfg.Session.IsRefreshEnabled() {
+	if cfg.Session.IsRefreshEnabled() {
 		raw, hash, err := auth.GenerateRefreshToken()
 		if err != nil {
 			slog.Error("auth.refresh_token_failed", "error", err)
@@ -119,7 +148,7 @@ func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		_ = h.users.UpdateLastLogin(tctx, user.ID)
 	}()
 
-	timeout := h.cfg.Session.SessionTimeout()
+	timeout := cfg.Session.SessionTimeout()
 	writeJSON(w, http.StatusOK, loginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -153,7 +182,19 @@ type refreshResponse struct {
 func (h *AuthHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 	locale := extractLocale(r)
 	ctx := r.Context()
-	masterID := store.MasterTenantID
+	tenantID := resolveTenantForAuth(r)
+
+	cfg, err := h.loader.LoadAuthConfig(ctx, tenantID)
+	if err != nil {
+		slog.Error("auth.load_config_failed", "tenant_id", tenantID, "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", i18n.T(locale, i18n.MsgInternalError, "auth config"))
+		return
+	}
+
+	if !cfg.LocalEnabled() {
+		writeError(w, http.StatusForbidden, "auth_disabled", i18n.T(locale, i18n.MsgInvalidRequest, "local auth is disabled for this tenant"))
+		return
+	}
 
 	var req registerRequest
 	if !parseJSON(w, r, &req) {
@@ -175,8 +216,8 @@ func (h *AuthHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check for duplicate email
-	existing, err := h.users.GetByEmail(ctx, masterID, req.Email)
+	// Check for duplicate email in target tenant
+	existing, err := h.users.GetByEmail(ctx, tenantID, req.Email)
 	if err != nil && err.Error() != "not found" {
 		slog.Error("auth.register duplicate check failed", "error", err)
 	}
@@ -185,9 +226,9 @@ func (h *AuthHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if any users exist — first user becomes owner
+	// Check if any users exist in target tenant — first user becomes owner
 	isFirstUser := false
-	if existingUserList, err := h.users.List(ctx, masterID, store.UserListParams{Limit: 1}); err == nil && existingUserList != nil {
+	if existingUserList, err := h.users.List(ctx, tenantID, store.UserListParams{Limit: 1}); err == nil && existingUserList != nil {
 		isFirstUser = existingUserList.Total == 0
 	}
 
@@ -204,7 +245,7 @@ func (h *AuthHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		ID:            uuid.New(),
 		Email:         req.Email,
 		DisplayName:   req.DisplayName,
-		TenantID:      masterID,
+		TenantID:      tenantID,
 		AuthProvider:  store.AuthProviderLocal,
 		PasswordHash:  &hash,
 		Status:        store.UserStatusActive,
@@ -224,21 +265,21 @@ func (h *AuthHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		role = "owner"
 	}
 	if h.tenants != nil {
-		if err := h.tenants.AddUser(ctx, masterID, user.ID.String(), role); err != nil {
+		if err := h.tenants.AddUser(ctx, tenantID, user.ID.String(), role); err != nil {
 			slog.Warn("auth.register: failed to add tenant membership", "error", err, "user_id", user.ID)
 		}
 	}
 
 	// Issue JWT
-	jwtRole := resolveUserRoleForJWT(ctx, h.tenants, masterID, user.ID.String())
-	accessToken, err := h.jwt.IssueAccessToken(user.ID, user.Email, masterID, jwtRole)
+	jwtRole := resolveUserRoleForJWT(ctx, h.tenants, tenantID, user.ID.String())
+	accessToken, err := h.jwt.IssueAccessToken(user.ID, user.Email, tenantID, jwtRole)
 	if err != nil {
 		slog.Error("auth.register issue token failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", i18n.T(locale, i18n.MsgInternalError, "token issue"))
 		return
 	}
 
-	timeout := h.cfg.Session.SessionTimeout()
+	timeout := cfg.Session.SessionTimeout()
 	writeJSON(w, http.StatusCreated, registerResponse{
 		AccessToken:  accessToken,
 		RefreshToken: "",
@@ -286,7 +327,15 @@ func (h *AuthHandler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	timeout := h.cfg.Session.SessionTimeout()
+	cfg, err := h.loader.LoadAuthConfig(ctx, user.TenantID)
+	if err != nil {
+		slog.Warn("auth.refresh_load_config_failed", "tenant_id", user.TenantID, "error", err)
+	}
+
+	timeout := 480
+	if cfg != nil {
+		timeout = cfg.Session.SessionTimeout()
+	}
 	writeJSON(w, http.StatusOK, refreshResponse{
 		AccessToken: accessToken,
 		ExpiresIn:   timeout * 60,
@@ -313,7 +362,17 @@ func (h *AuthHandler) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) handleProviders(w http.ResponseWriter, r *http.Request) {
-	providers := h.cfg.EnabledProviders()
+	ctx := r.Context()
+	tenantID := resolveTenantForAuth(r)
+
+	cfg, err := h.loader.LoadAuthConfig(ctx, tenantID)
+	if err != nil {
+		slog.Warn("auth.providers_load_config_failed", "tenant_id", tenantID, "error", err)
+		writeJSON(w, http.StatusOK, map[string]any{"providers": []map[string]string{}})
+		return
+	}
+
+	providers := cfg.EnabledProviders()
 	type providerInfo struct {
 		Name string `json:"name"`
 	}

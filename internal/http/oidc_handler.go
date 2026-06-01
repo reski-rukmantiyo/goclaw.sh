@@ -9,36 +9,38 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nextlevelbuilder/goclaw/internal/auth"
+	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/tenantauth"
 )
+
+// stateEntry tracks CSRF state along with the tenant that initiated the flow.
+type stateEntry struct {
+	tenantID  uuid.UUID
+	expiresAt time.Time
+}
 
 // OIDCHandler handles OIDC authorization and callback endpoints.
 type OIDCHandler struct {
-	users     store.UserStore
-	groups    store.GroupStore
-	tenants   store.TenantStore
-	validator *auth.OIDCValidator
-	jwt       *auth.JWTManager
-	providers map[string]*auth.OIDCProvider
-	states    map[string]time.Time
-	stateMu   sync.RWMutex
+	users   store.UserStore
+	groups  store.GroupStore
+	tenants store.TenantStore
+	loader  tenantauth.Loader
+	jwt     *auth.JWTManager
+	states  map[string]stateEntry
+	stateMu sync.RWMutex
 }
 
 // NewOIDCHandler creates a handler for OIDC endpoints.
-func NewOIDCHandler(users store.UserStore, groups store.GroupStore, tenants store.TenantStore, validator *auth.OIDCValidator, jwt *auth.JWTManager, providers []*auth.OIDCProvider) *OIDCHandler {
-	pMap := make(map[string]*auth.OIDCProvider, len(providers))
-	for _, p := range providers {
-		pMap[p.Name] = p
-	}
+func NewOIDCHandler(users store.UserStore, groups store.GroupStore, tenants store.TenantStore, loader tenantauth.Loader, jwt *auth.JWTManager) *OIDCHandler {
 	return &OIDCHandler{
-		users:     users,
-		groups:    groups,
-		tenants:   tenants,
-		validator: validator,
-		jwt:       jwt,
-		providers: pMap,
-		states:    make(map[string]time.Time),
+		users:   users,
+		groups:  groups,
+		tenants: tenants,
+		loader:  loader,
+		jwt:     jwt,
+		states:  make(map[string]stateEntry),
 	}
 }
 
@@ -51,47 +53,84 @@ func (h *OIDCHandler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 // storeState saves a CSRF state token with 10-minute TTL.
-func (h *OIDCHandler) storeState(state string) {
+func (h *OIDCHandler) storeState(state string, tenantID uuid.UUID) {
 	h.stateMu.Lock()
-	h.states[state] = time.Now().Add(10 * time.Minute)
+	h.states[state] = stateEntry{tenantID: tenantID, expiresAt: time.Now().Add(10 * time.Minute)}
 	h.stateMu.Unlock()
 }
 
 // validateAndConsumeState checks a state token and removes it (one-time use).
-func (h *OIDCHandler) validateAndConsumeState(state string) bool {
+func (h *OIDCHandler) validateAndConsumeState(state string) (uuid.UUID, bool) {
 	h.stateMu.Lock()
 	defer h.stateMu.Unlock()
-	expiry, ok := h.states[state]
+	entry, ok := h.states[state]
 	if !ok {
-		return false
+		return uuid.Nil, false
 	}
 	delete(h.states, state)
-	return time.Now().Before(expiry)
+	return entry.tenantID, time.Now().Before(entry.expiresAt)
 }
 
 // pruneStates removes expired state tokens.
 func (h *OIDCHandler) pruneStates() {
 	h.stateMu.Lock()
 	now := time.Now()
-	for s, exp := range h.states {
-		if now.After(exp) {
+	for s, entry := range h.states {
+		if now.After(entry.expiresAt) {
 			delete(h.states, s)
 		}
 	}
 	h.stateMu.Unlock()
 }
 
+// buildProvidersFromConfig creates OIDC providers from tenant auth config.
+func buildProvidersFromConfig(cfg *config.AuthConfig) []*auth.OIDCProvider {
+	var providers []*auth.OIDCProvider
+	if cfg.EntraIDEnabled() {
+		providers = append(providers, auth.NewEntraIDProvider(
+			cfg.Providers.EntraID.ClientID,
+			cfg.Providers.EntraID.ClientSecret,
+			cfg.Providers.EntraID.RedirectURI,
+		))
+	}
+	if cfg.GoogleEnabled() {
+		providers = append(providers, auth.NewGoogleProvider(
+			cfg.Providers.Google.ClientID,
+			cfg.Providers.Google.ClientSecret,
+			cfg.Providers.Google.RedirectURI,
+		))
+	}
+	return providers
+}
+
 // handleAuthorize redirects to the OIDC provider's authorization URL.
 func (h *OIDCHandler) handleAuthorize(providerName string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		provider, ok := h.providers[providerName]
-		if !ok {
+		ctx := r.Context()
+		tenantID := resolveTenantForAuth(r)
+
+		cfg, err := h.loader.LoadAuthConfig(ctx, tenantID)
+		if err != nil {
+			slog.Warn("auth.oidc_load_config_failed", "tenant_id", tenantID, "error", err)
+			writeError(w, http.StatusNotFound, "provider_not_found", "auth provider not configured")
+			return
+		}
+
+		providers := buildProvidersFromConfig(cfg)
+		var provider *auth.OIDCProvider
+		for _, p := range providers {
+			if p.Name == providerName {
+				provider = p
+				break
+			}
+		}
+		if provider == nil {
 			writeError(w, http.StatusNotFound, "provider_not_found", "auth provider not configured")
 			return
 		}
 
 		state := uuid.Must(uuid.NewV7()).String()
-		h.storeState(state)
+		h.storeState(state, tenantID)
 
 		// Prune expired states periodically
 		h.pruneStates()
@@ -114,13 +153,28 @@ func (h *OIDCHandler) handleCallback(providerName string) http.HandlerFunc {
 			return
 		}
 
-		if !h.validateAndConsumeState(state) {
+		tenantID, ok := h.validateAndConsumeState(state)
+		if !ok {
 			writeError(w, http.StatusBadRequest, "invalid_state", i18n.T(locale, i18n.MsgAuthStateInvalid))
 			return
 		}
 
-		provider, ok := h.providers[providerName]
-		if !ok {
+		cfg, err := h.loader.LoadAuthConfig(ctx, tenantID)
+		if err != nil {
+			slog.Warn("auth.oidc_load_config_failed", "tenant_id", tenantID, "error", err)
+			writeError(w, http.StatusNotFound, "provider_not_found", "auth provider not configured")
+			return
+		}
+
+		providers := buildProvidersFromConfig(cfg)
+		var provider *auth.OIDCProvider
+		for _, p := range providers {
+			if p.Name == providerName {
+				provider = p
+				break
+			}
+		}
+		if provider == nil {
 			writeError(w, http.StatusNotFound, "provider_not_found", "auth provider not configured")
 			return
 		}
@@ -139,7 +193,8 @@ func (h *OIDCHandler) handleCallback(providerName string) http.HandlerFunc {
 		}
 
 		// Validate ID token
-		claims, _, err := h.validator.Validate(ctx, tokenResp.IDToken)
+		validator := auth.NewOIDCValidator(providers)
+		claims, _, err := validator.Validate(ctx, tokenResp.IDToken)
 		if err != nil {
 			slog.Error("auth.oidc_token_validation_failed", "provider", providerName, "error", err)
 			writeError(w, http.StatusUnauthorized, "oidc_failed", i18n.T(locale, i18n.MsgAuthOIDCFailed, err.Error()))
@@ -147,7 +202,7 @@ func (h *OIDCHandler) handleCallback(providerName string) http.HandlerFunc {
 		}
 
 		// Auto-provision user
-		user, err := h.resolveOrCreateUser(ctx, claims, providerName)
+		user, err := h.resolveOrCreateUser(ctx, claims, providerName, tenantID)
 		if err != nil {
 			slog.Error("auth.user_provision_failed", "provider", providerName, "email", claims.Email, "error", err)
 			writeError(w, http.StatusInternalServerError, "internal_error", i18n.T(locale, i18n.MsgInternalError, err.Error()))
@@ -180,7 +235,7 @@ func (h *OIDCHandler) handleCallback(providerName string) http.HandlerFunc {
 }
 
 // resolveOrCreateUser implements auto-provisioning (SRS §3.2 FR-U1).
-func (h *OIDCHandler) resolveOrCreateUser(ctx context.Context, claims *auth.OIDCClaims, providerName string) (*store.UserData, error) {
+func (h *OIDCHandler) resolveOrCreateUser(ctx context.Context, claims *auth.OIDCClaims, providerName string, tenantID uuid.UUID) (*store.UserData, error) {
 	// 1. Check if identity exists
 	identity, err := h.users.GetIdentityByProviderSubject(ctx, providerName, claims.Sub)
 	if err == nil && identity != nil {
@@ -198,8 +253,7 @@ func (h *OIDCHandler) resolveOrCreateUser(ctx context.Context, claims *auth.OIDC
 		return user, nil
 	}
 
-	// 2. Check if user with same email exists
-	tenantID := store.MasterTenantID
+	// 2. Check if user with same email exists in target tenant
 	user, err := h.users.GetByEmail(ctx, tenantID, claims.Email)
 	if err == nil && user != nil {
 		// Link new identity to existing user
@@ -215,7 +269,7 @@ func (h *OIDCHandler) resolveOrCreateUser(ctx context.Context, claims *auth.OIDC
 		return user, nil
 	}
 
-	// 3. Create new user + identity
+	// 3. Create new user + identity in target tenant
 	displayName := claims.Name
 	if displayName == "" {
 		displayName = claims.Email
