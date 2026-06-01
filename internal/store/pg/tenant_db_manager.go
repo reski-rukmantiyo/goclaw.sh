@@ -87,6 +87,17 @@ func (m *PGTenantDBManager) Invalidate(tenantID uuid.UUID) {
 	m.mu.Unlock()
 }
 
+// AllPools returns a snapshot of all cached tenant DB pools.
+func (m *PGTenantDBManager) AllPools() []*sql.DB {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make([]*sql.DB, 0, len(m.pools))
+	for _, db := range m.pools {
+		result = append(result, db)
+	}
+	return result
+}
+
 // Close closes all cached pools.
 func (m *PGTenantDBManager) Close() error {
 	m.mu.Lock()

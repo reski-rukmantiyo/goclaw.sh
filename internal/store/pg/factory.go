@@ -81,5 +81,7 @@ func NewPGStores(cfg store.StoreConfig) (*store.Stores, error) {
 	// Wire permStore into WorkstationStore so Create seeds allowlist atomically (H5 fix).
 	// Must happen after both stores are constructed.
 	pgStores.Workstations.(*PGWorkstationStore).SetPermStore(pgStores.WorkstationPermissions)
+	// Wire tenant DB manager into CronStore for multi-DB job scheduling.
+	pgStores.Cron.(*PGCronStore).SetTenantDBManager(tenantDBMgr)
 	return pgStores, nil
 }

@@ -647,7 +647,7 @@ func runGateway() {
 	if pgStores.Tenants != nil {
 		tenantAuthLoader := tenantauth.NewSystemConfigLoader(pgStores.SystemConfigs, cfg.Auth, os.Getenv("GOCLAW_ENCRYPTION_KEY"))
 		methods.NewTenantsMethods(pgStores.Tenants, pgStores.TenantDBConnections, pgStores.TenantDBManager, pgStores.DB, msgBus, workspace, cfg.Database.TenantDBSSLMode, cfg.Database.PostgresDSN, pgStores.SystemConfigs, tenantAuthLoader, os.Getenv("GOCLAW_ENCRYPTION_KEY")).Register(server.Router())
-		server.SetTenantsHandler(httpapi.NewTenantsHandler(pgStores.Tenants, msgBus, workspace))
+		server.SetTenantsHandler(httpapi.NewTenantsHandler(pgStores.Tenants, pgStores.TenantDBConnections, pgStores.TenantDBManager, pgStores.DB, msgBus, workspace, cfg.Database.TenantDBSSLMode, cfg.Database.PostgresDSN))
 		server.Router().SetTenantStore(pgStores.Tenants)
 		// Permission cache for tenant membership checks. Store on deps so
 		// lifecycle shutdown can call Close() to stop the sweep goroutines.

@@ -440,7 +440,7 @@ func (s *PGRawMessageChunkStore) ReEmbedChunks(ctx context.Context, opts store.R
 		queryArgs = append(queryArgs, batchSize)
 		limitIdx := paramIdx
 
-		rows, err := s.db.QueryContext(ctx,
+		rows, err := s.dbFor(ctx).QueryContext(ctx,
 			`SELECT id, text FROM raw_message_chunks WHERE 1=1`+tClause+whereClause+
 				` ORDER BY id ASC LIMIT $`+fmt.Sprintf("%d", limitIdx),
 			queryArgs...)
@@ -482,7 +482,7 @@ func (s *PGRawMessageChunkStore) ReEmbedChunks(ctx context.Context, opts store.R
 				break
 			}
 			vecStr := vectorToString(embeddings[i])
-			if _, err := s.db.ExecContext(ctx,
+			if _, err := s.dbFor(ctx).ExecContext(ctx,
 				"UPDATE raw_message_chunks SET embedding = $1::vector WHERE id = $2",
 				vecStr, r.ID,
 			); err != nil {
@@ -557,7 +557,7 @@ func (s *PGRawMessageChunkStore) List(ctx context.Context, opts store.RawMessage
 	// COUNT query
 	var total int
 	countArgs := append(tArgs, args...)
-	if err := s.db.QueryRowContext(ctx,
+	if err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM raw_message_chunks WHERE 1=1`+tClause+whereClause,
 		countArgs...,
 	).Scan(&total); err != nil {
@@ -605,7 +605,7 @@ func (s *PGRawMessageChunkStore) DeleteByIDs(ctx context.Context, ids []string) 
 	if err != nil {
 		return 0, err
 	}
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM raw_message_chunks WHERE id = ANY($1)`+tc,
 		append([]any{pq.Array(ids)}, tcArgs...)...,
 	)
@@ -621,7 +621,7 @@ func (s *PGRawMessageChunkStore) DeleteByChatID(ctx context.Context, agentID, ch
 	if err != nil {
 		return 0, err
 	}
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM raw_message_chunks WHERE agent_id = $1 AND chat_id = $2`+tc,
 		append([]any{agentID, chatID}, tcArgs...)...,
 	)

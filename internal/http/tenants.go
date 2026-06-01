@@ -1,6 +1,7 @@
 package http
 
 import (
+	"database/sql"
 	"log/slog"
 	"net/http"
 	"os"
@@ -12,19 +13,25 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/permissions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/store/pg"
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
 
 // TenantsHandler handles tenant CRUD and membership endpoints.
 type TenantsHandler struct {
-	tenantStore store.TenantStore
-	msgBus      *bus.MessageBus
-	workspace   string // base workspace directory for tenant dirs
+	tenantStore       store.TenantStore
+	tenantDBConnStore store.TenantDBConnectionStore
+	tenantDBManager   store.TenantDBManager
+	masterDB          *sql.DB
+	msgBus            *bus.MessageBus
+	workspace         string // base workspace directory for tenant dirs
+	defaultSSLMode    string // default sslmode for auto-generated tenant DBs
+	masterDSN         string // master DSN for superuser schema operations on tenant DBs
 }
 
 // NewTenantsHandler creates a handler for tenant management endpoints.
-func NewTenantsHandler(tenantStore store.TenantStore, msgBus *bus.MessageBus, workspace string) *TenantsHandler {
-	return &TenantsHandler{tenantStore: tenantStore, msgBus: msgBus, workspace: workspace}
+func NewTenantsHandler(tenantStore store.TenantStore, tenantDBConnStore store.TenantDBConnectionStore, tenantDBManager store.TenantDBManager, masterDB *sql.DB, msgBus *bus.MessageBus, workspace string, defaultSSLMode string, masterDSN string) *TenantsHandler {
+	return &TenantsHandler{tenantStore: tenantStore, tenantDBConnStore: tenantDBConnStore, tenantDBManager: tenantDBManager, masterDB: masterDB, msgBus: msgBus, workspace: workspace, defaultSSLMode: defaultSSLMode, masterDSN: masterDSN}
 }
 
 // RegisterRoutes registers all tenant management routes on the given mux.
@@ -100,6 +107,24 @@ func (h *TenantsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		slog.Error("tenants.create failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgFailedToCreate, "tenant", err.Error())})
 		return
+	}
+
+	// Provision tenant database if infrastructure available
+	if h.tenantDBConnStore != nil && h.masterDB != nil {
+		provisionedConn, err := pg.ProvisionTenantDB(r.Context(), h.masterDB, tenant.ID, tenant.Slug, nil, "", h.defaultSSLMode, h.masterDSN)
+		if err != nil {
+			slog.Error("tenants.create: db provision failed", "tenant_id", tenant.ID, "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgTenantDBProvisionFailed, err.Error())})
+			return
+		}
+		if err := h.tenantDBConnStore.Create(r.Context(), provisionedConn); err != nil {
+			slog.Error("tenants.create: failed to save db connection", "tenant_id", tenant.ID, "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgFailedToCreate, "tenant db connection", err.Error())})
+			return
+		}
+		if h.tenantDBManager != nil {
+			h.tenantDBManager.Invalidate(tenant.ID)
+		}
 	}
 
 	// Create workspace directory for the tenant.
