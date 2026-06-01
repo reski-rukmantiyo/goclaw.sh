@@ -74,6 +74,9 @@ type UserStore interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*UserData, error)
 	// GetByEmail retrieves a user by email within a tenant.
 	GetByEmail(ctx context.Context, tenantID uuid.UUID, email string) (*UserData, error)
+	// GetByEmailAnyTenant retrieves a user by email across all tenants.
+	// Used for login when no tenant hint is provided.
+	GetByEmailAnyTenant(ctx context.Context, email string) (*UserData, error)
 	// Update updates user fields.
 	Update(ctx context.Context, user *UserData) error
 	// UpdateStatus changes user status (active/suspended/deactivated).

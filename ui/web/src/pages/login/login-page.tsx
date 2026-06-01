@@ -45,7 +45,10 @@ export function LoginPage() {
     setTimeout(() => navigate(from, { replace: true }), 500);
   }
 
-  function handleEmailLogin(accessToken: string, userId: string) {
+  function handleEmailLogin(accessToken: string, userId: string, tenantSlug: string) {
+    if (tenantSlug) {
+      localStorage.setItem(LOCAL_STORAGE_KEYS.TENANT_ID, tenantSlug);
+    }
     setCredentials(accessToken, userId);
     navigate(from, { replace: true });
   }

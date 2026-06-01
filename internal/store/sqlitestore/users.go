@@ -112,6 +112,21 @@ func (s *SQLiteUserStore) GetByEmail(ctx context.Context, tenantID uuid.UUID, em
 	return u, nil
 }
 
+func (s *SQLiteUserStore) GetByEmailAnyTenant(ctx context.Context, email string) (*store.UserData, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT `+userCols+` FROM users WHERE email = ? LIMIT 1`,
+		email,
+	)
+	u, err := scanUser(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return u, nil
+}
+
 func (s *SQLiteUserStore) Update(ctx context.Context, user *store.UserData) error {
 	now := time.Now().UTC()
 	user.UpdatedAt = now

@@ -12,11 +12,12 @@ import {
 } from "@/schemas/user-mgmt.schema";
 
 interface EmailLoginFormProps {
-  onSuccess: (accessToken: string, userId: string) => void;
+  onSuccess: (accessToken: string, userId: string, tenantSlug: string) => void;
 }
 
 interface LoginResponse {
   access_token: string;
+  tenant_slug: string;
   user: {
     id: string;
     email: string;
@@ -59,7 +60,7 @@ export function EmailLoginForm({ onSuccess }: EmailLoginFormProps) {
       }
 
       const body = (await res.json()) as LoginResponse;
-      onSuccess(body.access_token, body.user.id);
+      onSuccess(body.access_token, body.user.id, body.tenant_slug);
     } catch {
       setError(t("email.errorCannotConnect"));
     } finally {

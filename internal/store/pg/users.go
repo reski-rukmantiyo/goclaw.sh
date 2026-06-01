@@ -73,6 +73,20 @@ func (s *PGUserStore) GetByEmail(ctx context.Context, tenantID uuid.UUID, email 
 	return u, nil
 }
 
+func (s *PGUserStore) GetByEmailAnyTenant(ctx context.Context, email string) (*store.UserData, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, status, last_login_at, created_at, updated_at
+		 FROM users WHERE email = $1 LIMIT 1`, email)
+	u, err := scanUserRow(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return u, nil
+}
+
 func (s *PGUserStore) Update(ctx context.Context, user *store.UserData) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE users SET display_name = $1, avatar_url = $2, updated_at = NOW() WHERE id = $3`,

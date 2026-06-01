@@ -67,6 +67,7 @@ type loginResponse struct {
 	RefreshToken string        `json:"refresh_token"`
 	ExpiresIn    int           `json:"expires_in"`
 	User         *store.UserData `json:"user"`
+	TenantSlug   string        `json:"tenant_slug"`
 }
 
 func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -98,9 +99,34 @@ func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.users.GetByEmail(ctx, tenantID, req.Email)
 	if err != nil || user == nil {
+		// If no tenant hint was provided (fell back to master) and user not found in master,
+		// try cross-tenant lookup to find the user's home tenant.
+		if tenantID == store.MasterTenantID {
+			user, err = h.users.GetByEmailAnyTenant(ctx, req.Email)
+			if err == nil && user != nil {
+				tenantID = user.TenantID
+			}
+		}
+	}
+
+	if user == nil {
 		slog.Warn("auth.login_failed", "email", req.Email, "tenant_id", tenantID, "error", err)
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", i18n.T(locale, i18n.MsgAuthInvalidCredentials))
 		return
+	}
+
+	// Re-load per-tenant auth config for the resolved tenant
+	if tenantID != resolveTenantForAuth(r) {
+		cfg, err = h.loader.LoadAuthConfig(ctx, tenantID)
+		if err != nil {
+			slog.Error("auth.load_config_failed", "tenant_id", tenantID, "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", i18n.T(locale, i18n.MsgInternalError, "auth config"))
+			return
+		}
+		if !cfg.LocalEnabled() {
+			writeError(w, http.StatusForbidden, "auth_disabled", i18n.T(locale, i18n.MsgInvalidRequest, "local auth is disabled for this tenant"))
+			return
+		}
 	}
 
 	if user.PasswordHash == nil || !auth.CheckPassword(req.Password, *user.PasswordHash) {
@@ -148,12 +174,20 @@ func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		_ = h.users.UpdateLastLogin(tctx, user.ID)
 	}()
 
+	var tenantSlug string
+	if h.tenants != nil {
+		if t, err := h.tenants.GetTenant(ctx, tenantID); err == nil && t != nil {
+			tenantSlug = t.Slug
+		}
+	}
+
 	timeout := cfg.Session.SessionTimeout()
 	writeJSON(w, http.StatusOK, loginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    timeout * 60,
 		User:         user,
+		TenantSlug:   tenantSlug,
 	})
 }
 
@@ -172,6 +206,7 @@ type registerResponse struct {
 	RefreshToken string          `json:"refresh_token"`
 	ExpiresIn    int             `json:"expires_in"`
 	User         *store.UserData `json:"user"`
+	TenantSlug   string          `json:"tenant_slug"`
 }
 
 type refreshResponse struct {
@@ -279,12 +314,20 @@ func (h *AuthHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var tenantSlug string
+	if h.tenants != nil {
+		if t, err := h.tenants.GetTenant(ctx, tenantID); err == nil && t != nil {
+			tenantSlug = t.Slug
+		}
+	}
+
 	timeout := cfg.Session.SessionTimeout()
 	writeJSON(w, http.StatusCreated, registerResponse{
 		AccessToken:  accessToken,
 		RefreshToken: "",
 		ExpiresIn:    timeout * 60,
 		User:         user,
+		TenantSlug:   tenantSlug,
 	})
 }
 

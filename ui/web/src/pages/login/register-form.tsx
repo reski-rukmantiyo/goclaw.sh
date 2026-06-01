@@ -9,11 +9,12 @@ import { Button } from "@/components/ui/button";
 import { registerSchema, type RegisterFormData } from "@/schemas/login.schema";
 
 interface RegisterFormProps {
-  onSuccess: (accessToken: string, userId: string) => void;
+  onSuccess: (accessToken: string, userId: string, tenantSlug: string) => void;
 }
 
 interface RegisterResponse {
   access_token: string;
+  tenant_slug: string;
   user: {
     id: string;
     email: string;
@@ -56,7 +57,7 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
       }
 
       const body = (await res.json()) as RegisterResponse;
-      onSuccess(body.access_token, body.user.id);
+      onSuccess(body.access_token, body.user.id, body.tenant_slug);
     } catch {
       setError(t("register.errorCannotConnect"));
     } finally {
