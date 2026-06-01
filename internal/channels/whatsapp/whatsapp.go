@@ -754,6 +754,7 @@ func (c *Channel) SetMediaStore(ms channels.MediaStore) {
 // Called by InstanceLoader after the channel is created and the primary agent is resolved.
 func (c *Channel) ResolveGroupAgentOverrides(ctx context.Context, agentStore store.AgentStore) {
 	if c.config.Groups == nil || agentStore == nil {
+		c.groupAgentUUIDs = make(map[string]string)
 		return
 	}
 	resolved := make(map[string]string, len(c.config.Groups))
@@ -763,6 +764,12 @@ func (c *Channel) ResolveGroupAgentOverrides(ctx context.Context, agentStore sto
 		}
 		ag, err := agentStore.GetByKey(ctx, grp.AgentID)
 		if err != nil {
+			// Fallback: config may contain a UUID instead of agent_key (e.g. UI WS fallback).
+			if id, parseErr := uuid.Parse(grp.AgentID); parseErr == nil {
+				ag, err = agentStore.GetByID(ctx, id)
+			}
+		}
+		if err != nil {
 			slog.Warn("whatsapp: failed to resolve group override agent",
 				"chat_id", chatID, "agent_key", grp.AgentID, "error", err)
 			continue
@@ -771,9 +778,7 @@ func (c *Channel) ResolveGroupAgentOverrides(ctx context.Context, agentStore sto
 		slog.Info("whatsapp: group agent override resolved",
 			"chat_id", chatID, "agent_key", grp.AgentID, "agent_uuid", ag.ID.String())
 	}
-	if len(resolved) > 0 {
-		c.groupAgentUUIDs = resolved
-	}
+	c.groupAgentUUIDs = resolved
 }
 
 // groupAgentUUID returns the agent UUID for a group override, or empty string if none.

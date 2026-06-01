@@ -284,7 +284,7 @@ function FieldRenderer({
           <Label htmlFor={id}>{label}</Label>
           <MultiUserPicker
             value={(value as string[]) ?? []}
-            onChange={(v) => onChange(v.length > 0 ? v : undefined)}
+            onChange={(v) => onChange(v)}
             placeholder={field.placeholder ?? t("groupOverrides.fields.allowedUsersPlaceholder")}
           />
           {help && <p className="text-xs text-muted-foreground">{help}</p>}

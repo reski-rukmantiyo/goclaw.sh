@@ -43,6 +43,7 @@ type InstanceLoader struct {
 	mediaStore        MediaStore                  // for persisting listen-only media attachments
 	configPermStore   store.ConfigPermissionStore  // for group file writer management
 	execApprovalMgr   any                          // *tools.ExecApprovalManager — stored as any to avoid import cycle
+	tenantDBManager   store.TenantDBManager        // resolves tenant-specific DB for multi-tenant agent lookups
 	factories         map[string]ChannelFactory
 	manager           *Manager
 	msgBus            *bus.MessageBus
@@ -107,6 +108,11 @@ func (l *InstanceLoader) SetConfigPermStore(s store.ConfigPermissionStore) {
 // Stored as any to avoid import cycle with tools package.
 func (l *InstanceLoader) SetExecApprovalManager(mgr any) {
 	l.execApprovalMgr = mgr
+}
+
+// SetTenantDBManager sets the tenant DB manager for resolving tenant-scoped agent lookups.
+func (l *InstanceLoader) SetTenantDBManager(mgr store.TenantDBManager) {
+	l.tenantDBManager = mgr
 }
 
 // RegisterFactory registers a factory for a channel type (e.g., "telegram", "discord").
@@ -422,10 +428,11 @@ func (l *InstanceLoader) loadInstance(ctx context.Context, inst store.ChannelIns
 	}
 
 	// Resolve per-group agent override UUIDs (e.g., WhatsApp groups with agent_id config).
+	// Resolve tenant DB first so agent lookups are scoped to the correct database.
 	if resolver, ok := ch.(interface {
 		ResolveGroupAgentOverrides(context.Context, store.AgentStore)
 	}); ok {
-		resolver.ResolveGroupAgentOverrides(instCtx, l.agentStore)
+		resolver.ResolveGroupAgentOverrides(store.ResolveTenantDB(instCtx, l.tenantDBManager), l.agentStore)
 	}
 
 	// Start the channel if requested (Reload path). LoadAll defers to StartAll.

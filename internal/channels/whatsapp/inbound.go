@@ -63,11 +63,6 @@ func (c *Channel) handleIncomingMessage(evt *events.Message) {
 		}
 	}
 
-	if !c.IsAllowed(senderID) {
-		slog.Info("whatsapp message rejected by allowlist", "sender_id", senderID)
-		return
-	}
-
 	content := extractTextContent(evt.Message)
 
 	// Command interception: check for slash commands before the normal pipeline.
@@ -239,6 +234,12 @@ func (c *Channel) handleIncomingMessage(evt *events.Message) {
 			var failedPaths []string
 			effectiveAgentUUID := c.groupAgentUUID(chatID)
 			graphID := c.resolveGraphID(chatID, peerKind)
+			slog.Info("whatsapp listen-only agent resolution",
+				"chat_id", chatID,
+				"effective_agent_uuid", effectiveAgentUUID,
+				"group_agent_uuids_nil", c.groupAgentUUIDs == nil,
+				"channel_default_uuid", c.agentUUID,
+				"fallback_to_default", effectiveAgentUUID == "")
 			if len(mediaList) > 0 && c.listenBuf != nil {
 				persistedRefs, failedPaths = c.listenBuf.PersistMedia(
 					effectiveAgentUUID, graphID, mediaList,
