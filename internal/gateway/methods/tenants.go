@@ -341,17 +341,7 @@ func (m *TenantsMethods) handleUsersAdd(ctx context.Context, client *gateway.Cli
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgRequired, "user_id")))
 		return
 	}
-	if params.Role == "" {
-		params.Role = store.TenantRoleMember
-	}
-	validRoles := map[string]bool{
-		store.TenantRoleOwner: true, store.TenantRoleAdmin: true,
-		store.TenantRoleOperator: true, store.TenantRoleMember: true, store.TenantRoleViewer: true,
-	}
-	if !validRoles[params.Role] {
-		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRole)))
-		return
-	}
+	isOwner := params.Role == store.TenantRoleOwner
 
 	tid, err := uuid.Parse(params.TenantID)
 	if err != nil {
@@ -359,7 +349,7 @@ func (m *TenantsMethods) handleUsersAdd(ctx context.Context, client *gateway.Cli
 		return
 	}
 
-	if err := m.tenantStore.AddUser(ctx, tid, params.UserID, params.Role); err != nil {
+	if err := m.tenantStore.AddUser(ctx, tid, params.UserID, isOwner); err != nil {
 		slog.Error("tenants.users.add failed", "error", err)
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToCreate, "tenant user", err.Error())))
 		return
@@ -515,7 +505,11 @@ func (m *TenantsMethods) handleMine(ctx context.Context, client *gateway.Client,
 		if t == nil || t.Status != store.TenantStatusActive {
 			continue
 		}
-		entries = append(entries, tenantEntry{ID: t.ID.String(), Name: t.Name, Slug: t.Slug, Role: mem.Role, Status: t.Status})
+		role := "member"
+		if mem.IsOwner {
+			role = "owner"
+		}
+		entries = append(entries, tenantEntry{ID: t.ID.String(), Name: t.Name, Slug: t.Slug, Role: role, Status: t.Status})
 	}
 
 		// Fallback for users created before tenant_users membership was auto-created:

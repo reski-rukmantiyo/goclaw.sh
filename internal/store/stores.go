@@ -49,6 +49,7 @@ type Stores struct {
 
 	Users    UserStore
 	Groups   GroupStore
+	Roles    RoleStore
 	Audit    AuditStore
 
 	Webhooks     WebhookStore

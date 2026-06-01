@@ -76,6 +76,7 @@ func NewPGStores(cfg store.StoreConfig) (*store.Stores, error) {
 		WorkstationGroupPermissions:  NewPGWorkstationGroupPermissionStore(db),
 		Users:   NewPGUserStore(db),
 		Groups:  NewPGGroupStore(db),
+		Roles:   NewPGRoleStore(db),
 		Audit:   NewPGAuditStore(db),
 	}
 	// Wire permStore into WorkstationStore so Create seeds allowlist atomically (H5 fix).

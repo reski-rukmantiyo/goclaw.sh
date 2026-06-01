@@ -216,18 +216,18 @@ func (s *SQLiteTenantStore) DeleteTenant(ctx context.Context, id uuid.UUID) erro
 // Tenant-user membership
 // ============================================================
 
-func (s *SQLiteTenantStore) AddUser(ctx context.Context, tenantID uuid.UUID, userID, role string) error {
+func (s *SQLiteTenantStore) AddUser(ctx context.Context, tenantID uuid.UUID, userID string, isOwner bool) error {
 	now := time.Now()
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO tenant_users (id, tenant_id, user_id, role, created_at, updated_at)
+		`INSERT INTO tenant_users (id, tenant_id, user_id, is_owner, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?)
-		 ON CONFLICT (tenant_id, user_id) DO UPDATE SET role = excluded.role, updated_at = excluded.updated_at`,
-		store.GenNewID(), tenantID, userID, role, now, now,
+		 ON CONFLICT (tenant_id, user_id) DO UPDATE SET is_owner = excluded.is_owner, updated_at = excluded.updated_at`,
+		store.GenNewID(), tenantID, userID, isOwner, now, now,
 	)
 	return err
 }
 
-const tenantUserSelectCols = `id, tenant_id, user_id, display_name, role, metadata, created_at, updated_at`
+const tenantUserSelectCols = `id, tenant_id, user_id, display_name, is_owner, metadata, created_at, updated_at`
 
 func (s *SQLiteTenantStore) GetTenantUser(ctx context.Context, id uuid.UUID) (*store.TenantUserData, error) {
 	var row tenantUserRow
@@ -240,7 +240,7 @@ func (s *SQLiteTenantStore) GetTenantUser(ctx context.Context, id uuid.UUID) (*s
 	return &d, nil
 }
 
-func (s *SQLiteTenantStore) CreateTenantUserReturning(ctx context.Context, tenantID uuid.UUID, userID, displayName, role string) (*store.TenantUserData, error) {
+func (s *SQLiteTenantStore) CreateTenantUserReturning(ctx context.Context, tenantID uuid.UUID, userID, displayName string) (*store.TenantUserData, error) {
 	now := time.Now()
 	var dn *string
 	if displayName != "" {
@@ -248,17 +248,17 @@ func (s *SQLiteTenantStore) CreateTenantUserReturning(ctx context.Context, tenan
 	}
 	// SQLite 3.35+ supports RETURNING.
 	row := s.db.QueryRowContext(ctx,
-		`INSERT INTO tenant_users (id, tenant_id, user_id, display_name, role, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO tenant_users (id, tenant_id, user_id, display_name, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?)
 		 ON CONFLICT (tenant_id, user_id) DO UPDATE SET
 		   display_name = COALESCE(excluded.display_name, tenant_users.display_name),
 		   updated_at = excluded.updated_at
-		 RETURNING id, tenant_id, user_id, display_name, role, metadata, created_at, updated_at`,
-		store.GenNewID(), tenantID, userID, dn, role, now, now,
+		 RETURNING id, tenant_id, user_id, display_name, is_owner, metadata, created_at, updated_at`,
+		store.GenNewID(), tenantID, userID, dn, now, now,
 	)
 	var d store.TenantUserData
 	createdAt, updatedAt := scanTimePair()
-	if err := row.Scan(&d.ID, &d.TenantID, &d.UserID, &d.DisplayName, &d.Role, &d.Metadata, createdAt, updatedAt); err != nil {
+	if err := row.Scan(&d.ID, &d.TenantID, &d.UserID, &d.DisplayName, &d.IsOwner, &d.Metadata, createdAt, updatedAt); err != nil {
 		return nil, err
 	}
 	d.CreatedAt = createdAt.Time
@@ -274,16 +274,16 @@ func (s *SQLiteTenantStore) RemoveUser(ctx context.Context, tenantID uuid.UUID, 
 	return err
 }
 
-func (s *SQLiteTenantStore) GetUserRole(ctx context.Context, tenantID uuid.UUID, userID string) (string, error) {
-	var role string
+func (s *SQLiteTenantStore) IsOwner(ctx context.Context, tenantID uuid.UUID, userID string) (bool, error) {
+	var isOwner bool
 	err := s.db.QueryRowContext(ctx,
-		`SELECT role FROM tenant_users WHERE tenant_id = ? AND user_id = ?`,
+		`SELECT is_owner FROM tenant_users WHERE tenant_id = ? AND user_id = ?`,
 		tenantID, userID,
-	).Scan(&role)
+	).Scan(&isOwner)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
+		return false, nil
 	}
-	return role, err
+	return isOwner, err
 }
 
 func (s *SQLiteTenantStore) ListUsers(ctx context.Context, tenantID uuid.UUID) ([]store.TenantUserData, error) {

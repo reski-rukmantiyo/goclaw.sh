@@ -205,8 +205,9 @@ func (d *gatewayDeps) wireHTTPHandlersOnServer(
 
 	// Multi-auth module handlers (user, group, audit)
 	if d.pgStores != nil {
-		d.server.SetUsersHandler(httpapi.NewUsersHandler(d.pgStores.Users, d.pgStores.Groups, d.pgStores.Tenants))
+		d.server.SetUsersHandler(httpapi.NewUsersHandler(d.pgStores.Users, d.pgStores.Groups, d.pgStores.Tenants, d.pgStores.Roles))
 		d.server.SetGroupsHandler(httpapi.NewGroupsHandler(d.pgStores.Groups))
+		d.server.SetRolesHandler(httpapi.NewRolesHandler(d.pgStores.Roles, d.pgStores.Users, d.pgStores.Groups, d.pgStores.Tenants))
 		d.server.SetAuditHandler(httpapi.NewAuditHandler(d.pgStores.Audit))
 
 		// Multi-auth session + OIDC handlers
@@ -224,9 +225,9 @@ func (d *gatewayDeps) wireHTTPHandlersOnServer(
 				authH := httpapi.NewAuthHandler(d.pgStores.Users, d.pgStores.Tenants, jwtManager, tenantAuthLoader)
 				d.server.SetAuthHandler(authH)
 
-				// Permission cache for RBAC
-				permCache := httpapi.NewPermissionCache(d.pgStores.Users, d.pgStores.Groups, d.pgStores.Tenants, 5*time.Minute)
-				httpapi.InitPermCache(permCache)
+				// Permission resolver for RBAC
+				permResolver := httpapi.NewPermissionCache(d.pgStores.Roles, d.pgStores.Groups, 5*time.Minute)
+				httpapi.InitPermCache(permResolver)
 
 				// OIDC handler — always mount; providers resolved per-tenant at runtime
 				oidcH := httpapi.NewOIDCHandler(d.pgStores.Users, d.pgStores.Groups, d.pgStores.Tenants, tenantAuthLoader, jwtManager)

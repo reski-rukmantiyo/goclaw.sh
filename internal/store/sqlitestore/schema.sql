@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS tenant_users (
     tenant_id    TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     user_id      VARCHAR(255) NOT NULL,
     display_name VARCHAR(255),
-    role         VARCHAR(20) NOT NULL DEFAULT 'member',
+    is_owner     INTEGER NOT NULL DEFAULT 0,
     metadata     TEXT NOT NULL DEFAULT '{}',
     created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -1995,7 +1995,6 @@ CREATE TABLE IF NOT EXISTS group_members (
     id         TEXT NOT NULL PRIMARY KEY,
     group_id   TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
     user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role       VARCHAR(20) NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
     joined_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     joined_via VARCHAR(20) NOT NULL DEFAULT 'admin_add' CHECK (joined_via IN ('admin_add', 'self_join', 'request_approved')),
     UNIQUE(group_id, user_id)
@@ -2003,7 +2002,6 @@ CREATE TABLE IF NOT EXISTS group_members (
 
 CREATE INDEX IF NOT EXISTS idx_group_members_group ON group_members(group_id);
 CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id);
-CREATE INDEX IF NOT EXISTS idx_group_members_group_role ON group_members(group_id, role);
 
 -- ============================================================
 -- Table: join_requests
@@ -2064,3 +2062,63 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens(expires_at);
+
+-- ============================================================
+-- Table: roles (tenant-scoped role definitions)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS roles (
+    id          TEXT NOT NULL PRIMARY KEY,
+    tenant_id   TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name        VARCHAR(255) NOT NULL,
+    description TEXT,
+    is_system   INTEGER NOT NULL DEFAULT 0,
+    permissions TEXT NOT NULL DEFAULT '[]',
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE(tenant_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_roles_tenant ON roles(tenant_id);
+
+-- ============================================================
+-- Table: role_permissions
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS role_permissions (
+    id          TEXT NOT NULL PRIMARY KEY,
+    role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    permission  VARCHAR(100) NOT NULL,
+    UNIQUE(role_id, permission)
+);
+
+CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role_id);
+
+-- ============================================================
+-- Table: user_roles
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS user_roles (
+    id          TEXT NOT NULL PRIMARY KEY,
+    tenant_id   TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id     VARCHAR(255) NOT NULL,
+    role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    UNIQUE(tenant_id, user_id, role_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_roles_user_tenant ON user_roles(user_id, tenant_id);
+CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role_id);
+
+-- ============================================================
+-- Table: group_roles
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS group_roles (
+    id          TEXT NOT NULL PRIMARY KEY,
+    group_id    TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    UNIQUE(group_id, role_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_roles_group ON group_roles(group_id);
+CREATE INDEX IF NOT EXISTS idx_group_roles_role ON group_roles(role_id);

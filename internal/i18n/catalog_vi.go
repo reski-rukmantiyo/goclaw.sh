@@ -290,6 +290,7 @@ func init() {
 		MsgAuthPasswordTooShort:    "mật khẩu phải có ít nhất %d ký tự",
 		MsgAuthPasswordComplexity:  "mật khẩu phải chứa ít nhất một chữ hoa và một ký tự đặc biệt",
 		MsgUserHasGroups:           "người dùng là thành viên của %d nhóm, vui lòng xóa khỏi nhóm trước",
+		MsgUserDeleteBlockedTenants: "ngườI really need to continue implementing. Let me add the translations and then check the build.",
 		MsgAuthOIDCFailed:          "xác thực OIDC thất bại: %s",
 		MsgAuthStateInvalid:        "OAuth state không hợp lệ hoặc đã hết hạn",
 	})

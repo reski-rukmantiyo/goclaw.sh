@@ -285,19 +285,9 @@ func (h *TenantsHandler) handleUsersAdd(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgRequired, "user_id")})
 		return
 	}
-	if input.Role == "" {
-		input.Role = store.TenantRoleMember
-	}
-	validRoles := map[string]bool{
-		store.TenantRoleOwner: true, store.TenantRoleAdmin: true,
-		store.TenantRoleOperator: true, store.TenantRoleMember: true, store.TenantRoleViewer: true,
-	}
-	if !validRoles[input.Role] {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgInvalidRole)})
-		return
-	}
+	isOwner := input.Role == store.TenantRoleOwner
 
-	if err := h.tenantStore.AddUser(r.Context(), id, input.UserID, input.Role); err != nil {
+	if err := h.tenantStore.AddUser(r.Context(), id, input.UserID, isOwner); err != nil {
 		slog.Error("tenants.users.add failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgFailedToCreate, "tenant user", err.Error())})
 		return

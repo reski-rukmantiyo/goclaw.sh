@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
+	"github.com/nextlevelbuilder/goclaw/internal/permissions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
 
@@ -42,17 +43,20 @@ func requireTenantAdmin(w http.ResponseWriter, r *http.Request, ts store.TenantS
 	}
 
 	userID := store.UserIDFromContext(ctx)
-	// GetUserRole returns ("", nil) when the user has no membership in this tenant,
-	// which correctly falls through to the role check below (denied).
-	role, err := ts.GetUserRole(ctx, tid, userID)
-	if err != nil || (role != store.TenantRoleOwner && role != store.TenantRoleAdmin) {
-		locale := store.LocaleFromContext(ctx)
-		writeJSON(w, http.StatusForbidden, map[string]string{
-			"error": i18n.T(locale, i18n.MsgPermissionDenied, "tenant config"),
-		})
-		return false
+	// Owner bypass.
+	isOwner, err := ts.IsOwner(ctx, tid, userID)
+	if err == nil && isOwner {
+		return true
 	}
-	return true
+	// Admin via permission resolver.
+	if pkgPermCache != nil && pkgPermCache.HasPermission(ctx, userID, tid, permissions.PermSystemManageSettings) {
+		return true
+	}
+	locale := store.LocaleFromContext(ctx)
+	writeJSON(w, http.StatusForbidden, map[string]string{
+		"error": i18n.T(locale, i18n.MsgPermissionDenied, "tenant config"),
+	})
+	return false
 }
 
 // requireMasterScope guards endpoints that write to global (non-tenant-scoped)

@@ -290,6 +290,7 @@ func init() {
 		MsgAuthPasswordTooShort:    "password must be at least %d characters",
 		MsgAuthPasswordComplexity:  "password must contain at least one uppercase letter and one symbol",
 		MsgUserHasGroups:           "user is a member of %d group(s), remove from groups first",
+		MsgUserDeleteBlockedTenants: "user is enrolled in %d tenant(s), unenroll first",
 		MsgAuthOIDCFailed:          "OIDC authentication failed: %s",
 		MsgAuthStateInvalid:        "invalid or expired OAuth state",
 	})

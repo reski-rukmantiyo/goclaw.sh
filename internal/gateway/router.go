@@ -452,6 +452,7 @@ func (r *MethodRouter) resolveTenantHint(ctx context.Context, hint, userID strin
 }
 
 // getUserTenantRole returns the user's role in a tenant, using permission cache if available.
+// In the new role model this returns "owner" or "member" to indicate tenant membership.
 func (r *MethodRouter) getUserTenantRole(ctx context.Context, tenantID uuid.UUID, userID string) (string, error) {
 	// Check cache first
 	if r.permCache != nil {
@@ -463,9 +464,25 @@ func (r *MethodRouter) getUserTenantRole(ctx context.Context, tenantID uuid.UUID
 	}
 
 	// Fallback to DB
-	role, err := r.tenantStore.GetUserRole(ctx, tenantID, userID)
+	isOwner, err := r.tenantStore.IsOwner(ctx, tenantID, userID)
 	if err != nil {
 		return "", err
+	}
+	role := ""
+	if isOwner {
+		role = "owner"
+	} else {
+		// Check for any membership
+		memberships, err := r.tenantStore.ListUserTenants(ctx, userID)
+		if err != nil {
+			return "", err
+		}
+		for _, m := range memberships {
+			if m.TenantID == tenantID {
+				role = "member"
+				break
+			}
+		}
 	}
 
 	// Cache the result (including empty role = not a member)

@@ -77,7 +77,7 @@ func (h *ChannelInstancesHandler) handleMergeContacts(w http.ResponseWriter, r *
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgRequired, "user_id")})
 			return
 		}
-		tu, err := h.tenantStore.CreateTenantUserReturning(r.Context(), tid, userID, displayName, store.TenantRoleMember)
+		tu, err := h.tenantStore.CreateTenantUserReturning(r.Context(), tid, userID, displayName)
 		if err != nil {
 			slog.Error("contacts.merge.create_user", "error", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgFailedToCreate, "tenant user", err.Error())})

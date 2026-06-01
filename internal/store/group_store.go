@@ -19,7 +19,7 @@ const (
 	GroupStatusDeleted = "deleted"
 )
 
-// Group member roles.
+// Group member roles (deprecated — replaced by group roles).
 const (
 	GroupRoleAdmin  = "admin"
 	GroupRoleMember = "member"
@@ -69,7 +69,6 @@ type GroupMemberData struct {
 	ID          uuid.UUID `json:"id" db:"id"`
 	GroupID     uuid.UUID `json:"group_id" db:"group_id"`
 	UserID      uuid.UUID `json:"user_id" db:"user_id"`
-	Role        string    `json:"role" db:"role"`
 	JoinedAt    time.Time `json:"joined_at" db:"joined_at"`
 	JoinedVia   string    `json:"joined_via" db:"joined_via"`
 	DisplayName *string   `json:"display_name,omitempty" db:"-"`
@@ -155,12 +154,9 @@ type GroupStore interface {
 	// Membership
 	AddMember(ctx context.Context, member *GroupMemberData) error
 	RemoveMember(ctx context.Context, groupID, userID uuid.UUID) error
-	UpdateMemberRole(ctx context.Context, groupID, userID uuid.UUID, role string) error
-	GetMemberRole(ctx context.Context, groupID, userID uuid.UUID) (string, error)
 	ListMembers(ctx context.Context, groupID uuid.UUID) ([]GroupMemberData, error)
 	GetUserGroups(ctx context.Context, userID uuid.UUID) ([]GroupData, error)
-	GetGroupAdminIDs(ctx context.Context, groupID uuid.UUID) ([]uuid.UUID, error)
-	IsGroupAdmin(ctx context.Context, groupID, userID uuid.UUID) (bool, error)
+	IsGroupMember(ctx context.Context, groupID, userID uuid.UUID) (bool, error)
 
 	// Join requests
 	CreateJoinRequest(ctx context.Context, req *JoinRequestData) error

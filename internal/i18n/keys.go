@@ -315,6 +315,7 @@ const (
 	MsgAuthPasswordTooShort    = "error.auth_password_too_short"    // "password must be at least %d characters"
 	MsgAuthPasswordComplexity  = "error.auth_password_complexity"   // "password must contain uppercase letter and symbol"
 	MsgUserHasGroups           = "error.user_has_groups"            // "user is member of %d group(s), remove from groups first"
+	MsgUserDeleteBlockedTenants = "error.user_delete_blocked_tenants" // "user is enrolled in %d tenant(s), unenroll first"
 	MsgAuthOIDCFailed          = "error.auth_oidc_failed"           // "OIDC authentication failed: %s"
 	MsgAuthStateInvalid        = "error.auth_state_invalid"         // "invalid or expired OAuth state"
 )

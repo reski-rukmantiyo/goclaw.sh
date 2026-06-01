@@ -92,13 +92,11 @@ func (h *ChannelInstancesHandler) handleSearchUsers(w http.ResponseWriter, r *ht
 			if len(results) >= limit {
 				break
 			}
-			role := u.Role
 			results = append(results, UserSearchResult{
 				ID:          u.UserID,
 				UUID:        u.ID.String(),
 				DisplayName: u.DisplayName,
 				Source:      "tenant_user",
-				Role:        &role,
 			})
 		}
 	}

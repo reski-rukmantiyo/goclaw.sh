@@ -312,10 +312,10 @@ func (s *PGGroupStore) AddMember(ctx context.Context, member *store.GroupMemberD
 	}
 
 	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO group_members (id, group_id, user_id, role, joined_at, joined_via)
-		 VALUES ($1, $2, $3, $4, $5, $6)`,
+		`INSERT INTO group_members (id, group_id, user_id, joined_at, joined_via)
+		 VALUES ($1, $2, $3, $4, $5)`,
 		member.ID, member.GroupID, member.UserID,
-		member.Role, member.JoinedAt, member.JoinedVia,
+		member.JoinedAt, member.JoinedVia,
 	)
 	return err
 }
@@ -328,58 +328,18 @@ func (s *PGGroupStore) RemoveMember(ctx context.Context, groupID, userID uuid.UU
 	return err
 }
 
-func (s *PGGroupStore) UpdateMemberRole(ctx context.Context, groupID, userID uuid.UUID, role string) error {
-	// If demoting from admin, check last-admin constraint.
-	if role != store.GroupRoleAdmin {
-		var adminCount int
-		err := s.db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM group_members WHERE group_id = $1 AND role = $2`,
-			groupID, store.GroupRoleAdmin,
-		).Scan(&adminCount)
-		if err != nil {
-			return err
-		}
-
-		// Check if the target user is currently an admin.
-		var currentRole string
-		err = s.db.QueryRowContext(ctx,
-			`SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2`,
-			groupID, userID,
-		).Scan(&currentRole)
-		if err != nil {
-			return err
-		}
-
-		if currentRole == store.GroupRoleAdmin && adminCount <= 1 {
-			return fmt.Errorf("cannot remove the last admin from the group")
-		}
-	}
-
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE group_members SET role = $1 WHERE group_id = $2 AND user_id = $3`,
-		role, groupID, userID,
-	)
-	return err
-}
-
-func (s *PGGroupStore) GetMemberRole(ctx context.Context, groupID, userID uuid.UUID) (string, error) {
-	var role string
+func (s *PGGroupStore) IsGroupMember(ctx context.Context, groupID, userID uuid.UUID) (bool, error) {
+	var exists bool
 	err := s.db.QueryRowContext(ctx,
-		`SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2`,
+		`SELECT EXISTS(SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2)`,
 		groupID, userID,
-	).Scan(&role)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", nil
-		}
-		return "", err
-	}
-	return role, nil
+	).Scan(&exists)
+	return exists, err
 }
 
 func (s *PGGroupStore) ListMembers(ctx context.Context, groupID uuid.UUID) ([]store.GroupMemberData, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT m.id, m.group_id, m.user_id, m.role, m.joined_at, m.joined_via,
+		`SELECT m.id, m.group_id, m.user_id, m.joined_at, m.joined_via,
 		        COALESCE(u.display_name, ''), COALESCE(u.email, '')
 		 FROM group_members m
 		 LEFT JOIN users u ON u.id = m.user_id
@@ -397,7 +357,7 @@ func (s *PGGroupStore) ListMembers(ctx context.Context, groupID uuid.UUID) ([]st
 		var m store.GroupMemberData
 		var displayName, email string
 		if err := rows.Scan(
-			&m.ID, &m.GroupID, &m.UserID, &m.Role, &m.JoinedAt, &m.JoinedVia,
+			&m.ID, &m.GroupID, &m.UserID, &m.JoinedAt, &m.JoinedVia,
 			&displayName, &email,
 		); err != nil {
 			return nil, err
@@ -448,42 +408,6 @@ func (s *PGGroupStore) GetUserGroups(ctx context.Context, userID uuid.UUID) ([]s
 		groups = []store.GroupData{}
 	}
 	return groups, nil
-}
-
-func (s *PGGroupStore) GetGroupAdminIDs(ctx context.Context, groupID uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT user_id FROM group_members WHERE group_id = $1 AND role = $2`,
-		groupID, store.GroupRoleAdmin,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var ids []uuid.UUID
-	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if ids == nil {
-		ids = []uuid.UUID{}
-	}
-	return ids, nil
-}
-
-func (s *PGGroupStore) IsGroupAdmin(ctx context.Context, groupID, userID uuid.UUID) (bool, error) {
-	var exists bool
-	err := s.db.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2 AND role = $3)`,
-		groupID, userID, store.GroupRoleAdmin,
-	).Scan(&exists)
-	return exists, err
 }
 
 // ============================================================

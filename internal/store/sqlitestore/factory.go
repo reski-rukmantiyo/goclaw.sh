@@ -83,6 +83,7 @@ func NewSQLiteStores(cfg store.StoreConfig) (*store.Stores, error) {
 		WorkstationGroupPermissions:  NewSQLiteWorkstationGroupPermissionStore(db),
 		Users:                        NewSQLiteUserStore(db),
 		Groups:                       NewSQLiteGroupStore(db),
+		Roles:                        NewSQLiteRoleStore(db),
 		Audit:                        NewSQLiteAuditStore(db),
 	}
 	// Wire permStore into WorkstationStore so Create seeds allowlist atomically (H5 fix).

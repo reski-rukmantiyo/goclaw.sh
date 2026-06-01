@@ -69,7 +69,7 @@ type tenantUserRow struct {
 	TenantID    uuid.UUID       `json:"tenant_id" db:"tenant_id"`
 	UserID      string          `json:"user_id" db:"user_id"`
 	DisplayName *string         `json:"display_name" db:"display_name"`
-	Role        string          `json:"role" db:"role"`
+	IsOwner     bool            `json:"is_owner" db:"is_owner"`
 	Metadata    json.RawMessage `json:"metadata" db:"metadata"`
 	CreatedAt   sqliteTime      `json:"created_at" db:"created_at"`
 	UpdatedAt   sqliteTime      `json:"updated_at" db:"updated_at"`
@@ -81,7 +81,7 @@ func (r *tenantUserRow) toTenantUserData() store.TenantUserData {
 		TenantID:    r.TenantID,
 		UserID:      r.UserID,
 		DisplayName: r.DisplayName,
-		Role:        r.Role,
+		IsOwner:     r.IsOwner,
 		Metadata:    r.Metadata,
 		CreatedAt:   r.CreatedAt.Time,
 		UpdatedAt:   r.UpdatedAt.Time,

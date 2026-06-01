@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/nextlevelbuilder/goclaw/internal/auth"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
+	"github.com/nextlevelbuilder/goclaw/internal/permissions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
@@ -18,22 +19,26 @@ type UsersHandler struct {
 	users   store.UserStore
 	groups  store.GroupStore
 	tenants store.TenantStore
+	roles   store.RoleStore
 }
 
 // NewUsersHandler creates a handler for user management endpoints.
-func NewUsersHandler(users store.UserStore, groups store.GroupStore, tenants store.TenantStore) *UsersHandler {
-	return &UsersHandler{users: users, groups: groups, tenants: tenants}
+func NewUsersHandler(users store.UserStore, groups store.GroupStore, tenants store.TenantStore, roles store.RoleStore) *UsersHandler {
+	return &UsersHandler{users: users, groups: groups, tenants: tenants, roles: roles}
 }
 
 // RegisterRoutes registers all user management routes on the given mux.
 func (h *UsersHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/users/me", requireAuth("", h.handleGetMe))
 	mux.HandleFunc("PATCH /v1/users/me", requireAuth("", h.handleUpdateMe))
+	mux.HandleFunc("GET /v1/users/me/permissions", requireAuth("", h.handleGetMyPermissions))
 	mux.HandleFunc("GET /v1/users", requireAuthAction("user.list", h.handleList))
 	mux.HandleFunc("POST /v1/users", requireAuthAction("user.pre_provision", h.handleCreate))
 	mux.HandleFunc("GET /v1/users/{id}", requireAuthAction("user.get", h.handleGet))
 	mux.HandleFunc("PATCH /v1/users/{id}/status", requireAuthAction("user.suspend", h.handleStatusChange))
-	mux.HandleFunc("PATCH /v1/users/{id}/admin", requireAuthAction("user.pre_provision", h.handleToggleAdmin))
+	mux.HandleFunc("GET /v1/users/{id}/tenants", requireAuthAction("user.get", h.handleListUserTenants))
+	mux.HandleFunc("POST /v1/users/{id}/tenants", requireAuthAction("user.enroll", h.handleEnrollUser))
+	mux.HandleFunc("DELETE /v1/users/{id}/tenants/{tenantId}", requireAuthAction("user.unenroll", h.handleUnenrollUser))
 	mux.HandleFunc("DELETE /v1/users/{id}", requireAuthAction("user.deactivate", h.handleDelete))
 }
 
@@ -107,6 +112,50 @@ func (h *UsersHandler) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, user)
+}
+
+// handleGetMyPermissions returns the current user's effective permissions in the current tenant.
+func (h *UsersHandler) handleGetMyPermissions(w http.ResponseWriter, r *http.Request) {
+	locale := extractLocale(r)
+	ctx := r.Context()
+
+	userID := store.UserIDFromContext(ctx)
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, protocol.ErrUnauthorized, i18n.T(locale, i18n.MsgUserIDRequired))
+		return
+	}
+
+	tenantID := store.TenantIDFromContext(ctx)
+	if tenantID == uuid.Nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, "tenant required"))
+		return
+	}
+
+	isOwner := false
+	if h.tenants != nil {
+		isOwner, _ = h.tenants.IsOwner(ctx, tenantID, userID)
+	}
+
+	var perms []string
+	if isOwner {
+		// Owner gets all permissions.
+		for _, p := range permissions.AllPermissions() {
+			perms = append(perms, string(p))
+		}
+	} else if h.roles != nil {
+		var err error
+		perms, err = h.roles.GetUserEffectivePermissions(ctx, userID, tenantID)
+		if err != nil {
+			slog.Error("users.me.permissions failed", "error", err, "user_id", userID)
+			writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgInternalError))
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"is_owner":    isOwner,
+		"permissions": perms,
+	})
 }
 
 // handleList returns a paginated list of users in the caller's tenant.
@@ -190,15 +239,8 @@ func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate role
-	if input.Role == "" {
-		input.Role = "member"
-	}
-	validRoles := map[string]bool{"owner": true, "admin": true, "operator": true, "member": true, "viewer": true}
-	if !validRoles[input.Role] {
-		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, "invalid role"))
-		return
-	}
+	// Determine owner flag from legacy role input (kept for API compat).
+	isOwner := input.Role == store.TenantRoleOwner
 
 	// Check for duplicate email globally.
 	existing, err := h.users.GetByEmail(ctx, input.Email)
@@ -236,7 +278,7 @@ func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.tenants != nil && tenantID != uuid.Nil {
-		if err := h.tenants.AddUser(ctx, tenantID, user.ID.String(), input.Role); err != nil {
+		if err := h.tenants.AddUser(ctx, tenantID, user.ID.String(), isOwner); err != nil {
 			slog.Warn("users.create: failed to add tenant membership", "error", err, "user_id", user.ID)
 		}
 	}
@@ -260,8 +302,15 @@ func (h *UsersHandler) checkUserTenantScope(w http.ResponseWriter, r *http.Reque
 		return nil
 	}
 	if tid := store.TenantIDFromContext(ctx); tid != uuid.Nil {
-		role, _ := h.tenants.GetUserRole(ctx, tid, id.String())
-		if role == "" {
+		memberships, _ := h.tenants.ListUserTenants(ctx, id.String())
+		isMember := false
+		for _, m := range memberships {
+			if m.TenantID == tid {
+				isMember = true
+				break
+			}
+		}
+		if !isMember {
 			writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "user", id.String()))
 			return nil
 		}
@@ -345,16 +394,16 @@ func (h *UsersHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Block delete if user has group memberships.
-	if h.groups != nil {
-		groups, err := h.groups.GetUserGroups(ctx, id)
+	// Block delete if user is still enrolled in any tenant.
+	if h.tenants != nil {
+		memberships, err := h.tenants.ListUserTenants(ctx, id.String())
 		if err != nil {
-			slog.Error("users.delete check groups failed", "error", err, "id", idStr)
+			slog.Error("users.delete check tenants failed", "error", err, "id", idStr)
 			writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToDelete, "user"))
 			return
 		}
-		if len(groups) > 0 {
-			writeError(w, http.StatusConflict, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgUserHasGroups, len(groups)))
+		if len(memberships) > 0 {
+			writeError(w, http.StatusConflict, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgUserDeleteBlockedTenants, len(memberships)))
 			return
 		}
 	}
@@ -368,11 +417,11 @@ func (h *UsersHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// handleToggleAdmin toggles a user's role between admin and member in tenant_users.
-func (h *UsersHandler) handleToggleAdmin(w http.ResponseWriter, r *http.Request) {
+
+// handleListUserTenants returns the tenants a user is enrolled in.
+func (h *UsersHandler) handleListUserTenants(w http.ResponseWriter, r *http.Request) {
 	locale := extractLocale(r)
 	ctx := r.Context()
-	tenantID := store.TenantIDFromContext(ctx)
 
 	idStr := r.PathValue("id")
 	id, err := uuid.Parse(idStr)
@@ -381,25 +430,83 @@ func (h *UsersHandler) handleToggleAdmin(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	user := h.checkUserTenantScope(w, r, id)
-	if user == nil {
+	if h.checkUserTenantScope(w, r, id) == nil {
 		return
 	}
 
-	// Toggle role in tenant_users
-	if h.tenants != nil && tenantID != uuid.Nil {
-		currentRole, _ := h.tenants.GetUserRole(ctx, tenantID, idStr)
-		newRole := "member"
-		if currentRole != "admin" {
-			newRole = "admin"
-		}
-		if err := h.tenants.AddUser(ctx, tenantID, idStr, newRole); err != nil {
-			slog.Error("users.toggle_admin failed", "error", err, "id", idStr)
-			writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToUpdate, "user role", "internal error"))
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"role": newRole})
-	} else {
-		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgInternalError, "tenant store unavailable"))
+	memberships, err := h.tenants.ListUserTenants(ctx, id.String())
+	if err != nil {
+		slog.Error("users.list_tenants failed", "error", err)
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgInternalError))
+		return
 	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"tenants": memberships})
+}
+
+// handleEnrollUser enrolls an existing user into a tenant.
+func (h *UsersHandler) handleEnrollUser(w http.ResponseWriter, r *http.Request) {
+	locale := extractLocale(r)
+	ctx := r.Context()
+
+	idStr := r.PathValue("id")
+	_, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidID, "user"))
+		return
+	}
+
+	var input struct {
+		TenantID string `json:"tenant_id"`
+		IsOwner  bool   `json:"is_owner"`
+	}
+	if !bindJSON(w, r, locale, &input) {
+		return
+	}
+	if input.TenantID == "" {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgRequired, "tenant_id"))
+		return
+	}
+
+	tenantID, err := uuid.Parse(input.TenantID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidID, "tenant"))
+		return
+	}
+
+	if err := h.tenants.AddUser(ctx, tenantID, idStr, input.IsOwner); err != nil {
+		slog.Error("users.enroll failed", "error", err)
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToCreate, "tenant membership"))
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]string{"status": "enrolled"})
+}
+
+// handleUnenrollUser removes a user from a tenant.
+func (h *UsersHandler) handleUnenrollUser(w http.ResponseWriter, r *http.Request) {
+	locale := extractLocale(r)
+	ctx := r.Context()
+
+	userIDStr := r.PathValue("id")
+	_, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidID, "user"))
+		return
+	}
+
+	tenantIDStr := r.PathValue("tenantId")
+	tenantID, err := uuid.Parse(tenantIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidID, "tenant"))
+		return
+	}
+
+	if err := h.tenants.RemoveUser(ctx, tenantID, userIDStr); err != nil {
+		slog.Error("users.unenroll failed", "error", err)
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToDelete, "tenant membership"))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "unenrolled"})
 }

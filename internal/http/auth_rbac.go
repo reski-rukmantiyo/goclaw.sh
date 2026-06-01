@@ -9,15 +9,14 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
 
-var pkgPermCache *permissionCache
+var pkgPermCache *permissions.Resolver
 
-// InitPermCache sets the shared permission cache for RBAC checks.
-func InitPermCache(cache *permissionCache) {
-	pkgPermCache = cache
+// InitPermCache sets the shared permission resolver for RBAC checks.
+func InitPermCache(resolver *permissions.Resolver) {
+	pkgPermCache = resolver
 }
 
 // requireAuthAction checks that the authenticated user has permission to perform an action.
-// Resolves user role via permission cache and checks against the RBAC matrix.
 func requireAuthAction(action string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		locale := extractLocale(r)
@@ -37,8 +36,7 @@ func requireAuthAction(action string, next http.HandlerFunc) http.HandlerFunc {
 			if tenantID == uuid.Nil {
 				tenantID = store.MasterTenantID
 			}
-			role := pkgPermCache.resolveUserRole(ctx, auth.UserID, tenantID.String())
-			if !permissions.UserCanPerform(role, action) {
+			if !pkgPermCache.HasPermission(ctx, auth.UserID, tenantID, permissions.Permission(action)) {
 				writeJSON(w, http.StatusForbidden, map[string]string{
 					"error": i18n.T(locale, i18n.MsgPermissionDenied, action),
 				})
@@ -57,20 +55,4 @@ func requireAuthAction(action string, next http.HandlerFunc) http.HandlerFunc {
 
 		next(w, r.WithContext(ctx))
 	}
-}
-
-// resolveUserRoleFromContext returns the user's multi-auth RBAC role from the permission cache.
-func resolveUserRoleFromContext(r *http.Request) permissions.UserRole {
-	if pkgPermCache == nil {
-		return ""
-	}
-	auth := resolveAuth(r)
-	if auth.UserID == "" {
-		return ""
-	}
-	tenantID := auth.TenantID
-	if tenantID == uuid.Nil {
-		tenantID = store.MasterTenantID
-	}
-	return pkgPermCache.resolveUserRole(r.Context(), auth.UserID, tenantID.String())
 }

@@ -306,13 +306,13 @@ func (s *SQLiteGroupStore) GetAncestorGroupIDs(ctx context.Context, groupID uuid
 // Membership
 // ============================================================
 
-const memberCols = `id, group_id, user_id, role, joined_at, joined_via`
+const memberCols = `id, group_id, user_id, joined_at, joined_via`
 
 func scanMember(row interface{ Scan(dest ...any) error }) (*store.GroupMemberData, error) {
 	var m store.GroupMemberData
 	joinedAt := &sqliteTime{}
 	var displayName, email string
-	if err := row.Scan(&m.ID, &m.GroupID, &m.UserID, &m.Role, joinedAt, &m.JoinedVia, &displayName, &email); err != nil {
+	if err := row.Scan(&m.ID, &m.GroupID, &m.UserID, joinedAt, &m.JoinedVia, &displayName, &email); err != nil {
 		return nil, err
 	}
 	m.JoinedAt = joinedAt.Time
@@ -356,10 +356,10 @@ func (s *SQLiteGroupStore) AddMember(ctx context.Context, member *store.GroupMem
 	}
 
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO group_members (id, group_id, user_id, role, joined_at, joined_via)
-		 VALUES (?, ?, ?, ?, ?, ?)
-		 ON CONFLICT (group_id, user_id) DO UPDATE SET role = excluded.role, joined_via = excluded.joined_via`,
-		member.ID, member.GroupID, member.UserID, member.Role, now, member.JoinedVia,
+		`INSERT INTO group_members (id, group_id, user_id, joined_at, joined_via)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT (group_id, user_id) DO UPDATE SET joined_via = excluded.joined_via`,
+		member.ID, member.GroupID, member.UserID, now, member.JoinedVia,
 	)
 	return err
 }
@@ -372,29 +372,21 @@ func (s *SQLiteGroupStore) RemoveMember(ctx context.Context, groupID, userID uui
 	return err
 }
 
-func (s *SQLiteGroupStore) UpdateMemberRole(ctx context.Context, groupID, userID uuid.UUID, role string) error {
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE group_members SET role = ? WHERE group_id = ? AND user_id = ?`,
-		role, groupID, userID,
-	)
-	return err
-}
-
-func (s *SQLiteGroupStore) GetMemberRole(ctx context.Context, groupID, userID uuid.UUID) (string, error) {
-	var role string
+func (s *SQLiteGroupStore) IsGroupMember(ctx context.Context, groupID, userID uuid.UUID) (bool, error) {
+	var count int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT role FROM group_members WHERE group_id = ? AND user_id = ?`,
+		`SELECT COUNT(*) FROM group_members WHERE group_id = ? AND user_id = ?`,
 		groupID, userID,
-	).Scan(&role)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
+	).Scan(&count)
+	if err != nil {
+		return false, err
 	}
-	return role, err
+	return count > 0, nil
 }
 
 func (s *SQLiteGroupStore) ListMembers(ctx context.Context, groupID uuid.UUID) ([]store.GroupMemberData, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT m.id, m.group_id, m.user_id, m.role, m.joined_at, m.joined_via,
+		`SELECT m.id, m.group_id, m.user_id, m.joined_at, m.joined_via,
 		        COALESCE(u.display_name, ''), COALESCE(u.email, '')
 		 FROM group_members m
 		 LEFT JOIN users u ON u.id = m.user_id
@@ -439,38 +431,6 @@ func (s *SQLiteGroupStore) GetUserGroups(ctx context.Context, userID uuid.UUID) 
 		groups = append(groups, *g)
 	}
 	return groups, rows.Err()
-}
-
-func (s *SQLiteGroupStore) GetGroupAdminIDs(ctx context.Context, groupID uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT user_id FROM group_members WHERE group_id = ? AND role = ?`,
-		groupID, store.GroupRoleAdmin)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var ids []uuid.UUID
-	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
-}
-
-func (s *SQLiteGroupStore) IsGroupAdmin(ctx context.Context, groupID, userID uuid.UUID) (bool, error) {
-	var count int
-	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM group_members WHERE group_id = ? AND user_id = ? AND role = ?`,
-		groupID, userID, store.GroupRoleAdmin,
-	).Scan(&count)
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
 }
 
 // ============================================================

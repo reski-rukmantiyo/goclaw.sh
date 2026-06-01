@@ -34,7 +34,6 @@ func (h *GroupsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/groups/{id}/members", requireAuth("", h.handleListMembers))
 	mux.HandleFunc("POST /v1/groups/{id}/members", requireAuthAction("group.manage_members", h.handleAddMember))
 	mux.HandleFunc("DELETE /v1/groups/{id}/members/{userId}", requireAuthAction("group.manage_members", h.handleRemoveMember))
-	mux.HandleFunc("PATCH /v1/groups/{id}/members/{userId}/role", requireAuthAction("group.assign_admin", h.handleRoleChange))
 	mux.HandleFunc("GET /v1/groups/{id}/join-requests", requireAuthAction("group.manage_members", h.handleListJoinRequests))
 	mux.HandleFunc("PATCH /v1/groups/{id}/join-requests/{reqId}", requireAuthAction("group.manage_members", h.handleReviewJoinRequest))
 }
@@ -358,21 +357,8 @@ func (h *GroupsHandler) handleAddMember(w http.ResponseWriter, r *http.Request) 
 
 	var input struct {
 		UserID uuid.UUID `json:"user_id"`
-		Role   string    `json:"role"`
 	}
 	if !bindJSON(w, r, locale, &input) {
-		return
-	}
-
-	if input.Role == "" {
-		input.Role = store.GroupRoleMember
-	}
-	switch input.Role {
-	case store.GroupRoleAdmin, store.GroupRoleMember:
-		// valid
-	default:
-		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
-			i18n.T(locale, i18n.MsgInvalidRequest, "role must be one of: admin, member"))
 		return
 	}
 
@@ -385,7 +371,6 @@ func (h *GroupsHandler) handleAddMember(w http.ResponseWriter, r *http.Request) 
 		ID:        store.GenNewID(),
 		GroupID:   groupID,
 		UserID:    input.UserID,
-		Role:      input.Role,
 		JoinedAt:  time.Now(),
 		JoinedVia: store.JoinedViaAdminAdd,
 	}
@@ -427,57 +412,6 @@ func (h *GroupsHandler) handleRemoveMember(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "removed"})
-}
-
-// handleRoleChange updates a member's role within a group.
-func (h *GroupsHandler) handleRoleChange(w http.ResponseWriter, r *http.Request) {
-	locale := extractLocale(r)
-	ctx := r.Context()
-
-	groupID, ok := parsePathUUID(w, r, "id", locale, "group")
-	if !ok {
-		return
-	}
-
-	if h.checkGroupTenantScope(w, r, groupID) == nil {
-		return
-	}
-
-	userIDStr := r.PathValue("userId")
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidID, "user"))
-		return
-	}
-
-	var input struct {
-		Role string `json:"role"`
-	}
-	if !bindJSON(w, r, locale, &input) {
-		return
-	}
-
-	switch input.Role {
-	case store.GroupRoleAdmin, store.GroupRoleMember:
-		// valid
-	default:
-		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest,
-			i18n.T(locale, i18n.MsgInvalidRequest, "role must be one of: admin, member"))
-		return
-	}
-
-	if err := h.groups.UpdateMemberRole(ctx, groupID, userID, input.Role); err != nil {
-		errMsg := err.Error()
-		if strings.Contains(errMsg, "last admin") {
-			writeError(w, http.StatusConflict, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, errMsg))
-			return
-		}
-		slog.Error("groups.role_change failed", "error", err, "group_id", groupID, "user_id", userID)
-		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToUpdate, "member role", "internal error"))
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"role": input.Role})
 }
 
 // handleListJoinRequests returns pending join requests for a group.

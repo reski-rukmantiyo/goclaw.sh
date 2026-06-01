@@ -291,12 +291,12 @@ func (h *AuthHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add tenant_users membership
-	role := "member"
+	isOwner := false
 	if isFirstUser {
-		role = "owner"
+		isOwner = true
 	}
 	if h.tenants != nil {
-		if err := h.tenants.AddUser(ctx, tenantID, user.ID.String(), role); err != nil {
+		if err := h.tenants.AddUser(ctx, tenantID, user.ID.String(), isOwner); err != nil {
 			slog.Warn("auth.register: failed to add tenant membership", "error", err, "user_id", user.ID)
 		}
 	}
@@ -512,20 +512,14 @@ func parseJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	return true
 }
 
-// resolveUserRoleForJWT reads the user's role from tenant_users for JWT claims.
-// Maps: owner -> "owner", admin -> "tenant_admin", else -> "member".
+// resolveUserRoleForJWT derives the user's role for JWT claims.
+// Maps: owner -> "owner", else -> "member".
+// TODO(phase B): derive admin/operator from effective permissions.
 func resolveUserRoleForJWT(ctx context.Context, tenants store.TenantStore, tenantID uuid.UUID, userID string) string {
 	if tenants != nil && tenantID != uuid.Nil && userID != "" {
-		role, err := tenants.GetUserRole(ctx, tenantID, userID)
-		if err == nil && role != "" {
-			switch role {
-			case "owner":
-				return "owner"
-			case "admin":
-				return "tenant_admin"
-			default:
-				return "member"
-			}
+		isOwner, err := tenants.IsOwner(ctx, tenantID, userID)
+		if err == nil && isOwner {
+			return "owner"
 		}
 	}
 	return "member"

@@ -307,7 +307,7 @@ func resolveTenantHint(ctx context.Context, hint, userID string) (uuid.UUID, boo
 		slog.Warn("security.http_tenant_hint_denied_anonymous", "hint", hint, "tenant_id", tid)
 		return uuid.Nil, false
 	}
-	role, err := pkgTenantCache.store.GetUserRole(ctx, tid, userID)
+	memberships, err := pkgTenantCache.store.ListUserTenants(ctx, userID)
 	if err != nil {
 		slog.Warn("security.http_tenant_access_revoked",
 			"hint", hint,
@@ -318,7 +318,14 @@ func resolveTenantHint(ctx context.Context, hint, userID string) (uuid.UUID, boo
 		)
 		return uuid.Nil, false
 	}
-	if role == "" {
+	hasAccess := false
+	for _, m := range memberships {
+		if m.TenantID == tid {
+			hasAccess = true
+			break
+		}
+	}
+	if !hasAccess {
 		slog.Warn("security.http_tenant_no_membership",
 			"hint", hint,
 			"user", userID,

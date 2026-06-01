@@ -263,7 +263,7 @@ func (h *OIDCHandler) resolveOrCreateUser(ctx context.Context, claims *auth.OIDC
 		}
 		// Ensure tenant membership exists
 		if h.tenants != nil {
-			_ = h.tenants.AddUser(ctx, tenantID, user.ID.String(), store.TenantRoleMember)
+			_ = h.tenants.AddUser(ctx, tenantID, user.ID.String(), false)
 		}
 		go func() {
 			tctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -290,7 +290,7 @@ func (h *OIDCHandler) resolveOrCreateUser(ctx context.Context, claims *auth.OIDC
 	}
 
 	if h.tenants != nil {
-		if err := h.tenants.AddUser(ctx, tenantID, newUser.ID.String(), store.TenantRoleMember); err != nil {
+		if err := h.tenants.AddUser(ctx, tenantID, newUser.ID.String(), false); err != nil {
 			slog.Warn("auth.oidc: failed to add tenant membership", "error", err, "user_id", newUser.ID)
 		}
 	}

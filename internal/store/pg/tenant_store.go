@@ -209,13 +209,13 @@ func (s *PGTenantStore) DeleteTenant(ctx context.Context, id uuid.UUID) error {
 // Tenant-user membership
 // ============================================================
 
-func (s *PGTenantStore) AddUser(ctx context.Context, tenantID uuid.UUID, userID, role string) error {
+func (s *PGTenantStore) AddUser(ctx context.Context, tenantID uuid.UUID, userID string, isOwner bool) error {
 	now := time.Now()
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO tenant_users (id, tenant_id, user_id, role, created_at, updated_at)
+		`INSERT INTO tenant_users (id, tenant_id, user_id, is_owner, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6)
-		 ON CONFLICT (tenant_id, user_id) DO UPDATE SET role = EXCLUDED.role, updated_at = EXCLUDED.updated_at`,
-		store.GenNewID(), tenantID, userID, role, now, now,
+		 ON CONFLICT (tenant_id, user_id) DO UPDATE SET is_owner = EXCLUDED.is_owner, updated_at = EXCLUDED.updated_at`,
+		store.GenNewID(), tenantID, userID, isOwner, now, now,
 	)
 	return err
 }
@@ -223,7 +223,7 @@ func (s *PGTenantStore) AddUser(ctx context.Context, tenantID uuid.UUID, userID,
 func (s *PGTenantStore) GetTenantUser(ctx context.Context, id uuid.UUID) (*store.TenantUserData, error) {
 	var d store.TenantUserData
 	err := pkgSqlxDB.GetContext(ctx, &d,
-		`SELECT id, tenant_id, user_id, display_name, role, metadata, created_at, updated_at
+		`SELECT id, tenant_id, user_id, display_name, is_owner, metadata, created_at, updated_at
 		 FROM tenant_users WHERE id = $1`, id)
 	if err != nil {
 		return nil, err
@@ -231,23 +231,23 @@ func (s *PGTenantStore) GetTenantUser(ctx context.Context, id uuid.UUID) (*store
 	return &d, nil
 }
 
-func (s *PGTenantStore) CreateTenantUserReturning(ctx context.Context, tenantID uuid.UUID, userID, displayName, role string) (*store.TenantUserData, error) {
+func (s *PGTenantStore) CreateTenantUserReturning(ctx context.Context, tenantID uuid.UUID, userID, displayName string) (*store.TenantUserData, error) {
 	now := time.Now()
 	var dn *string
 	if displayName != "" {
 		dn = &displayName
 	}
 	row := s.db.QueryRowContext(ctx,
-		`INSERT INTO tenant_users (id, tenant_id, user_id, display_name, role, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`INSERT INTO tenant_users (id, tenant_id, user_id, display_name, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 ON CONFLICT (tenant_id, user_id) DO UPDATE SET
 		   display_name = COALESCE(EXCLUDED.display_name, tenant_users.display_name),
 		   updated_at = EXCLUDED.updated_at
-		 RETURNING id, tenant_id, user_id, display_name, role, metadata, created_at, updated_at`,
-		store.GenNewID(), tenantID, userID, dn, role, now, now,
+		 RETURNING id, tenant_id, user_id, display_name, is_owner, metadata, created_at, updated_at`,
+		store.GenNewID(), tenantID, userID, dn, now, now,
 	)
 	var d store.TenantUserData
-	if err := row.Scan(&d.ID, &d.TenantID, &d.UserID, &d.DisplayName, &d.Role, &d.Metadata, &d.CreatedAt, &d.UpdatedAt); err != nil {
+	if err := row.Scan(&d.ID, &d.TenantID, &d.UserID, &d.DisplayName, &d.IsOwner, &d.Metadata, &d.CreatedAt, &d.UpdatedAt); err != nil {
 		return nil, err
 	}
 	return &d, nil
@@ -261,22 +261,22 @@ func (s *PGTenantStore) RemoveUser(ctx context.Context, tenantID uuid.UUID, user
 	return err
 }
 
-func (s *PGTenantStore) GetUserRole(ctx context.Context, tenantID uuid.UUID, userID string) (string, error) {
-	var role string
+func (s *PGTenantStore) IsOwner(ctx context.Context, tenantID uuid.UUID, userID string) (bool, error) {
+	var isOwner bool
 	err := s.db.QueryRowContext(ctx,
-		`SELECT role FROM tenant_users WHERE tenant_id = $1 AND user_id = $2`,
+		`SELECT is_owner FROM tenant_users WHERE tenant_id = $1 AND user_id = $2`,
 		tenantID, userID,
-	).Scan(&role)
+	).Scan(&isOwner)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
+		return false, nil
 	}
-	return role, err
+	return isOwner, err
 }
 
 func (s *PGTenantStore) ListUsers(ctx context.Context, tenantID uuid.UUID) ([]store.TenantUserData, error) {
 	var result []store.TenantUserData
 	err := pkgSqlxDB.SelectContext(ctx, &result,
-		`SELECT id, tenant_id, user_id, display_name, role, metadata, created_at, updated_at
+		`SELECT id, tenant_id, user_id, display_name, is_owner, metadata, created_at, updated_at
 		 FROM tenant_users WHERE tenant_id = $1 ORDER BY created_at`, tenantID)
 	if err != nil {
 		return nil, err
@@ -287,7 +287,7 @@ func (s *PGTenantStore) ListUsers(ctx context.Context, tenantID uuid.UUID) ([]st
 func (s *PGTenantStore) ListUserTenants(ctx context.Context, userID string) ([]store.TenantUserData, error) {
 	var result []store.TenantUserData
 	err := pkgSqlxDB.SelectContext(ctx, &result,
-		`SELECT id, tenant_id, user_id, display_name, role, metadata, created_at, updated_at
+		`SELECT id, tenant_id, user_id, display_name, is_owner, metadata, created_at, updated_at
 		 FROM tenant_users WHERE user_id = $1 ORDER BY created_at`, userID)
 	if err != nil {
 		return nil, err
