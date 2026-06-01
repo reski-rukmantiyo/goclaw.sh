@@ -3460,7 +3460,6 @@ CREATE TABLE users (
     tenant_id        UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     auth_provider    VARCHAR(20) NOT NULL CHECK (auth_provider IN ('local', 'entra_id', 'google')),
     password_hash    TEXT,
-    is_tenant_admin  BOOLEAN NOT NULL DEFAULT false,
     status           VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'deactivated')),
     last_login_at    TIMESTAMPTZ,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -3642,6 +3641,3 @@ CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id);
 CREATE INDEX idx_refresh_tokens_hash ON refresh_tokens(token_hash);
 CREATE INDEX idx_refresh_tokens_expires ON refresh_tokens(expires_at);
 
--- From 000080_drop_is_tenant_admin.up.sql
--- Drop is_tenant_admin column from users table.
--- Tenant roles now live in tenant_users.role only.

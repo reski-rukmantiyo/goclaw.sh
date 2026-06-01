@@ -73,7 +73,6 @@ function UsersAdminPage() {
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
 
   const [deactivateTarget, setDeactivateTarget] = useState<User | null>(null);
   const [deactivateLoading, setDeactivateLoading] = useState(false);
@@ -87,13 +86,12 @@ function UsersAdminPage() {
         email: email.trim(),
         display_name: displayName.trim(),
         password: password.trim(),
-        role: isAdmin ? "admin" : "member",
+        role: "member",
       });
       setCreateOpen(false);
       setEmail("");
       setDisplayName("");
       setPassword("");
-      setIsAdmin(false);
     } catch {
       // error handled by mutation
     }
@@ -129,7 +127,6 @@ function UsersAdminPage() {
       setEmail("");
       setDisplayName("");
       setPassword("");
-      setIsAdmin(false);
     }
   }, [createOpen]);
 
@@ -354,18 +351,6 @@ function UsersAdminPage() {
                 className="text-base md:text-sm"
               />
               <p className="text-xs text-muted-foreground mt-1">{t("passwordHint")}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                id="user-is-admin"
-                type="checkbox"
-                checked={isAdmin}
-                onChange={(e) => setIsAdmin(e.target.checked)}
-                className="h-4 w-4 rounded border-input"
-              />
-              <Label htmlFor="user-is-admin" className="text-sm font-normal cursor-pointer">
-                {t("isAdmin")}
-              </Label>
             </div>
           </div>
           <DialogFooter>

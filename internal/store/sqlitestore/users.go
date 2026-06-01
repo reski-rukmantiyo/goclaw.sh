@@ -45,19 +45,18 @@ func (s *SQLiteUserStore) Create(ctx context.Context, user *store.UserData) erro
 	return err
 }
 
-const userCols = `id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, is_tenant_admin, status, last_login_at, created_at, updated_at`
+const userCols = `id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, status, last_login_at, created_at, updated_at`
 
 func scanUser(row interface{ Scan(dest ...any) error }) (*store.UserData, error) {
 	var u store.UserData
 	var id, tenantID string
 	var avatarURL, passwordHash *string
-	var adminInt int64
 	var lastLoginAt nullSqliteTime
 	createdAt, updatedAt := scanTimePair()
 
 	err := row.Scan(
 		&id, &u.Email, &u.DisplayName, &avatarURL,
-		&tenantID, &u.AuthProvider, &passwordHash, &adminInt,
+		&tenantID, &u.AuthProvider, &passwordHash,
 		&u.Status, &lastLoginAt, createdAt, updatedAt,
 	)
 	if err != nil {
@@ -72,7 +71,6 @@ func scanUser(row interface{ Scan(dest ...any) error }) (*store.UserData, error)
 	if err != nil {
 		return nil, fmt.Errorf("parse tenant_id: %w", err)
 	}
-	u.IsTenantAdmin = adminInt == 1
 	u.AvatarURL = avatarURL
 	u.PasswordHash = passwordHash
 	if lastLoginAt.Valid {

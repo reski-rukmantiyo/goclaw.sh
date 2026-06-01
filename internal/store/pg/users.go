@@ -47,7 +47,7 @@ func (s *PGUserStore) Create(ctx context.Context, user *store.UserData) error {
 
 func (s *PGUserStore) GetByID(ctx context.Context, id uuid.UUID) (*store.UserData, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, is_tenant_admin, status, last_login_at, created_at, updated_at
+		`SELECT id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, status, last_login_at, created_at, updated_at
 		 FROM users WHERE id = $1`, id)
 	u, err := scanUserRow(row)
 	if err != nil {
@@ -61,7 +61,7 @@ func (s *PGUserStore) GetByID(ctx context.Context, id uuid.UUID) (*store.UserDat
 
 func (s *PGUserStore) GetByEmail(ctx context.Context, tenantID uuid.UUID, email string) (*store.UserData, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, is_tenant_admin, status, last_login_at, created_at, updated_at
+		`SELECT id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, status, last_login_at, created_at, updated_at
 		 FROM users WHERE tenant_id = $1 AND email = $2`, tenantID, email)
 	u, err := scanUserRow(row)
 	if err != nil {
@@ -128,7 +128,7 @@ func (s *PGUserStore) List(ctx context.Context, tenantID uuid.UUID, params store
 	where := "WHERE " + strings.Join(conditions, " AND ")
 
 	query := fmt.Sprintf(
-		`SELECT id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, is_tenant_admin, status, last_login_at, created_at, updated_at,
+		`SELECT id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, status, last_login_at, created_at, updated_at,
 		        COUNT(*) OVER() AS total_count
 		 FROM users %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`,
 		where, idx, idx+1,
@@ -149,7 +149,7 @@ func (s *PGUserStore) List(ctx context.Context, tenantID uuid.UUID, params store
 		var lastLoginAt sql.NullTime
 		if err := rows.Scan(
 			&u.ID, &u.Email, &u.DisplayName, &avatarURL, &u.TenantID, &u.AuthProvider, &passwordHash,
-			&u.IsTenantAdmin, &u.Status, &lastLoginAt, &u.CreatedAt, &u.UpdatedAt, &total,
+			&u.Status, &lastLoginAt, &u.CreatedAt, &u.UpdatedAt, &total,
 		); err != nil {
 			return nil, err
 		}
@@ -303,7 +303,7 @@ func scanUserRow(row *sql.Row) (*store.UserData, error) {
 	var lastLoginAt sql.NullTime
 	err := row.Scan(
 		&u.ID, &u.Email, &u.DisplayName, &avatarURL, &u.TenantID, &u.AuthProvider, &passwordHash,
-		&u.IsTenantAdmin, &u.Status, &lastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.Status, &lastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
