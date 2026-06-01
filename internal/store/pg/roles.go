@@ -3,12 +3,12 @@ package pg
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lib/pq"
 
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
@@ -28,12 +28,17 @@ const roleSelectCols = `id, tenant_id, name, description, is_system, permissions
 func scanRole(row interface{ Scan(dest ...any) error }) (*store.RoleData, error) {
 	var r store.RoleData
 	var desc *string
-	var perms pq.StringArray
-	if err := row.Scan(&r.ID, &r.TenantID, &r.Name, &desc, &r.IsSystem, &perms, &r.CreatedAt, &r.UpdatedAt); err != nil {
+	var permsRaw []byte
+	if err := row.Scan(&r.ID, &r.TenantID, &r.Name, &desc, &r.IsSystem, &permsRaw, &r.CreatedAt, &r.UpdatedAt); err != nil {
 		return nil, err
 	}
 	r.Description = desc
-	r.Permissions = []string(perms)
+	if len(permsRaw) > 0 {
+		_ = json.Unmarshal(permsRaw, &r.Permissions)
+	}
+	if r.Permissions == nil {
+		r.Permissions = []string{}
+	}
 	return &r, nil
 }
 
@@ -45,11 +50,12 @@ func (s *PGRoleStore) CreateRole(ctx context.Context, role *store.RoleData) erro
 	role.CreatedAt = now
 	role.UpdatedAt = now
 
+	permsJSON, _ := json.Marshal(role.Permissions)
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO roles (id, tenant_id, name, description, is_system, permissions, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 		role.ID, role.TenantID, role.Name, role.Description, role.IsSystem,
-		pq.Array(role.Permissions), now, now,
+		permsJSON, now, now,
 	)
 	return err
 }
@@ -81,9 +87,10 @@ func (s *PGRoleStore) GetRoleByName(ctx context.Context, tenantID uuid.UUID, nam
 }
 
 func (s *PGRoleStore) UpdateRole(ctx context.Context, role *store.RoleData) error {
+	permsJSON, _ := json.Marshal(role.Permissions)
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE roles SET name = $1, description = $2, is_system = $3, permissions = $4, updated_at = $5 WHERE id = $6`,
-		role.Name, role.Description, role.IsSystem, pq.Array(role.Permissions), time.Now(), role.ID,
+		role.Name, role.Description, role.IsSystem, permsJSON, time.Now(), role.ID,
 	)
 	return err
 }
@@ -134,14 +141,19 @@ func (s *PGRoleStore) ListRoles(ctx context.Context, tenantID uuid.UUID, params 
 	for rows.Next() {
 		var r store.RoleData
 		var desc *string
-		var perms pq.StringArray
+		var permsRaw []byte
 		var t int
-		if err := rows.Scan(&r.ID, &r.TenantID, &r.Name, &desc, &r.IsSystem, &perms, &r.CreatedAt, &r.UpdatedAt, &t); err != nil {
+		if err := rows.Scan(&r.ID, &r.TenantID, &r.Name, &desc, &r.IsSystem, &permsRaw, &r.CreatedAt, &r.UpdatedAt, &t); err != nil {
 			return nil, err
 		}
 		total = t
 		r.Description = desc
-		r.Permissions = []string(perms)
+		if len(permsRaw) > 0 {
+			_ = json.Unmarshal(permsRaw, &r.Permissions)
+		}
+		if r.Permissions == nil {
+			r.Permissions = []string{}
+		}
 		roles = append(roles, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -177,9 +189,10 @@ func (s *PGRoleStore) SetRolePermissions(ctx context.Context, roleID uuid.UUID, 
 			return err
 		}
 	}
+	permsJSON, _ := json.Marshal(perms)
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE roles SET permissions = $1, updated_at = $2 WHERE id = $3`,
-		pq.Array(perms), time.Now(), roleID,
+		permsJSON, time.Now(), roleID,
 	); err != nil {
 		return err
 	}
@@ -306,6 +319,14 @@ func (s *PGRoleStore) ListGroupRoles(ctx context.Context, groupID uuid.UUID) ([]
 }
 
 func (s *PGRoleStore) GetUserEffectivePermissions(ctx context.Context, userID string, tenantID uuid.UUID) ([]string, error) {
+	// group_members.user_id is UUID in PG, while user_roles.user_id is VARCHAR.
+	// Passing userID as uuid.UUID satisfies both: VARCHAR = UUID works (implicit cast),
+	// but UUID = TEXT does not.
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Union of:
 	// 1. Direct role permissions
 	// 2. Group role permissions (all groups user belongs to)
@@ -341,7 +362,7 @@ func (s *PGRoleStore) GetUserEffectivePermissions(ctx context.Context, userID st
 			)
 		 )
 		 ORDER BY rp.permission`,
-		tenantID, userID,
+		tenantID, uid,
 	)
 	if err != nil {
 		return nil, err
