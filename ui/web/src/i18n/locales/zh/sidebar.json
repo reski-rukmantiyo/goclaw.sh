@@ -47,6 +47,7 @@
     "tenants": "租户",
     "userMgmt": "用户",
     "groups": "组",
+    "roles": "角色",
     "auditLog": "审计日志",
     "backupRestore": "备份与恢复",
     "workstations": "工作站"

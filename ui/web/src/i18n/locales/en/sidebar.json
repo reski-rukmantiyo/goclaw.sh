@@ -48,6 +48,7 @@
     "tenants": "Tenants",
     "userMgmt": "Users",
     "groups": "Groups",
+    "roles": "Roles",
     "auditLog": "Audit Log",
     "backupRestore": "Backup & Restore",
     "workstations": "Workstations"

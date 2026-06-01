@@ -1,0 +1,33 @@
+{
+  "title": "角色管理",
+  "description": "管理角色和权限",
+  "createRole": "创建角色",
+  "createRoleDescription": "为租户创建新的自定义角色",
+  "editRole": "编辑角色",
+  "editRoleDescription": "更新角色详情和权限",
+  "deleteRoleTitle": "删除角色",
+  "deleteRoleDescription": "确定要删除角色 \"{{name}}\" 吗？此操作无法撤销。",
+  "searchPlaceholder": "搜索角色...",
+  "emptyTitle": "未找到角色",
+  "emptyDescription": "创建一个角色开始",
+  "name": "名称",
+  "namePlaceholder": "例如：编辑者",
+  "description": "描述",
+  "descriptionPlaceholder": "可选描述",
+  "permissions": "权限",
+  "type": "类型",
+  "system": "系统",
+  "custom": "自定义",
+  "savePermissions": "保存权限",
+  "savingPermissions": "保存中...",
+  "toast": {
+    "created": "角色已创建",
+    "failedCreate": "创建角色失败",
+    "updated": "角色已更新",
+    "failedUpdate": "更新角色失败",
+    "deleted": "角色已删除",
+    "failedDelete": "删除角色失败",
+    "permissionsUpdated": "权限已更新",
+    "failedPermissionsUpdate": "更新权限失败"
+  }
+}

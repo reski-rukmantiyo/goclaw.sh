@@ -47,6 +47,7 @@
     "tenants": "Tổ chức",
     "userMgmt": "Người dùng",
     "groups": "Nhóm",
+    "roles": "Vai trò",
     "auditLog": "Nhật ký kiểm tra",
     "backupRestore": "Sao lưu & Khôi phục",
     "workstations": "Workstations"

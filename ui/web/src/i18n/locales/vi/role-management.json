@@ -1,0 +1,33 @@
+{
+  "title": "Quản lý vai trò",
+  "description": "Quản lý vai trò và quyền hạn",
+  "createRole": "Tạo vai trò",
+  "createRoleDescription": "Tạo vai trò tùy chỉnh mới cho tenant",
+  "editRole": "Chỉnh sửa vai trò",
+  "editRoleDescription": "Cập nhật chi tiết và quyền hạn của vai trò",
+  "deleteRoleTitle": "Xóa vai trò",
+  "deleteRoleDescription": "Bạn có chắc muốn xóa vai trò \"{{name}}\"? Không thể hoàn tác.",
+  "searchPlaceholder": "Tìm kiếm vai trò...",
+  "emptyTitle": "Không tìm thấy vai trò",
+  "emptyDescription": "Tạo vai trò để bắt đầu",
+  "name": "Tên",
+  "namePlaceholder": "vd: Biên tập viên",
+  "description": "Mô tả",
+  "descriptionPlaceholder": "Mô tả tùy chọn",
+  "permissions": "Quyền hạn",
+  "type": "Loại",
+  "system": "Hệ thống",
+  "custom": "Tùy chỉnh",
+  "savePermissions": "Lưu quyền hạn",
+  "savingPermissions": "Đang lưu...",
+  "toast": {
+    "created": "Đã tạo vai trò",
+    "failedCreate": "Tạo vai trò thất bại",
+    "updated": "Đã cập nhật vai trò",
+    "failedUpdate": "Cập nhật vai trò thất bại",
+    "deleted": "Đã xóa vai trò",
+    "failedDelete": "Xóa vai trò thất bại",
+    "permissionsUpdated": "Đã cập nhật quyền hạn",
+    "failedPermissionsUpdate": "Cập nhật quyền hạn thất bại"
+  }
+}

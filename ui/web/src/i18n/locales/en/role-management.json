@@ -1,0 +1,33 @@
+{
+  "title": "Role Management",
+  "description": "Manage roles and permissions",
+  "createRole": "Create Role",
+  "createRoleDescription": "Create a new custom role for your tenant",
+  "editRole": "Edit Role",
+  "editRoleDescription": "Update role details and permissions",
+  "deleteRoleTitle": "Delete Role",
+  "deleteRoleDescription": "Are you sure you want to delete the role \"{{name}}\"? This action cannot be undone.",
+  "searchPlaceholder": "Search roles...",
+  "emptyTitle": "No roles found",
+  "emptyDescription": "Create a role to get started",
+  "name": "Name",
+  "namePlaceholder": "e.g. Editor",
+  "description": "Description",
+  "descriptionPlaceholder": "Optional description",
+  "permissions": "Permissions",
+  "type": "Type",
+  "system": "System",
+  "custom": "Custom",
+  "savePermissions": "Save Permissions",
+  "savingPermissions": "Saving...",
+  "toast": {
+    "created": "Role created",
+    "failedCreate": "Failed to create role",
+    "updated": "Role updated",
+    "failedUpdate": "Failed to update role",
+    "deleted": "Role deleted",
+    "failedDelete": "Failed to delete role",
+    "permissionsUpdated": "Permissions updated",
+    "failedPermissionsUpdate": "Failed to update permissions"
+  }
+}
