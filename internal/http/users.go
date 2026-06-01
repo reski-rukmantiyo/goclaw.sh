@@ -200,8 +200,8 @@ func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check for duplicate email within tenant.
-	existing, err := h.users.GetByEmail(ctx, tenantID, input.Email)
+	// Check for duplicate email globally.
+	existing, err := h.users.GetByEmail(ctx, input.Email)
 	if err != nil && err.Error() != "not found" {
 		slog.Error("users.create check duplicate failed", "error", err)
 	}
@@ -222,10 +222,9 @@ func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		ID:           uuid.New(),
 		Email:        input.Email,
 		DisplayName:  input.DisplayName,
-		TenantID:     tenantID,
 		AuthProvider: store.AuthProviderLocal,
 		PasswordHash: &hash,
-		Status:        store.UserStatusActive,
+		Status:       store.UserStatusActive,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -260,9 +259,12 @@ func (h *UsersHandler) checkUserTenantScope(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "user", id.String()))
 		return nil
 	}
-	if tid := store.TenantIDFromContext(ctx); tid != uuid.Nil && user.TenantID != tid {
-		writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "user", id.String()))
-		return nil
+	if tid := store.TenantIDFromContext(ctx); tid != uuid.Nil {
+		role, _ := h.tenants.GetUserRole(ctx, tid, id.String())
+		if role == "" {
+			writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "user", id.String()))
+			return nil
+		}
 	}
 	return user
 }

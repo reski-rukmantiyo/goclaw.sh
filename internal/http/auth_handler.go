@@ -97,22 +97,19 @@ func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.users.GetByEmail(ctx, tenantID, req.Email)
+	user, err := h.users.GetByEmail(ctx, req.Email)
 	if err != nil || user == nil {
-		// If no tenant hint was provided (fell back to master) and user not found in master,
-		// try cross-tenant lookup to find the user's home tenant.
-		if tenantID == store.MasterTenantID {
-			user, err = h.users.GetByEmailAnyTenant(ctx, req.Email)
-			if err == nil && user != nil {
-				tenantID = user.TenantID
-			}
-		}
-	}
-
-	if user == nil {
 		slog.Warn("auth.login_failed", "email", req.Email, "tenant_id", tenantID, "error", err)
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", i18n.T(locale, i18n.MsgAuthInvalidCredentials))
 		return
+	}
+
+	// Resolve tenant from tenant_users membership; fall back to request-resolved tenant
+	if h.tenants != nil {
+		resolvedTenantID, rErr := h.tenants.ResolveUserTenant(ctx, user.ID.String())
+		if rErr == nil && resolvedTenantID != uuid.Nil && resolvedTenantID != store.MasterTenantID {
+			tenantID = resolvedTenantID
+		}
 	}
 
 	// Re-load per-tenant auth config for the resolved tenant
@@ -141,10 +138,10 @@ func (h *AuthHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Determine role for JWT claims from tenant_users membership
-	role := resolveUserRoleForJWT(ctx, h.tenants, user.TenantID, user.ID.String())
+	role := resolveUserRoleForJWT(ctx, h.tenants, tenantID, user.ID.String())
 
-	// Issue access token
-	accessToken, err := h.jwt.IssueAccessToken(user.ID, user.Email, user.TenantID, role)
+	// Issue access token scoped to resolved tenant
+	accessToken, err := h.jwt.IssueAccessToken(user.ID, user.Email, tenantID, role)
 	if err != nil {
 		slog.Error("auth.issue_token_failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", i18n.T(locale, i18n.MsgInternalError, "token issue"))
@@ -251,8 +248,8 @@ func (h *AuthHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check for duplicate email in target tenant
-	existing, err := h.users.GetByEmail(ctx, tenantID, req.Email)
+	// Check for duplicate email (global uniqueness).
+	existing, err := h.users.GetByEmail(ctx, req.Email)
 	if err != nil && err.Error() != "not found" {
 		slog.Error("auth.register duplicate check failed", "error", err)
 	}
@@ -277,15 +274,14 @@ func (h *AuthHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	user := &store.UserData{
-		ID:            uuid.New(),
-		Email:         req.Email,
-		DisplayName:   req.DisplayName,
-		TenantID:      tenantID,
-		AuthProvider:  store.AuthProviderLocal,
-		PasswordHash:  &hash,
-		Status:        store.UserStatusActive,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:           uuid.New(),
+		Email:        req.Email,
+		DisplayName:  req.DisplayName,
+		AuthProvider: store.AuthProviderLocal,
+		PasswordHash: &hash,
+		Status:       store.UserStatusActive,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
 	if err := h.users.Create(ctx, user); err != nil {
@@ -362,17 +358,26 @@ func (h *AuthHandler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	role := resolveUserRoleForJWT(ctx, h.tenants, user.TenantID, user.ID.String())
+	// Resolve tenant from tenant_users membership
+	tenantID := store.MasterTenantID
+	if h.tenants != nil {
+		resolvedTenantID, rErr := h.tenants.ResolveUserTenant(ctx, user.ID.String())
+		if rErr == nil && resolvedTenantID != uuid.Nil {
+			tenantID = resolvedTenantID
+		}
+	}
 
-	accessToken, err := h.jwt.IssueAccessToken(user.ID, user.Email, user.TenantID, role)
+	role := resolveUserRoleForJWT(ctx, h.tenants, tenantID, user.ID.String())
+
+	accessToken, err := h.jwt.IssueAccessToken(user.ID, user.Email, tenantID, role)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", i18n.T(locale, i18n.MsgInternalError, "token issue"))
 		return
 	}
 
-	cfg, err := h.loader.LoadAuthConfig(ctx, user.TenantID)
+	cfg, err := h.loader.LoadAuthConfig(ctx, tenantID)
 	if err != nil {
-		slog.Warn("auth.refresh_load_config_failed", "tenant_id", user.TenantID, "error", err)
+		slog.Warn("auth.refresh_load_config_failed", "tenant_id", tenantID, "error", err)
 	}
 
 	timeout := 480

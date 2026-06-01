@@ -20,6 +20,7 @@ type fakeTenantStore struct {
 }
 
 func (f fakeTenantStore) CreateTenant(context.Context, *store.TenantData) error { return nil }
+func (f fakeTenantStore) DeleteTenant(context.Context, uuid.UUID) error { return nil }
 func (f fakeTenantStore) GetTenant(context.Context, uuid.UUID) (*store.TenantData, error) {
 	return f.tenant, f.err
 }

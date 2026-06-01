@@ -36,27 +36,27 @@ func (s *SQLiteUserStore) Create(ctx context.Context, user *store.UserData) erro
 	user.UpdatedAt = now
 
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO users (id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, status, last_login_at, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO users (id, email, display_name, avatar_url, auth_provider, password_hash, status, last_login_at, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.ID.String(), user.Email, user.DisplayName, user.AvatarURL,
-		user.TenantID.String(), user.AuthProvider, user.PasswordHash,
+		user.AuthProvider, user.PasswordHash,
 		user.Status, user.LastLoginAt, user.CreatedAt, user.UpdatedAt,
 	)
 	return err
 }
 
-const userCols = `id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, status, last_login_at, created_at, updated_at`
+const userCols = `id, email, display_name, avatar_url, auth_provider, password_hash, status, last_login_at, created_at, updated_at`
 
 func scanUser(row interface{ Scan(dest ...any) error }) (*store.UserData, error) {
 	var u store.UserData
-	var id, tenantID string
+	var id string
 	var avatarURL, passwordHash *string
 	var lastLoginAt nullSqliteTime
 	createdAt, updatedAt := scanTimePair()
 
 	err := row.Scan(
 		&id, &u.Email, &u.DisplayName, &avatarURL,
-		&tenantID, &u.AuthProvider, &passwordHash,
+		&u.AuthProvider, &passwordHash,
 		&u.Status, &lastLoginAt, createdAt, updatedAt,
 	)
 	if err != nil {
@@ -66,10 +66,6 @@ func scanUser(row interface{ Scan(dest ...any) error }) (*store.UserData, error)
 	u.ID, err = uuid.Parse(id)
 	if err != nil {
 		return nil, fmt.Errorf("parse user id: %w", err)
-	}
-	u.TenantID, err = uuid.Parse(tenantID)
-	if err != nil {
-		return nil, fmt.Errorf("parse tenant_id: %w", err)
 	}
 	u.AvatarURL = avatarURL
 	u.PasswordHash = passwordHash
@@ -97,24 +93,9 @@ func (s *SQLiteUserStore) GetByID(ctx context.Context, id uuid.UUID) (*store.Use
 	return u, nil
 }
 
-func (s *SQLiteUserStore) GetByEmail(ctx context.Context, tenantID uuid.UUID, email string) (*store.UserData, error) {
+func (s *SQLiteUserStore) GetByEmail(ctx context.Context, email string) (*store.UserData, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT `+userCols+` FROM users WHERE tenant_id = ? AND email = ?`,
-		tenantID.String(), email,
-	)
-	u, err := scanUser(row)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return u, nil
-}
-
-func (s *SQLiteUserStore) GetByEmailAnyTenant(ctx context.Context, email string) (*store.UserData, error) {
-	row := s.db.QueryRowContext(ctx,
-		`SELECT `+userCols+` FROM users WHERE email = ? LIMIT 1`,
+		`SELECT `+userCols+` FROM users WHERE email = ?`,
 		email,
 	)
 	u, err := scanUser(row)
@@ -181,17 +162,17 @@ func (s *SQLiteUserStore) List(ctx context.Context, tenantID uuid.UUID, params s
 	var conditions []string
 	var args []any
 
-	conditions = append(conditions, "tenant_id = ?")
+	conditions = append(conditions, "tu.tenant_id = ?")
 	args = append(args, tenantID.String())
 
 	if params.Search != "" {
 		escaped := strings.NewReplacer("%", "\\%", "_", "\\_").Replace(params.Search)
 		pattern := "%" + escaped + "%"
-		conditions = append(conditions, "(display_name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')")
+		conditions = append(conditions, "(u.display_name LIKE ? ESCAPE '\\' OR u.email LIKE ? ESCAPE '\\')")
 		args = append(args, pattern, pattern)
 	}
 	if params.Status != "" {
-		conditions = append(conditions, "status = ?")
+		conditions = append(conditions, "u.status = ?")
 		args = append(args, params.Status)
 	}
 
@@ -202,7 +183,7 @@ func (s *SQLiteUserStore) List(ctx context.Context, tenantID uuid.UUID, params s
 	countArgs := make([]any, len(args))
 	copy(countArgs, args)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM users`+where,
+		`SELECT COUNT(*) FROM users u JOIN tenant_users tu ON tu.user_id = u.id`+where,
 		countArgs...,
 	).Scan(&total)
 	if err != nil {
@@ -214,8 +195,8 @@ func (s *SQLiteUserStore) List(ctx context.Context, tenantID uuid.UUID, params s
 	if limit <= 0 {
 		limit = 50
 	}
-	query := `SELECT ` + userCols + ` FROM users` + where +
-		` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	query := `SELECT ` + userCols + ` FROM users u JOIN tenant_users tu ON tu.user_id = u.id` + where +
+		` ORDER BY u.created_at DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, params.Offset)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)

@@ -166,6 +166,7 @@ func (a *adminTenantStore) GetUserRole(_ context.Context, tid uuid.UUID, uid str
 
 // Remaining store.TenantStore methods — no-op stubs.
 func (a *adminTenantStore) CreateTenant(context.Context, *store.TenantData) error { return nil }
+func (a *adminTenantStore) DeleteTenant(context.Context, uuid.UUID) error { return nil }
 func (a *adminTenantStore) GetTenant(_ context.Context, _ uuid.UUID) (*store.TenantData, error) {
 	return nil, sql.ErrNoRows
 }

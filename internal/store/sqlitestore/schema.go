@@ -16,7 +16,7 @@ var schemaSQL string
 
 // SchemaVersion is the current SQLite schema version.
 // Bump this when adding new migration steps below.
-const SchemaVersion = 42
+const SchemaVersion = 43
 
 // migrations maps version → SQL to apply when upgrading FROM that version.
 // schema.sql always represents the LATEST full schema (for fresh DBs).
@@ -886,6 +886,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_webhook_calls_idempotency
 
 	// Version 41 → 42: drop is_tenant_admin from users (roles now in tenant_users).
 	41: `ALTER TABLE users DROP COLUMN IF EXISTS is_tenant_admin;`,
+
+	// Version 42 → 43: drop tenant_id from users; users becomes global identity table.
+	42: `INSERT INTO tenant_users (tenant_id, user_id, role, metadata, created_at, updated_at)
+SELECT u.tenant_id, u.id, 'member', '{}', datetime('now'), datetime('now')
+FROM users u
+WHERE u.tenant_id IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM tenant_users tu
+      WHERE tu.tenant_id = u.tenant_id AND tu.user_id = u.id
+  );
+ALTER TABLE users DROP COLUMN tenant_id;
+DROP INDEX IF EXISTS idx_users_tenant;
+DROP INDEX IF EXISTS idx_users_tenant_email;
+DROP INDEX IF EXISTS idx_users_status;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);`,
 }
 
 // addHooksTables is the SQLite incremental migration for schema v19 → v20.

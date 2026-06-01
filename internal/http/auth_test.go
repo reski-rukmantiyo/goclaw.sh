@@ -77,6 +77,7 @@ func (m *mockTenantStore) setUserRole(tenantID uuid.UUID, userID, role string) {
 	m.roles[tenantID][userID] = role
 }
 
+func (m *mockTenantStore) DeleteTenant(context.Context, uuid.UUID) error { return nil }
 func (m *mockTenantStore) CreateTenant(context.Context, *store.TenantData) error { return nil }
 func (m *mockTenantStore) GetTenant(_ context.Context, id uuid.UUID) (*store.TenantData, error) {
 	if t := m.tenantsByID[id]; t != nil {

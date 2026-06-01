@@ -23,17 +23,16 @@ const (
 
 // UserData represents an authenticated user.
 type UserData struct {
-	ID              uuid.UUID  `json:"id" db:"id"`
-	Email           string     `json:"email" db:"email"`
-	DisplayName     string     `json:"display_name" db:"display_name"`
-	AvatarURL       *string    `json:"avatar_url,omitempty" db:"avatar_url"`
-	TenantID        uuid.UUID  `json:"tenant_id" db:"tenant_id"`
-	AuthProvider    string     `json:"auth_provider" db:"auth_provider"`
-	PasswordHash    *string    `json:"-" db:"password_hash"`
-	Status          string     `json:"status" db:"status"`
-	LastLoginAt     *time.Time `json:"last_login_at,omitempty" db:"last_login_at"`
-	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at" db:"updated_at"`
+	ID           uuid.UUID  `json:"id" db:"id"`
+	Email        string     `json:"email" db:"email"`
+	DisplayName  string     `json:"display_name" db:"display_name"`
+	AvatarURL    *string    `json:"avatar_url,omitempty" db:"avatar_url"`
+	AuthProvider string     `json:"auth_provider" db:"auth_provider"`
+	PasswordHash *string    `json:"-" db:"password_hash"`
+	Status       string     `json:"status" db:"status"`
+	LastLoginAt  *time.Time `json:"last_login_at,omitempty" db:"last_login_at"`
+	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 // UserIdentity represents a linked auth provider identity.
@@ -72,11 +71,8 @@ type UserStore interface {
 	Create(ctx context.Context, user *UserData) error
 	// GetByID retrieves a user by internal UUID.
 	GetByID(ctx context.Context, id uuid.UUID) (*UserData, error)
-	// GetByEmail retrieves a user by email within a tenant.
-	GetByEmail(ctx context.Context, tenantID uuid.UUID, email string) (*UserData, error)
-	// GetByEmailAnyTenant retrieves a user by email across all tenants.
-	// Used for login when no tenant hint is provided.
-	GetByEmailAnyTenant(ctx context.Context, email string) (*UserData, error)
+	// GetByEmail retrieves a user by email (global lookup, no tenant scoping).
+	GetByEmail(ctx context.Context, email string) (*UserData, error)
 	// Update updates user fields.
 	Update(ctx context.Context, user *UserData) error
 	// UpdateStatus changes user status (active/suspended/deactivated).

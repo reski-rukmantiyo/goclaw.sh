@@ -215,10 +215,10 @@ func (h *OIDCHandler) handleCallback(providerName string) http.HandlerFunc {
 		}
 
 		// Determine role from tenant_users membership
-		role := resolveUserRoleForJWT(r.Context(), h.tenants, user.TenantID, user.ID.String())
+		role := resolveUserRoleForJWT(r.Context(), h.tenants, tenantID, user.ID.String())
 
 		// Issue JWT session token
-		accessToken, err := h.jwt.IssueAccessToken(user.ID, user.Email, user.TenantID, role)
+		accessToken, err := h.jwt.IssueAccessToken(user.ID, user.Email, tenantID, role)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "internal_error", i18n.T(locale, i18n.MsgInternalError, "token issue"))
 			return
@@ -253,13 +253,17 @@ func (h *OIDCHandler) resolveOrCreateUser(ctx context.Context, claims *auth.OIDC
 		return user, nil
 	}
 
-	// 2. Check if user with same email exists in target tenant
-	user, err := h.users.GetByEmail(ctx, tenantID, claims.Email)
+	// 2. Check if user with same email exists globally
+	user, err := h.users.GetByEmail(ctx, claims.Email)
 	if err == nil && user != nil {
 		// Link new identity to existing user
 		_, err := h.createIdentity(ctx, user.ID, providerName, claims)
 		if err != nil {
 			slog.Warn("auth.identity_link_failed", "user_id", user.ID, "provider", providerName, "error", err)
+		}
+		// Ensure tenant membership exists
+		if h.tenants != nil {
+			_ = h.tenants.AddUser(ctx, tenantID, user.ID.String(), store.TenantRoleMember)
 		}
 		go func() {
 			tctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -269,7 +273,7 @@ func (h *OIDCHandler) resolveOrCreateUser(ctx context.Context, claims *auth.OIDC
 		return user, nil
 	}
 
-	// 3. Create new user + identity in target tenant
+	// 3. Create new user + identity
 	displayName := claims.Name
 	if displayName == "" {
 		displayName = claims.Email
@@ -278,12 +282,17 @@ func (h *OIDCHandler) resolveOrCreateUser(ctx context.Context, claims *auth.OIDC
 		ID:           uuid.Must(uuid.NewV7()),
 		Email:        claims.Email,
 		DisplayName:  displayName,
-		TenantID:     tenantID,
 		AuthProvider: providerName,
 		Status:       store.UserStatusActive,
 	}
 	if err := h.users.Create(ctx, newUser); err != nil {
 		return nil, err
+	}
+
+	if h.tenants != nil {
+		if err := h.tenants.AddUser(ctx, tenantID, newUser.ID.String(), store.TenantRoleMember); err != nil {
+			slog.Warn("auth.oidc: failed to add tenant membership", "error", err, "user_id", newUser.ID)
+		}
 	}
 
 	if _, err := h.createIdentity(ctx, newUser.ID, providerName, claims); err != nil {

@@ -27,11 +27,11 @@ func NewPGUserStore(db *sql.DB) *PGUserStore {
 
 func (s *PGUserStore) Create(ctx context.Context, user *store.UserData) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO users (id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, status, last_login_at, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		`INSERT INTO users (id, email, display_name, avatar_url, auth_provider, password_hash, status, last_login_at, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		user.ID, user.Email, user.DisplayName,
 		sql.NullString{String: derefStr(user.AvatarURL), Valid: user.AvatarURL != nil && *user.AvatarURL != ""},
-		user.TenantID, user.AuthProvider,
+		user.AuthProvider,
 		sql.NullString{String: derefStr(user.PasswordHash), Valid: user.PasswordHash != nil && *user.PasswordHash != ""},
 		user.Status,
 		sql.NullTime{Time: func() time.Time {
@@ -47,7 +47,7 @@ func (s *PGUserStore) Create(ctx context.Context, user *store.UserData) error {
 
 func (s *PGUserStore) GetByID(ctx context.Context, id uuid.UUID) (*store.UserData, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, status, last_login_at, created_at, updated_at
+		`SELECT id, email, display_name, avatar_url, auth_provider, password_hash, status, last_login_at, created_at, updated_at
 		 FROM users WHERE id = $1`, id)
 	u, err := scanUserRow(row)
 	if err != nil {
@@ -59,24 +59,10 @@ func (s *PGUserStore) GetByID(ctx context.Context, id uuid.UUID) (*store.UserDat
 	return u, nil
 }
 
-func (s *PGUserStore) GetByEmail(ctx context.Context, tenantID uuid.UUID, email string) (*store.UserData, error) {
+func (s *PGUserStore) GetByEmail(ctx context.Context, email string) (*store.UserData, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, status, last_login_at, created_at, updated_at
-		 FROM users WHERE tenant_id = $1 AND email = $2`, tenantID, email)
-	u, err := scanUserRow(row)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return u, nil
-}
-
-func (s *PGUserStore) GetByEmailAnyTenant(ctx context.Context, email string) (*store.UserData, error) {
-	row := s.db.QueryRowContext(ctx,
-		`SELECT id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, status, last_login_at, created_at, updated_at
-		 FROM users WHERE email = $1 LIMIT 1`, email)
+		`SELECT id, email, display_name, avatar_url, auth_provider, password_hash, status, last_login_at, created_at, updated_at
+		 FROM users WHERE email = $1`, email)
 	u, err := scanUserRow(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -117,18 +103,18 @@ func (s *PGUserStore) List(ctx context.Context, tenantID uuid.UUID, params store
 	var args []any
 	idx := 1
 
-	conditions = append(conditions, fmt.Sprintf("tenant_id = $%d", idx))
+	conditions = append(conditions, fmt.Sprintf("tu.tenant_id = $%d", idx))
 	args = append(args, tenantID)
 	idx++
 
 	if params.Search != "" {
-		conditions = append(conditions, fmt.Sprintf("(email ILIKE $%d OR display_name ILIKE $%d)", idx, idx))
+		conditions = append(conditions, fmt.Sprintf("(u.email ILIKE $%d OR u.display_name ILIKE $%d)", idx, idx))
 		args = append(args, "%"+params.Search+"%")
 		idx++
 	}
 
 	if params.Status != "" {
-		conditions = append(conditions, fmt.Sprintf("status = $%d", idx))
+		conditions = append(conditions, fmt.Sprintf("u.status = $%d", idx))
 		args = append(args, params.Status)
 		idx++
 	}
@@ -142,9 +128,11 @@ func (s *PGUserStore) List(ctx context.Context, tenantID uuid.UUID, params store
 	where := "WHERE " + strings.Join(conditions, " AND ")
 
 	query := fmt.Sprintf(
-		`SELECT id, email, display_name, avatar_url, tenant_id, auth_provider, password_hash, status, last_login_at, created_at, updated_at,
+		`SELECT u.id, u.email, u.display_name, u.avatar_url, u.auth_provider, u.password_hash, u.status, u.last_login_at, u.created_at, u.updated_at,
 		        COUNT(*) OVER() AS total_count
-		 FROM users %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`,
+		 FROM users u
+		 JOIN tenant_users tu ON tu.user_id = u.id::text
+		 %s ORDER BY u.created_at DESC LIMIT $%d OFFSET $%d`,
 		where, idx, idx+1,
 	)
 	args = append(args, limit, offset)
@@ -162,7 +150,7 @@ func (s *PGUserStore) List(ctx context.Context, tenantID uuid.UUID, params store
 		var avatarURL, passwordHash sql.NullString
 		var lastLoginAt sql.NullTime
 		if err := rows.Scan(
-			&u.ID, &u.Email, &u.DisplayName, &avatarURL, &u.TenantID, &u.AuthProvider, &passwordHash,
+			&u.ID, &u.Email, &u.DisplayName, &avatarURL, &u.AuthProvider, &passwordHash,
 			&u.Status, &lastLoginAt, &u.CreatedAt, &u.UpdatedAt, &total,
 		); err != nil {
 			return nil, err
@@ -316,7 +304,7 @@ func scanUserRow(row *sql.Row) (*store.UserData, error) {
 	var avatarURL, passwordHash sql.NullString
 	var lastLoginAt sql.NullTime
 	err := row.Scan(
-		&u.ID, &u.Email, &u.DisplayName, &avatarURL, &u.TenantID, &u.AuthProvider, &passwordHash,
+		&u.ID, &u.Email, &u.DisplayName, &avatarURL, &u.AuthProvider, &passwordHash,
 		&u.Status, &lastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {

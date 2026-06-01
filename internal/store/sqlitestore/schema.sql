@@ -1925,23 +1925,19 @@ INSERT OR IGNORE INTO workstation_command_groups (id, tenant_id, name, descripti
 
 CREATE TABLE IF NOT EXISTS users (
     id               TEXT NOT NULL PRIMARY KEY,
-    email            VARCHAR(255) NOT NULL,
+    email            VARCHAR(255) NOT NULL UNIQUE,
     display_name     VARCHAR(255) NOT NULL,
     avatar_url       TEXT,
-    tenant_id        TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     auth_provider    VARCHAR(20) NOT NULL CHECK (auth_provider IN ('local', 'entra_id', 'google')),
     password_hash    TEXT,
     status           VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'deactivated')),
     last_login_at    TEXT,
     created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    UNIQUE(tenant_id, email)
+    updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_users_tenant_email ON users(tenant_id, email);
-CREATE INDEX IF NOT EXISTS idx_users_status ON users(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 
 -- ============================================================
 -- Table: user_identities (multi-provider identity linking)
