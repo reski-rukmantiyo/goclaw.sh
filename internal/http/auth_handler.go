@@ -358,12 +358,29 @@ func (h *AuthHandler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve tenant from tenant_users membership
+	// Resolve tenant from tenant_users membership as default
 	tenantID := store.MasterTenantID
 	if h.tenants != nil {
 		resolvedTenantID, rErr := h.tenants.ResolveUserTenant(ctx, user.ID.String())
 		if rErr == nil && resolvedTenantID != uuid.Nil {
 			tenantID = resolvedTenantID
+		}
+	}
+
+	// Allow explicit tenant override via header so refresh stays scoped
+	if scope := r.Header.Get("X-GoClaw-Tenant-Id"); scope != "" && h.tenants != nil {
+		if t, tErr := h.tenants.GetTenantBySlug(ctx, scope); tErr == nil && t != nil {
+			if isOwner, _ := h.tenants.IsOwner(ctx, t.ID, user.ID.String()); isOwner {
+				tenantID = t.ID
+			} else {
+				memberships, _ := h.tenants.ListUserTenants(ctx, user.ID.String())
+				for _, m := range memberships {
+					if m.TenantID == t.ID {
+						tenantID = t.ID
+						break
+					}
+				}
+			}
 		}
 	}
 

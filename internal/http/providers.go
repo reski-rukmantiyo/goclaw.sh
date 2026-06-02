@@ -120,15 +120,15 @@ func (h *ProvidersHandler) emitProviderCacheInvalidate(name string, tenantID uui
 
 // RegisterRoutes registers all provider management routes on the given mux.
 func (h *ProvidersHandler) RegisterRoutes(mux *http.ServeMux) {
-	// Provider CRUD
-	mux.HandleFunc("GET /v1/providers", h.auth(h.handleListProviders))
+	// Provider CRUD — reads are viewer+, writes are admin+
+	mux.HandleFunc("GET /v1/providers", h.viewerAuth(h.handleListProviders))
 	mux.HandleFunc("POST /v1/providers", h.auth(h.handleCreateProvider))
-	mux.HandleFunc("GET /v1/providers/{id}", h.auth(h.handleGetProvider))
+	mux.HandleFunc("GET /v1/providers/{id}", h.viewerAuth(h.handleGetProvider))
 	mux.HandleFunc("PUT /v1/providers/{id}", h.auth(h.handleUpdateProvider))
 	mux.HandleFunc("DELETE /v1/providers/{id}", h.auth(h.handleDeleteProvider))
 
 	// Model listing (proxied to upstream provider API)
-	mux.HandleFunc("GET /v1/providers/{id}/models", h.auth(h.handleListProviderModels))
+	mux.HandleFunc("GET /v1/providers/{id}/models", h.viewerAuth(h.handleListProviderModels))
 
 	// Provider + model verification (pre-flight check)
 	mux.HandleFunc("POST /v1/providers/{id}/verify", h.auth(h.handleVerifyProvider))
@@ -146,6 +146,11 @@ func (h *ProvidersHandler) RegisterRoutes(mux *http.ServeMux) {
 
 func (h *ProvidersHandler) auth(next http.HandlerFunc) http.HandlerFunc {
 	return requireAuth(permissions.RoleAdmin, next)
+}
+
+// viewerAuth allows read access to viewers+; writes still require admin.
+func (h *ProvidersHandler) viewerAuth(next http.HandlerFunc) http.HandlerFunc {
+	return requireAuth("", next)
 }
 
 // maskAPIKey replaces non-empty API keys with "***".

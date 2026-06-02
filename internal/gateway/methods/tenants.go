@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 
 	"github.com/google/uuid"
 
@@ -38,11 +39,12 @@ type TenantsMethods struct {
 	workspace         string // base workspace directory for tenant dirs
 	defaultSSLMode    string // default sslmode for auto-generated tenant DBs
 	masterDSN         string // master DSN for superuser schema operations on tenant DBs
+	ownerIDs          []string // global owner IDs from config; used to distinguish global owners from tenant owners
 }
 
 // NewTenantsMethods creates a new TenantsMethods handler.
-func NewTenantsMethods(tenantStore store.TenantStore, tenantDBConnStore store.TenantDBConnectionStore, tenantDBManager store.TenantDBManager, masterDB *sql.DB, msgBus *bus.MessageBus, workspace string, defaultSSLMode string, masterDSN string, systemConfigStore store.SystemConfigStore, authLoader tenantauth.Loader, encKey string) *TenantsMethods {
-	return &TenantsMethods{tenantStore: tenantStore, tenantDBConnStore: tenantDBConnStore, tenantDBManager: tenantDBManager, masterDB: masterDB, msgBus: msgBus, workspace: workspace, defaultSSLMode: defaultSSLMode, masterDSN: masterDSN, systemConfigStore: systemConfigStore, authLoader: authLoader, encKey: encKey}
+func NewTenantsMethods(tenantStore store.TenantStore, tenantDBConnStore store.TenantDBConnectionStore, tenantDBManager store.TenantDBManager, masterDB *sql.DB, msgBus *bus.MessageBus, workspace string, defaultSSLMode string, masterDSN string, systemConfigStore store.SystemConfigStore, authLoader tenantauth.Loader, encKey string, ownerIDs []string) *TenantsMethods {
+	return &TenantsMethods{tenantStore: tenantStore, tenantDBConnStore: tenantDBConnStore, tenantDBManager: tenantDBManager, masterDB: masterDB, msgBus: msgBus, workspace: workspace, defaultSSLMode: defaultSSLMode, masterDSN: masterDSN, systemConfigStore: systemConfigStore, authLoader: authLoader, encKey: encKey, ownerIDs: ownerIDs}
 }
 
 // Register registers tenant management RPC methods.
@@ -460,8 +462,9 @@ func (m *TenantsMethods) handleMine(ctx context.Context, client *gateway.Client,
 		Status string `json:"status"`
 	}
 
-	// Owner: return all tenants with "owner" role
-	if client.IsOwner() {
+	// Global owner: return all tenants with "owner" role.
+	// Tenant owners (not in the global owner list) should only see their memberships.
+	if client.IsOwner() && slices.Contains(m.ownerIDs, client.UserID()) {
 		tenants, err := m.tenantStore.ListTenants(ctx)
 		if err != nil {
 			slog.Error("tenants.mine failed (cross-tenant)", "error", err)

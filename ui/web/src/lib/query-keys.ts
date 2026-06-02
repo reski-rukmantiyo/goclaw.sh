@@ -3,14 +3,16 @@ export const queryKeys = {
     all: ["apiKeys"] as const,
   },
   providers: {
-    all: ["providers"] as const,
+    all: ["providers"] as const, // prefix for broad invalidation
+    list: (tenantId: string) => ["providers", tenantId] as const,
     models: (providerId: string) => ["providers", providerId, "models"] as const,
-    chatgptOAuthStatuses: (providerKeys: string[]) => ["providers", "chatgpt-oauth-statuses", ...providerKeys] as const,
+    chatgptOAuthStatuses: (tenantId: string, providerKeys: string[]) => ["providers", tenantId, "chatgpt-oauth-statuses", ...providerKeys] as const,
     chatgptOAuthQuotas: (providerNames: string[]) => ["providers", "chatgpt-oauth-quotas", ...providerNames] as const,
     codexPoolActivity: (providerId: string, limit: number) => ["providers", providerId, "codex-pool-activity", limit] as const,
   },
   agents: {
-    all: ["agents"] as const,
+    all: ["agents"] as const, // prefix for broad invalidation
+    list: (tenantId: string) => ["agents", tenantId] as const,
     detail: (id: string) => ["agents", id] as const,
     files: (agentKey: string) => ["agents", agentKey, "files"] as const,
     links: (agentId: string) => ["agents", agentId, "links"] as const,

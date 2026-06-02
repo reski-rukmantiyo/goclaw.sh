@@ -264,10 +264,30 @@ func (r *MethodRouter) handleConnect(ctx context.Context, client *Client, req *p
 				client.role = permissions.RoleOperator
 			}
 
-			// Resolve tenant from JWT claims
+			// Resolve tenant from JWT claims as default
 			if claims.TID != "" {
 				if tid, parseErr := uuid.Parse(claims.TID); parseErr == nil {
 					client.tenantID = tid
+				}
+			}
+
+			// Allow explicit tenant override via connect params (same as gateway token path)
+			requestedScope := params.TenantID
+			if requestedScope == "" {
+				requestedScope = params.TenantHint
+			}
+			if requestedScope == "" {
+				requestedScope = params.TenantScope
+			}
+			if requestedScope != "" && r.tenantStore != nil {
+				if t, tErr := r.tenantStore.GetTenantBySlug(ctx, requestedScope); tErr == nil && t != nil {
+					if role, rErr := r.getUserTenantRole(ctx, t.ID, claims.Subject); rErr == nil && role != "" {
+						client.tenantID = t.ID
+					}
+				} else if tid, pErr := uuid.Parse(requestedScope); pErr == nil {
+					if role, rErr := r.getUserTenantRole(ctx, tid, claims.Subject); rErr == nil && role != "" {
+						client.tenantID = tid
+					}
 				}
 			}
 

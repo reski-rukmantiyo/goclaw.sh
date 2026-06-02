@@ -19,10 +19,11 @@ export function useAgents() {
   const ws = useWs();
   const http = useHttp();
   const connected = useAuthStore((s) => s.connected);
+  const tenantId = useAuthStore((s) => s.tenantId);
   const queryClient = useQueryClient();
 
   const { data: agents = [], isPending: loading, error: queryError, refetch } = useQuery({
-    queryKey: queryKeys.agents.all,
+    queryKey: queryKeys.agents.list(tenantId),
     queryFn: async () => {
       // Try HTTP first (returns full agent data, filtered by user access)
       try {

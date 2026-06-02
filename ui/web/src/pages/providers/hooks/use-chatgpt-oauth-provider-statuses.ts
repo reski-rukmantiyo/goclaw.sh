@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useHttp } from "@/hooks/use-ws";
+import { useAuthStore } from "@/stores/use-auth-store";
 import { queryKeys } from "@/lib/query-keys";
 import type { ProviderData } from "@/types/provider";
 
@@ -18,6 +19,7 @@ export interface ChatGPTOAuthProviderStatus {
 
 export function useChatGPTOAuthProviderStatuses(providers: ProviderData[], enabled = true) {
   const http = useHttp();
+  const tenantId = useAuthStore((s) => s.tenantId);
   const oauthProviders = useMemo(
     () => providers.filter((provider) => provider.provider_type === "chatgpt_oauth"),
     [providers],
@@ -25,7 +27,7 @@ export function useChatGPTOAuthProviderStatuses(providers: ProviderData[], enabl
   const providerKeys = oauthProviders.map((provider) => `${provider.name}:${provider.enabled ? "1" : "0"}`);
 
   const query = useQuery({
-    queryKey: queryKeys.providers.chatgptOAuthStatuses(providerKeys),
+    queryKey: queryKeys.providers.chatgptOAuthStatuses(tenantId, providerKeys),
     enabled: enabled && oauthProviders.length > 0,
     staleTime: 10_000,
     queryFn: async () => Promise.all(

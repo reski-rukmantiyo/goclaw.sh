@@ -233,6 +233,21 @@ func resolveAuthWithBearer(r *http.Request, bearer string) authResult {
 			if tenantID == uuid.Nil {
 				tenantID = store.MasterTenantID
 			}
+
+			// Allow explicit tenant override via header (same as gateway token path)
+			requestedScope := r.Header.Get("X-GoClaw-Tenant-Id")
+			if requestedScope != "" && pkgTenantCache != nil {
+				if t, tErr := pkgTenantCache.GetTenantBySlug(r.Context(), requestedScope); tErr == nil && t != nil {
+					if _, allowed := resolveTenantHint(r.Context(), requestedScope, claims.Subject); allowed {
+						tenantID = t.ID
+					}
+				} else if tid, pErr := uuid.Parse(requestedScope); pErr == nil {
+					if _, allowed := resolveTenantHint(r.Context(), requestedScope, claims.Subject); allowed {
+						tenantID = tid
+					}
+				}
+			}
+
 			role := resolveJWTRole(r.Context(), claims.Subject, tenantID)
 			return authResult{
 				Role:          role,
