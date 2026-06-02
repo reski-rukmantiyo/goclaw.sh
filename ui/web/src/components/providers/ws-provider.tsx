@@ -63,6 +63,11 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
               if (savedScope && tenants.some((t) => t.slug === savedScope)) {
                 // Already scoped via localStorage — auto-select
                 store.setTenantSelected(true);
+              } else if (savedScope && tenants.length > 0) {
+                // Saved scope stale (e.g. master revoked) — reset to first available tenant
+                localStorage.setItem(LOCAL_STORAGE_KEYS.TENANT_ID, tenants[0]!.slug);
+                window.location.reload();
+                return;
               } else if (!client.isOwner && tenants.length === 1) {
                 // Non-owner with single tenant — auto-select
                  

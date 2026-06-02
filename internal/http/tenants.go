@@ -52,7 +52,7 @@ func (h *TenantsHandler) RegisterRoutes(mux *http.ServeMux) {
 
 func (h *TenantsHandler) handleList(w http.ResponseWriter, r *http.Request) {
 	locale := extractLocale(r)
-	if !store.IsOwnerRole(r.Context()) {
+	if !store.IsMasterScope(r.Context()) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgPermissionDenied, "tenants.list")})
 		return
 	}

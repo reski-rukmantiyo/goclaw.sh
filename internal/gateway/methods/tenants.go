@@ -76,7 +76,7 @@ func (m *TenantsMethods) requireAdmin(next gateway.MethodHandler) gateway.Method
 
 func (m *TenantsMethods) handleList(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
 	locale := store.LocaleFromContext(ctx)
-	if !client.IsOwner() {
+	if !slices.Contains(m.ownerIDs, client.UserID()) {
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrUnauthorized, i18n.T(locale, i18n.MsgPermissionDenied, "tenants.list")))
 		return
 	}
@@ -511,6 +511,9 @@ func (m *TenantsMethods) handleMine(ctx context.Context, client *gateway.Client,
 
 	entries := make([]tenantEntry, 0, len(memberships))
 	for _, mem := range memberships {
+		if mem.TenantID == store.MasterTenantID {
+			continue
+		}
 		t := tenantMap[mem.TenantID]
 		if t == nil || t.Status != store.TenantStatusActive {
 			continue

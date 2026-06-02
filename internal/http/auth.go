@@ -196,15 +196,25 @@ func resolveAuthWithBearer(r *http.Request, bearer string) authResult {
 		tenantVal := r.Header.Get("X-GoClaw-Tenant-Id")
 		if isOwner {
 			res.TenantID = resolveScopedTenant(r.Context(), tenantVal)
+			if res.TenantID == uuid.Nil {
+				res.TenantID = store.MasterTenantID
+			}
 		} else {
-			tenantID, allowed := resolveTenantHint(r.Context(), tenantVal, userID)
+			var tenantID uuid.UUID
+			var allowed bool
+			if tenantVal != "" {
+				tenantID, allowed = resolveTenantHint(r.Context(), tenantVal, userID)
+			} else {
+				tenantID, allowed = resolveDefaultTenant(r.Context(), userID)
+			}
 			if !allowed {
 				return authResult{}
 			}
+			if tenantID == store.MasterTenantID {
+				slog.Warn("security.http_master_scope_denied_non_owner", "user", userID)
+				return authResult{}
+			}
 			res.TenantID = tenantID
-		}
-		if res.TenantID == uuid.Nil {
-			res.TenantID = store.MasterTenantID
 		}
 		res.TenantSlug = resolveTenantSlug(r.Context(), res.TenantID)
 		return res
@@ -230,8 +240,16 @@ func resolveAuthWithBearer(r *http.Request, bearer string) authResult {
 	if pkgJWTManager != nil && bearer != "" {
 		if claims, err := pkgJWTManager.ValidateToken(bearer); err == nil {
 			tenantID, _ := uuid.Parse(claims.TID)
-			if tenantID == uuid.Nil {
-				tenantID = store.MasterTenantID
+			if tenantID == uuid.Nil || tenantID == store.MasterTenantID {
+				if isHTTPOwnerID(claims.Subject, pkgOwnerIDs) {
+					tenantID = store.MasterTenantID
+				} else {
+					var allowed bool
+					tenantID, allowed = resolveDefaultTenant(r.Context(), claims.Subject)
+					if !allowed {
+						return authResult{}
+					}
+				}
 			}
 
 			// Allow explicit tenant override via header (same as gateway token path)
@@ -262,8 +280,15 @@ func resolveAuthWithBearer(r *http.Request, bearer string) authResult {
 	if senderID := r.Header.Get("X-GoClaw-Sender-Id"); senderID != "" && pkgPairingStore != nil {
 		paired, err := pkgPairingStore.IsPaired(r.Context(), senderID, "browser")
 		if err == nil && paired {
-			tenantID, allowed := resolveTenantHint(r.Context(), r.Header.Get("X-GoClaw-Tenant-Id"), extractUserID(r))
-			if !allowed {
+			var tenantID uuid.UUID
+			var allowed bool
+			hint := r.Header.Get("X-GoClaw-Tenant-Id")
+			if hint != "" {
+				tenantID, allowed = resolveTenantHint(r.Context(), hint, extractUserID(r))
+			} else {
+				tenantID, allowed = resolveDefaultTenant(r.Context(), extractUserID(r))
+			}
+			if !allowed || tenantID == store.MasterTenantID {
 				return authResult{}
 			}
 			return authResult{
@@ -347,11 +372,11 @@ func resolveJWTRole(ctx context.Context, userID string, tenantID uuid.UUID) perm
 
 func resolveTenantHint(ctx context.Context, hint, userID string) (uuid.UUID, bool) {
 	if hint == "" || pkgTenantCache == nil {
-		return store.MasterTenantID, true
+		return uuid.Nil, false
 	}
 	tid := resolveScopedTenant(ctx, hint)
 	if tid == uuid.Nil {
-		return store.MasterTenantID, true
+		return uuid.Nil, false
 	}
 	if userID == "" {
 		slog.Warn("security.http_tenant_hint_denied_anonymous", "hint", hint, "tenant_id", tid)
@@ -385,6 +410,28 @@ func resolveTenantHint(ctx context.Context, hint, userID string) (uuid.UUID, boo
 		return uuid.Nil, false
 	}
 	return tid, true
+}
+
+// resolveDefaultTenant returns the first active tenant membership for a user.
+// Non-owner callers without an explicit tenant hint must be scoped to a real
+// tenant — master fallback is reserved for global owners.
+func resolveDefaultTenant(ctx context.Context, userID string) (uuid.UUID, bool) {
+	if userID == "" || pkgTenantCache == nil {
+		return uuid.Nil, false
+	}
+	memberships, err := pkgTenantCache.store.ListUserTenants(ctx, userID)
+	if err != nil {
+		slog.Warn("security.http_default_tenant_failed", "user", userID, "error", err)
+		return uuid.Nil, false
+	}
+	for _, m := range memberships {
+		if m.TenantID == store.MasterTenantID {
+			continue
+		}
+		return m.TenantID, true
+	}
+	slog.Warn("security.http_default_tenant_no_membership", "user", userID)
+	return uuid.Nil, false
 }
 
 // httpMinRole returns the minimum role required for an HTTP endpoint based on HTTP method.
