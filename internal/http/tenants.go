@@ -13,6 +13,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/permissions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/store/base"
 	"github.com/nextlevelbuilder/goclaw/internal/store/pg"
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
@@ -285,15 +286,21 @@ func (h *TenantsHandler) handleUsersAdd(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgRequired, "user_id")})
 		return
 	}
+	normalized, err := base.NormalizeUserID(r.Context(), h.masterDB, input.UserID)
+	if err != nil {
+		slog.Error("tenants.users.add normalize failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgFailedToCreate, "tenant user", err.Error())})
+		return
+	}
 	isOwner := input.Role == store.TenantRoleOwner
 
-	if err := h.tenantStore.AddUser(r.Context(), id, input.UserID, isOwner); err != nil {
+	if err := h.tenantStore.AddUser(r.Context(), id, normalized, isOwner); err != nil {
 		slog.Error("tenants.users.add failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgFailedToCreate, "tenant user", err.Error())})
 		return
 	}
 
-	h.emitCacheInvalidate(bus.CacheKindTenantUsers, input.UserID)
+	h.emitCacheInvalidate(bus.CacheKindTenantUsers, normalized)
 	emitAudit(h.msgBus, r, "tenant.user.added", "tenant", id.String())
 	writeJSON(w, http.StatusCreated, map[string]string{"ok": "true"})
 }

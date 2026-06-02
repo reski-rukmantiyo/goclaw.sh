@@ -17,6 +17,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/permissions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/store/base"
 	"github.com/nextlevelbuilder/goclaw/internal/store/pg"
 	"github.com/nextlevelbuilder/goclaw/internal/tenantauth"
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
@@ -341,6 +342,12 @@ func (m *TenantsMethods) handleUsersAdd(ctx context.Context, client *gateway.Cli
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgRequired, "user_id")))
 		return
 	}
+	normalized, err := base.NormalizeUserID(ctx, m.masterDB, params.UserID)
+	if err != nil {
+		slog.Error("tenants.users.add normalize failed", "error", err)
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToCreate, "tenant user", err.Error())))
+		return
+	}
 	isOwner := params.Role == store.TenantRoleOwner
 
 	tid, err := uuid.Parse(params.TenantID)
@@ -349,13 +356,13 @@ func (m *TenantsMethods) handleUsersAdd(ctx context.Context, client *gateway.Cli
 		return
 	}
 
-	if err := m.tenantStore.AddUser(ctx, tid, params.UserID, isOwner); err != nil {
+	if err := m.tenantStore.AddUser(ctx, tid, normalized, isOwner); err != nil {
 		slog.Error("tenants.users.add failed", "error", err)
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToCreate, "tenant user", err.Error())))
 		return
 	}
 
-	m.emitCacheInvalidate(bus.CacheKindTenantUsers, params.UserID)
+	m.emitCacheInvalidate(bus.CacheKindTenantUsers, normalized)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]string{"ok": "true"}))
 }
 

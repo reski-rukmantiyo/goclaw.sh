@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/store/base"
 )
 
 // SQLiteTenantStore implements store.TenantStore backed by SQLite.
@@ -217,12 +218,16 @@ func (s *SQLiteTenantStore) DeleteTenant(ctx context.Context, id uuid.UUID) erro
 // ============================================================
 
 func (s *SQLiteTenantStore) AddUser(ctx context.Context, tenantID uuid.UUID, userID string, isOwner bool) error {
+	normalized, err := base.NormalizeUserID(ctx, s.db, userID)
+	if err != nil {
+		return fmt.Errorf("normalize user_id: %w", err)
+	}
 	now := time.Now()
-	_, err := s.db.ExecContext(ctx,
+	_, err = s.db.ExecContext(ctx,
 		`INSERT INTO tenant_users (id, tenant_id, user_id, is_owner, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?)
 		 ON CONFLICT (tenant_id, user_id) DO UPDATE SET is_owner = excluded.is_owner, updated_at = excluded.updated_at`,
-		store.GenNewID(), tenantID, userID, isOwner, now, now,
+		store.GenNewID(), tenantID, normalized, isOwner, now, now,
 	)
 	return err
 }
@@ -241,6 +246,10 @@ func (s *SQLiteTenantStore) GetTenantUser(ctx context.Context, id uuid.UUID) (*s
 }
 
 func (s *SQLiteTenantStore) CreateTenantUserReturning(ctx context.Context, tenantID uuid.UUID, userID, displayName string) (*store.TenantUserData, error) {
+	normalized, err := base.NormalizeUserID(ctx, s.db, userID)
+	if err != nil {
+		return nil, fmt.Errorf("normalize user_id: %w", err)
+	}
 	now := time.Now()
 	var dn *string
 	if displayName != "" {
@@ -254,7 +263,7 @@ func (s *SQLiteTenantStore) CreateTenantUserReturning(ctx context.Context, tenan
 		   display_name = COALESCE(excluded.display_name, tenant_users.display_name),
 		   updated_at = excluded.updated_at
 		 RETURNING id, tenant_id, user_id, display_name, is_owner, metadata, created_at, updated_at`,
-		store.GenNewID(), tenantID, userID, dn, now, now,
+		store.GenNewID(), tenantID, normalized, dn, now, now,
 	)
 	var d store.TenantUserData
 	createdAt, updatedAt := scanTimePair()
@@ -277,8 +286,11 @@ func (s *SQLiteTenantStore) RemoveUser(ctx context.Context, tenantID uuid.UUID, 
 func (s *SQLiteTenantStore) IsOwner(ctx context.Context, tenantID uuid.UUID, userID string) (bool, error) {
 	var isOwner bool
 	err := s.db.QueryRowContext(ctx,
-		`SELECT is_owner FROM tenant_users WHERE tenant_id = ? AND user_id = ?`,
-		tenantID, userID,
+		`SELECT is_owner FROM tenant_users tu
+		 LEFT JOIN users u ON u.email = tu.user_id
+		 WHERE tu.tenant_id = ? AND (tu.user_id = ? OR u.id = ?)
+		 LIMIT 1`,
+		tenantID, userID, userID,
 	).Scan(&isOwner)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
@@ -299,7 +311,10 @@ func (s *SQLiteTenantStore) ListUsers(ctx context.Context, tenantID uuid.UUID) (
 func (s *SQLiteTenantStore) ListUserTenants(ctx context.Context, userID string) ([]store.TenantUserData, error) {
 	var rows []tenantUserRow
 	err := pkgSqlxDB.SelectContext(ctx, &rows,
-		`SELECT `+tenantUserSelectCols+` FROM tenant_users WHERE user_id = ? ORDER BY created_at`, userID)
+		`SELECT `+tenantUserSelectCols+` FROM tenant_users tu
+		 LEFT JOIN users u ON u.email = tu.user_id
+		 WHERE tu.user_id = ? OR u.id = ?
+		 ORDER BY tu.created_at`, userID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -309,8 +324,11 @@ func (s *SQLiteTenantStore) ListUserTenants(ctx context.Context, userID string) 
 func (s *SQLiteTenantStore) ResolveUserTenant(ctx context.Context, userID string) (uuid.UUID, error) {
 	var tenantID uuid.UUID
 	err := s.db.QueryRowContext(ctx,
-		`SELECT tenant_id FROM tenant_users WHERE user_id = ? ORDER BY created_at LIMIT 1`,
-		userID,
+		`SELECT tu.tenant_id FROM tenant_users tu
+		 LEFT JOIN users u ON u.email = tu.user_id
+		 WHERE tu.user_id = ? OR u.id = ?
+		 ORDER BY tu.created_at LIMIT 1`,
+		userID, userID,
 	).Scan(&tenantID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.MasterTenantID, nil
