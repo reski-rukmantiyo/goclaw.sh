@@ -14,7 +14,10 @@ const (
 	PermUserDelete     Permission = "user.delete"
 	PermUserEnroll     Permission = "user.enroll"
 	PermUserUnenroll   Permission = "user.unenroll"
-	PermUserAssignRole Permission = "user.assign_role"
+	PermUserAssignRole   Permission = "user.assign_role"
+	PermUserPreProvision Permission = "user.pre_provision"
+	PermUserSuspend      Permission = "user.suspend"
+	PermUserDeactivate   Permission = "user.deactivate"
 )
 
 // Group management permissions.
@@ -51,6 +54,21 @@ const (
 	PermSystemViewHealth     Permission = "system.view_health"
 )
 
+// AdminSeedPermissions is the canonical set of permissions assigned to the Admin
+// system role when a new tenant is created. Both the HTTP and WS seedSystemRoles
+// functions must use this slice — do NOT inline the list.
+//
+// Keep in sync with: sqlitestore/schema.go Admin INSERT, migrations/000083+000085.
+var AdminSeedPermissions = []string{
+	"user.list", "user.get", "user.create", "user.update", "user.delete",
+	"user.enroll", "user.unenroll", "user.assign_role",
+	"user.pre_provision", "user.suspend", "user.deactivate",
+	"group.list", "group.get", "group.create", "group.update", "group.delete",
+	"group.manage_members", "group.assign_role",
+	"role.list", "role.get", "role.create", "role.update", "role.delete",
+	"audit.view_all", "system.manage_settings", "system.manage_auth", "system.view_health",
+}
+
 // IsReadOnlyPermission returns true if a permission string represents a read-only action.
 // Read-only patterns: *.list, *.get, and *.view_* (e.g., artifact.view_group, audit.view_all).
 // All other permissions are considered write actions for role derivation purposes.
@@ -63,7 +81,7 @@ func IsReadOnlyPermission(p string) bool {
 // AllPermissions returns the full catalog of known permissions.
 func AllPermissions() []Permission {
 	return []Permission{
-		PermUserList, PermUserGet, PermUserCreate, PermUserUpdate, PermUserDelete, PermUserEnroll, PermUserUnenroll, PermUserAssignRole,
+		PermUserList, PermUserGet, PermUserCreate, PermUserUpdate, PermUserDelete, PermUserEnroll, PermUserUnenroll, PermUserAssignRole, PermUserPreProvision, PermUserSuspend, PermUserDeactivate,
 		PermGroupList, PermGroupGet, PermGroupCreate, PermGroupUpdate, PermGroupDelete, PermGroupManageMembers, PermGroupAssignRole,
 		PermRoleList, PermRoleGet, PermRoleCreate, PermRoleUpdate, PermRoleDelete,
 		PermAuditViewAll, PermAuditViewGroup, PermAuditExport,

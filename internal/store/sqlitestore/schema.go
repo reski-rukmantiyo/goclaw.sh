@@ -16,7 +16,7 @@ var schemaSQL string
 
 // SchemaVersion is the current SQLite schema version.
 // Bump this when adding new migration steps below.
-const SchemaVersion = 45
+const SchemaVersion = 46
 
 // migrations maps version → SQL to apply when upgrading FROM that version.
 // schema.sql always represents the LATEST full schema (for fresh DBs).
@@ -953,7 +953,7 @@ CREATE INDEX IF NOT EXISTS idx_group_roles_role ON group_roles(role_id);
 INSERT INTO roles (id, tenant_id, name, description, is_system, permissions, created_at, updated_at)
 SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),
        t.id, 'Admin', 'Full tenant administration', 1,
-       '["user.list","user.get","user.create","user.update","user.delete","user.enroll","user.unenroll","user.assign_role","group.list","group.get","group.create","group.update","group.delete","group.manage_members","group.assign_role","role.list","role.get","role.create","role.update","role.delete","audit.view_all","system.manage_settings","system.manage_auth","system.view_health"]',
+       '["user.list","user.get","user.create","user.update","user.delete","user.enroll","user.unenroll","user.assign_role","user.pre_provision","user.suspend","user.deactivate","group.list","group.get","group.create","group.update","group.delete","group.manage_members","group.assign_role","role.list","role.get","role.create","role.update","role.delete","audit.view_all","system.manage_settings","system.manage_auth","system.view_health"]',
        strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 FROM tenants t
 WHERE NOT EXISTS (SELECT 1 FROM roles r WHERE r.tenant_id = t.id AND r.name = 'Admin');
@@ -1037,6 +1037,29 @@ DELETE FROM role_permissions WHERE role_id IN (SELECT id FROM roles WHERE name =
 DELETE FROM user_roles WHERE role_id IN (SELECT id FROM roles WHERE name = 'Operator');
 DELETE FROM group_roles WHERE role_id IN (SELECT id FROM roles WHERE name = 'Operator');
 DELETE FROM roles WHERE name = 'Operator';`,
+	// Version 44 -> 45: add user.pre_provision, user.suspend, user.deactivate to existing Admin roles.
+	// Mirrors PG migration 000085. Fresh DBs already include these in the seed (migration 43).
+	45: `-- Add missing user lifecycle permissions to existing Admin roles.
+-- These are required by route guards in internal/http/users.go but were
+-- missing from the initial seed data (migration 43 only seeds NEW roles).
+
+-- Step 1: Add permissions to role_permissions table (used by resolver)
+INSERT OR IGNORE INTO role_permissions (id, role_id, permission)
+SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),
+       r.id, p.value
+FROM roles r, json_each('["user.pre_provision","user.suspend","user.deactivate"]') AS p
+WHERE r.name = 'Admin'
+  AND r.is_system = 1;
+
+-- Step 2: Update denormalized roles.permissions JSON to match
+UPDATE roles
+SET permissions = (
+    SELECT json_group_array(p2.permission)
+    FROM (SELECT DISTINCT permission FROM role_permissions WHERE role_id = roles.id ORDER BY permission) p2
+  ),
+  updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE name = 'Admin'
+  AND is_system = 1;`,
 }
 
 // addHooksTables is the SQLite incremental migration for schema v19 → v20.

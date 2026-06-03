@@ -21,6 +21,7 @@ Owner(4) > Admin(3) > Member(2) > Viewer(1) > None(0)
 | `policy_cron_ws_test.go` | Cron/WS method classification tests |
 | `role_derivation_test.go` | Role-from-permissions derivation tests |
 | `sidebar_access_test.go` | Sidebar ↔ backend access matrix verification |
+| `cli_credentials_member_test.go` | CLI Credentials member access across all layers (HTTP, sidebar, packages page tab, tenant guard) |
 
 ## Key Functions
 
@@ -63,11 +64,27 @@ Computes effective permissions for a user in a tenant:
 
 ```
 Request → Auth Resolution (HTTP/WS)
+        → Master tenant rejection for non-owners    // Layer 0: non-owners denied master scope
         → PolicyEngine.CanAccess(role, method)     // Layer 1: role check
         → requireOwner/requireMasterScope/          // Layer 2: scope guard
            requireTenantAdmin/requireAuthAction
         → SQL WHERE tenant_id = $N                  // Layer 3: tenant isolation
 ```
+
+### Layer 0: Master Tenant Restriction
+
+Non-owners **cannot scope to the Master tenant**. Enforced at auth resolution before any role or scope checks:
+
+- **WS connect:** Non-owner users resolving to Master get `ErrTenantAccessRevoked` (`gateway/router.go:199`, `:319`)
+- **HTTP auth:** Non-owner users resolving to Master get empty `authResult{}` = unauthenticated (`http/auth.go:213`, `:291`)
+- **Tenant resolution:** `ResolveUserTenant()` prefers non-Master tenants via `ORDER BY (tenant_id = master_uuid) ASC` (`store/pg/tenant_store.go:313`). Only returns Master when it's the sole membership.
+- **`tenants.mine`:** Skips Master from results for non-owners (`gateway/methods/tenants.go:548`)
+
+### Owner ID Configuration
+
+`gateway.owner_ids` (config.json or `GOCLAW_OWNER_IDS` env) determines global owner recognition. When empty/unset, only user ID `"system"` is treated as owner (fail-closed default). **All deployments must set `owner_ids`** — otherwise no user gets owner privileges.
+
+Owner check functions: `isOwnerID()` (`gateway/router.go:470`), `isHTTPOwnerID()` (`http/auth.go:133`).
 
 ## Adding a New Method
 

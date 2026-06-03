@@ -141,14 +141,7 @@ func (m *TenantsMethods) seedSystemRoles(ctx context.Context, tenantID uuid.UUID
 		{
 			name:        "Admin",
 			description: "Full tenant administration",
-			permissions: []string{
-				"user.list", "user.get", "user.create", "user.update", "user.delete",
-				"user.enroll", "user.unenroll", "user.assign_role",
-				"group.list", "group.get", "group.create", "group.update", "group.delete",
-				"group.manage_members", "group.assign_role",
-				"role.list", "role.get", "role.create", "role.update", "role.delete",
-				"audit.view_all", "system.manage_settings", "system.manage_auth", "system.view_health",
-			},
+			permissions: permissions.AdminSeedPermissions,
 		},
 		{
 			name:        "Member",
