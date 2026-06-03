@@ -293,7 +293,7 @@ func TestResolveAuth_APIKeyWriteScope(t *testing.T) {
 	if key == nil {
 		t.Fatal("expected key from cache")
 	}
-	if role != permissions.RoleOperator {
+	if role != permissions.RoleMember {
 		t.Errorf("role = %v, want operator for write scope", role)
 	}
 }
@@ -371,7 +371,7 @@ func TestResolveAuth_BrowserPairingScopesToMemberTenant(t *testing.T) {
 	if !auth.Authenticated {
 		t.Fatal("expected authenticated")
 	}
-	if auth.Role != permissions.RoleOperator {
+	if auth.Role != permissions.RoleMember {
 		t.Fatalf("role = %v, want operator", auth.Role)
 	}
 	if auth.TenantID != tenantID {
@@ -407,10 +407,10 @@ func TestHttpMinRole(t *testing.T) {
 		{http.MethodGet, permissions.RoleViewer},
 		{http.MethodHead, permissions.RoleViewer},
 		{http.MethodOptions, permissions.RoleViewer},
-		{http.MethodPost, permissions.RoleOperator},
-		{http.MethodPut, permissions.RoleOperator},
-		{http.MethodPatch, permissions.RoleOperator},
-		{http.MethodDelete, permissions.RoleOperator},
+		{http.MethodPost, permissions.RoleMember},
+		{http.MethodPut, permissions.RoleMember},
+		{http.MethodPatch, permissions.RoleMember},
+		{http.MethodDelete, permissions.RoleMember},
 	}
 
 	for _, tt := range tests {

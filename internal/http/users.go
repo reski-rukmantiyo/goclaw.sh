@@ -217,7 +217,7 @@ func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		Email       string `json:"email"`
 		DisplayName string `json:"display_name"`
 		Password    string `json:"password"`
-		Role        string `json:"role"` // tenant_users role: owner/admin/operator/member/viewer
+		Role        string `json:"role"` // tenant_users role: owner/admin/member/viewer
 	}
 	if !bindJSON(w, r, locale, &input) {
 		return

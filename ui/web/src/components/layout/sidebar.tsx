@@ -131,9 +131,13 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
 
         <SidebarGroup label={t("groups.monitoring")} collapsed={collapsed}>
           <SidebarItem to={route(currentTenantSlug, ROUTES.TRACES)} icon={Activity} label={t("nav.traces")} collapsed={collapsed} />
-          <SidebarItem to={route(currentTenantSlug, ROUTES.EVENTS)} icon={Radar} label={t("nav.realtimeEvents")} collapsed={collapsed} />
-          <SidebarItem to={route(currentTenantSlug, ROUTES.ACTIVITY)} icon={ClipboardList} label={t("nav.activity")} collapsed={collapsed} />
-          <SidebarItem to={route(currentTenantSlug, ROUTES.LOGS)} icon={Terminal} label={t("nav.logs")} collapsed={collapsed} />
+          {isAdmin && (
+            <>
+              <SidebarItem to={route(currentTenantSlug, ROUTES.EVENTS)} icon={Radar} label={t("nav.realtimeEvents")} collapsed={collapsed} />
+              <SidebarItem to={route(currentTenantSlug, ROUTES.ACTIVITY)} icon={ClipboardList} label={t("nav.activity")} collapsed={collapsed} />
+              <SidebarItem to={route(currentTenantSlug, ROUTES.LOGS)} icon={Terminal} label={t("nav.logs")} collapsed={collapsed} />
+            </>
+          )}
         </SidebarGroup>
 
         {isAdmin && (

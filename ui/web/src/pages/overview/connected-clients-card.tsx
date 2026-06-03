@@ -73,7 +73,7 @@ export function ConnectedClientsCard({
                           variant={
                             c.role === "admin" || c.role === "owner"
                               ? "default"
-                              : c.role === "operator"
+                              : c.role === "member"
                                 ? "secondary"
                                 : "outline"
                           }

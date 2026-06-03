@@ -217,15 +217,15 @@ export function AppRoutes() {
             <Route path="providers/:id" element={<RequireAdmin><ProvidersPage key="detail" /></RequireAdmin>} />
             <Route path="cli-credentials" element={<Navigate to="packages?tab=cli-credentials" replace />} />
             <Route path="api-keys" element={<RequireAdmin><ApiKeysPage /></RequireAdmin>} />
-            <Route path="channels" element={<RequireAdmin><ChannelsPage key="list" /></RequireAdmin>} />
-            <Route path="channels/:id" element={<RequireAdmin><ChannelsPage key="detail" /></RequireAdmin>} />
-            <Route path="nodes" element={<RequireAdmin><NodesPage /></RequireAdmin>} />
+            <Route path="channels" element={<ChannelsPage key="list" />} />
+            <Route path="channels/:id" element={<ChannelsPage key="detail" />} />
+            <Route path="nodes" element={<NodesPage />} />
             <Route path="workstations" element={<RequireAdmin><WorkstationsPage /></RequireAdmin>} />
             <Route path="logs" element={<RequireAdmin><LogsPage /></RequireAdmin>} />
-            <Route path="builtin-tools" element={<RequireAdmin><BuiltinToolsPage /></RequireAdmin>} />
-            <Route path="mcp" element={<RequireAdmin><MCPPage /></RequireAdmin>} />
+            <Route path="builtin-tools" element={<BuiltinToolsPage />} />
+            <Route path="mcp" element={<MCPPage />} />
             <Route path="tts" element={<RequireCrossTenant><TtsPage /></RequireCrossTenant>} />
-            <Route path="storage" element={<RequireAdmin><StoragePage /></RequireAdmin>} />
+            <Route path="storage" element={<StoragePage />} />
             <Route path="packages" element={<RequireAdmin><PackagesPage /></RequireAdmin>} />
             <Route path="authentication" element={<RequireAdmin><TenantAuthPage /></RequireAdmin>} />
             <Route path="admin/tenants" element={<RequireCrossTenant><TenantsAdminPage /></RequireCrossTenant>} />
@@ -237,12 +237,12 @@ export function AppRoutes() {
             <Route path="admin/audit" element={<RequireAdmin><AuditLogPage /></RequireAdmin>} />
             <Route path="admin/roles" element={<RequireAdmin><RoleManagementPage /></RequireAdmin>} />
 
-            {/* Operator+ pages */}
+            {/* All-role pages */}
             <Route path="traces" element={<TracesPage key="list" />} />
             <Route path="traces/:id" element={<TracesPage key="detail" />} />
-            <Route path="events" element={<EventsPage />} />
+            <Route path="events" element={<RequireAdmin><EventsPage /></RequireAdmin>} />
             <Route path="usage" element={<Navigate to="overview" replace />} />
-            <Route path="activity" element={<ActivityPage />} />
+            <Route path="activity" element={<RequireAdmin><ActivityPage /></RequireAdmin>} />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="approvals" element={<ApprovalsPage />} />
             <Route path="pending-messages" element={<PendingMessagesPage />} />

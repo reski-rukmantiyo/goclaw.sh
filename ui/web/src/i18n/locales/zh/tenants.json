@@ -25,7 +25,6 @@
   "selectRole": "选择角色",
   "roleOwner": "所有者",
   "roleAdmin": "管理员",
-  "roleOperator": "运营员",
   "roleMember": "成员",
   "roleViewer": "查看者",
   "noUsers": "此租户中没有用户",

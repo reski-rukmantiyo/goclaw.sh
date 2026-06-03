@@ -34,17 +34,16 @@ import { useTenantDetail } from "./hooks/use-tenant-detail";
 import { ROUTES, route } from "@/lib/constants";
 import { useTenants } from "@/hooks/use-tenants";
 
-const TENANT_ROLES = ["owner", "admin", "operator", "member", "viewer"] as const;
+const TENANT_ROLES = ["owner", "admin", "member", "viewer"] as const;
 
 const ROLE_KEYS: Record<string, string> = {
-  owner: "roleOwner", admin: "roleAdmin", operator: "roleOperator",
+  owner: "roleOwner", admin: "roleAdmin",
   member: "roleMember", viewer: "roleViewer",
 };
 
 const ROLE_COLORS: Record<string, string> = {
   owner: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
   admin: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  operator: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
   member: "bg-muted text-muted-foreground",
   viewer: "bg-muted text-muted-foreground",
 };

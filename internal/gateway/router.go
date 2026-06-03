@@ -268,10 +268,14 @@ func (r *MethodRouter) handleConnect(ctx context.Context, client *Client, req *p
 			switch claims.Role {
 			case "owner":
 				client.role = permissions.RoleOwner
-			case "tenant_admin":
+			case "admin":
 				client.role = permissions.RoleAdmin
+			case "member":
+				client.role = permissions.RoleMember
+			case "viewer":
+				client.role = permissions.RoleViewer
 			default:
-				client.role = permissions.RoleOperator
+				client.role = permissions.RoleMember
 			}
 
 			// Resolve tenant from JWT claims as default
@@ -331,7 +335,7 @@ func (r *MethodRouter) handleConnect(ctx context.Context, client *Client, req *p
 
 	// Path 2: No token configured → operator (backward compat)
 	if configToken == "" {
-		client.role = permissions.RoleOperator
+		client.role = permissions.RoleMember
 		client.authenticated = true
 		client.userID = params.UserID
 		client.tenantID = store.MasterTenantID
@@ -355,7 +359,7 @@ func (r *MethodRouter) handleConnect(ctx context.Context, client *Client, req *p
 			return
 		}
 		if paired {
-			client.role = permissions.RoleOperator
+			client.role = permissions.RoleMember
 			client.authenticated = true
 		client.userID = params.UserID
 			client.pairedSenderID = params.SenderID
@@ -522,7 +526,7 @@ func (r *MethodRouter) resolveDefaultTenant(ctx context.Context, userID string) 
 }
 
 // getUserTenantRole returns the user's role in a tenant, using permission cache if available.
-// In the new role model this returns "owner" or "member" to indicate tenant membership.
+// Used for membership verification (non-empty = member). Actual client.role is derived from JWT claims.
 func (r *MethodRouter) getUserTenantRole(ctx context.Context, tenantID uuid.UUID, userID string) (string, error) {
 	// Check cache first
 	if r.permCache != nil {

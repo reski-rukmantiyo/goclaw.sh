@@ -102,13 +102,13 @@ func CheckFileWriterPermission(ctx context.Context, permStore ConfigPermissionSt
 }
 
 // isAdminRole reports whether ctx carries an elevated RBAC role
-// (admin / operator / owner) that should bypass per-user file-writer
+// (admin / member / owner) that should bypass per-user file-writer
 // grants. Tenant-authenticated identities pre-pass RBAC at the gateway
 // edge; re-checking per-channel grants here is redundant and blocks
 // legitimate dashboard-dispatched work (#915).
 func isAdminRole(ctx context.Context) bool {
 	switch RoleFromContext(ctx) {
-	case "admin", "operator", RoleOwner:
+	case "admin", "member", RoleOwner:
 		return true
 	}
 	return false

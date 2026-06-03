@@ -16,7 +16,7 @@ var schemaSQL string
 
 // SchemaVersion is the current SQLite schema version.
 // Bump this when adding new migration steps below.
-const SchemaVersion = 44
+const SchemaVersion = 45
 
 // migrations maps version → SQL to apply when upgrading FROM that version.
 // schema.sql always represents the LATEST full schema (for fresh DBs).
@@ -960,14 +960,6 @@ WHERE NOT EXISTS (SELECT 1 FROM roles r WHERE r.tenant_id = t.id AND r.name = 'A
 
 INSERT INTO roles (id, tenant_id, name, description, is_system, permissions, created_at, updated_at)
 SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),
-       t.id, 'Operator', 'Read and write access', 1,
-       '["user.list","user.get","group.list","group.get","group.update","group.manage_members","artifact.upload_personal","artifact.upload_group","artifact.submit_review","agent.create_personal","agent.publish_group","audit.view_group","audit.export"]',
-       strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-FROM tenants t
-WHERE NOT EXISTS (SELECT 1 FROM roles r WHERE r.tenant_id = t.id AND r.name = 'Operator');
-
-INSERT INTO roles (id, tenant_id, name, description, is_system, permissions, created_at, updated_at)
-SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),
        t.id, 'Member', 'Regular member', 1,
        '["group.list","group.get","group.view_hierarchy","artifact.upload_personal","artifact.submit_review","agent.create_personal","artifact.view_group","artifact.view_tenant","artifact.delete_own"]',
        strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -989,7 +981,7 @@ SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(h
        COALESCE(
          (SELECT id FROM roles WHERE tenant_id = tu.tenant_id AND name = CASE tu.role
            WHEN 'admin' THEN 'Admin'
-           WHEN 'operator' THEN 'Operator'
+           WHEN 'operator' THEN 'Member'
            WHEN 'member' THEN 'Member'
            WHEN 'viewer' THEN 'Viewer'
            ELSE 'Member'
@@ -1004,7 +996,7 @@ WHERE tu.role != 'owner' AND tu.role IS NOT NULL
         AND ur.role_id = COALESCE(
              (SELECT id FROM roles WHERE tenant_id = tu.tenant_id AND name = CASE tu.role
                WHEN 'admin' THEN 'Admin'
-               WHEN 'operator' THEN 'Operator'
+               WHEN 'operator' THEN 'Member'
                WHEN 'member' THEN 'Member'
                WHEN 'viewer' THEN 'Viewer'
                ELSE 'Member'
@@ -1024,6 +1016,27 @@ WHERE NOT EXISTS (SELECT 1 FROM role_permissions rp WHERE rp.role_id = r.id AND 
 ALTER TABLE tenant_users DROP COLUMN role;
 ALTER TABLE group_members DROP COLUMN role;
 DROP INDEX IF EXISTS idx_group_members_group_role;`,
+		// Version 43 → 44: remove Operator system role, reassign users to Member.
+		44: `-- Reassign Operator users to Member role (skip if already Member)
+INSERT OR IGNORE INTO user_roles (id, tenant_id, user_id, role_id)
+SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),
+       ur.tenant_id, ur.user_id,
+       (SELECT id FROM roles WHERE tenant_id = ur.tenant_id AND name = 'Member' LIMIT 1)
+FROM user_roles ur
+JOIN roles r ON r.id = ur.role_id
+WHERE r.name = 'Operator'
+  AND NOT EXISTS (
+    SELECT 1 FROM user_roles ur2
+    JOIN roles r2 ON r2.id = ur2.role_id
+    WHERE ur2.tenant_id = ur.tenant_id
+      AND ur2.user_id = ur.user_id
+      AND r2.name = 'Member'
+  );
+
+DELETE FROM role_permissions WHERE role_id IN (SELECT id FROM roles WHERE name = 'Operator');
+DELETE FROM user_roles WHERE role_id IN (SELECT id FROM roles WHERE name = 'Operator');
+DELETE FROM group_roles WHERE role_id IN (SELECT id FROM roles WHERE name = 'Operator');
+DELETE FROM roles WHERE name = 'Operator';`,
 }
 
 // addHooksTables is the SQLite incremental migration for schema v19 → v20.

@@ -4,7 +4,7 @@ import { LOCAL_STORAGE_KEYS } from "@/lib/constants";
 import { clearSetupSkippedState } from "@/lib/setup-skip";
 import type { TenantMembership } from "@/types/tenant";
 
-type UserRole = "owner" | "admin" | "operator" | "viewer" | "";
+type UserRole = "owner" | "admin" | "member" | "viewer" | "";
 export type Edition = "standard" | "lite";
 
 interface AuthState {

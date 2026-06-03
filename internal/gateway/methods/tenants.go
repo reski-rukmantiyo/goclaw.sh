@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -40,11 +41,12 @@ type TenantsMethods struct {
 	defaultSSLMode    string // default sslmode for auto-generated tenant DBs
 	masterDSN         string // master DSN for superuser schema operations on tenant DBs
 	ownerIDs          []string // global owner IDs from config; used to distinguish global owners from tenant owners
+	roleStore         store.RoleStore // RBAC role assignment for tenant users
 }
 
 // NewTenantsMethods creates a new TenantsMethods handler.
-func NewTenantsMethods(tenantStore store.TenantStore, tenantDBConnStore store.TenantDBConnectionStore, tenantDBManager store.TenantDBManager, masterDB *sql.DB, msgBus *bus.MessageBus, workspace string, defaultSSLMode string, masterDSN string, systemConfigStore store.SystemConfigStore, authLoader tenantauth.Loader, encKey string, ownerIDs []string) *TenantsMethods {
-	return &TenantsMethods{tenantStore: tenantStore, tenantDBConnStore: tenantDBConnStore, tenantDBManager: tenantDBManager, masterDB: masterDB, msgBus: msgBus, workspace: workspace, defaultSSLMode: defaultSSLMode, masterDSN: masterDSN, systemConfigStore: systemConfigStore, authLoader: authLoader, encKey: encKey, ownerIDs: ownerIDs}
+func NewTenantsMethods(tenantStore store.TenantStore, tenantDBConnStore store.TenantDBConnectionStore, tenantDBManager store.TenantDBManager, masterDB *sql.DB, msgBus *bus.MessageBus, workspace string, defaultSSLMode string, masterDSN string, systemConfigStore store.SystemConfigStore, authLoader tenantauth.Loader, encKey string, ownerIDs []string, roleStore store.RoleStore) *TenantsMethods {
+	return &TenantsMethods{tenantStore: tenantStore, tenantDBConnStore: tenantDBConnStore, tenantDBManager: tenantDBManager, masterDB: masterDB, msgBus: msgBus, workspace: workspace, defaultSSLMode: defaultSSLMode, masterDSN: masterDSN, systemConfigStore: systemConfigStore, authLoader: authLoader, encKey: encKey, ownerIDs: ownerIDs, roleStore: roleStore}
 }
 
 // Register registers tenant management RPC methods.
@@ -71,6 +73,79 @@ func (m *TenantsMethods) requireAdmin(next gateway.MethodHandler) gateway.Method
 			return
 		}
 		next(ctx, client, req)
+	}
+}
+
+// capitalizeRole maps lowercase role strings ("admin", "member", "viewer")
+// to seeded system role names ("Admin", "Member", "Viewer").
+func capitalizeRole(role string) string {
+	if role == "" {
+		return ""
+	}
+	return strings.ToUpper(role[:1]) + role[1:]
+}
+
+// seedSystemRoles creates the default system roles (Admin, Member, Viewer)
+// for a newly created tenant. Mirrors migration 000083 seed data.
+func (m *TenantsMethods) seedSystemRoles(ctx context.Context, tenantID uuid.UUID) {
+	if m.roleStore == nil {
+		return
+	}
+
+	type sysRole struct {
+		name        string
+		description string
+		permissions []string
+	}
+	roles := []sysRole{
+		{
+			name:        "Admin",
+			description: "Full tenant administration",
+			permissions: []string{
+				"user.list", "user.get", "user.create", "user.update", "user.delete",
+				"user.enroll", "user.unenroll", "user.assign_role",
+				"group.list", "group.get", "group.create", "group.update", "group.delete",
+				"group.manage_members", "group.assign_role",
+				"role.list", "role.get", "role.create", "role.update", "role.delete",
+				"audit.view_all", "system.manage_settings", "system.manage_auth", "system.view_health",
+			},
+		},
+		{
+			name:        "Member",
+			description: "Regular member",
+			permissions: []string{
+				"group.list", "group.get", "group.view_hierarchy",
+				"artifact.upload_personal", "artifact.submit_review",
+				"agent.create_personal", "artifact.view_group",
+				"artifact.view_tenant", "artifact.delete_own",
+			},
+		},
+		{
+			name:        "Viewer",
+			description: "Read-only access",
+			permissions: []string{
+				"group.list", "group.get",
+				"artifact.view_group", "artifact.view_tenant",
+			},
+		},
+	}
+
+	for _, r := range roles {
+		rd := &store.RoleData{
+			ID:          store.GenNewID(),
+			TenantID:    tenantID,
+			Name:        r.name,
+			Description: &r.description,
+			IsSystem:    true,
+			Permissions: r.permissions,
+		}
+		if err := m.roleStore.CreateRole(ctx, rd); err != nil {
+			slog.Warn("tenants.seed_roles.create_failed", "tenant_id", tenantID, "role", r.name, "error", err)
+			continue
+		}
+		if err := m.roleStore.SetRolePermissions(ctx, rd.ID, r.permissions); err != nil {
+			slog.Warn("tenants.seed_roles.perms_failed", "tenant_id", tenantID, "role", r.name, "error", err)
+		}
 	}
 }
 
@@ -176,6 +251,9 @@ func (m *TenantsMethods) handleCreate(ctx context.Context, client *gateway.Clien
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToCreate, "tenant", err.Error())))
 		return
 	}
+
+	// Seed default system roles for the new tenant.
+	m.seedSystemRoles(ctx, tenant.ID)
 
 	// Provision tenant database if infrastructure available
 	if m.tenantDBConnStore != nil && m.masterDB != nil {
@@ -364,6 +442,18 @@ func (m *TenantsMethods) handleUsersAdd(ctx context.Context, client *gateway.Cli
 		return
 	}
 
+	// Assign RBAC role for non-owner users (owner bypasses RBAC via is_owner flag).
+	// System roles are seeded by migration 000083: "Admin", "Member", "Viewer".
+	if !isOwner && m.roleStore != nil && params.Role != "" {
+		if rbacRole, rErr := m.roleStore.GetRoleByName(ctx, tid, capitalizeRole(params.Role)); rErr == nil && rbacRole != nil {
+			if aErr := m.roleStore.AssignUserRole(ctx, tid, normalized, rbacRole.ID); aErr != nil {
+				slog.Warn("tenants.users.add rbac_assign_failed", "tenant_id", tid, "user_id", normalized, "role", params.Role, "error", aErr)
+			}
+		} else if rErr != nil {
+			slog.Warn("tenants.users.add rbac_lookup_failed", "tenant_id", tid, "role", params.Role, "error", rErr)
+		}
+	}
+
 	m.emitCacheInvalidate(bus.CacheKindTenantUsers, normalized)
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]string{"ok": "true"}))
 }
@@ -401,6 +491,17 @@ func (m *TenantsMethods) handleUsersRemove(ctx context.Context, client *gateway.
 		slog.Error("tenants.users.remove failed", "error", err)
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToDelete, "tenant user", err.Error())))
 		return
+	}
+
+	// Unassign all RBAC roles for this user in the tenant.
+	if m.roleStore != nil {
+		if roles, rErr := m.roleStore.ListUserRoles(ctx, tid, params.UserID); rErr == nil {
+			for _, r := range roles {
+				if uErr := m.roleStore.UnassignUserRole(ctx, tid, params.UserID, r.ID); uErr != nil {
+					slog.Warn("tenants.users.remove rbac_unassign_failed", "tenant_id", tid, "user_id", params.UserID, "role_id", r.ID, "error", uErr)
+				}
+			}
+		}
 	}
 
 	m.emitCacheInvalidate(bus.CacheKindTenantUsers, params.UserID)

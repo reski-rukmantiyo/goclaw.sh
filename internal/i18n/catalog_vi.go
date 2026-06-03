@@ -193,7 +193,7 @@ func init() {
 		MsgSkillNudge70Pct:      "[System] Bạn đã dùng 70% ngân sách vòng lặp. Cân nhắc xem các mẫu trong phiên này có nên lưu thành kỹ năng không.",
 		MsgSkillNudge90Pct:      "[System] Bạn đã dùng 90% ngân sách vòng lặp. Nếu phiên này có quy trình tái sử dụng, hãy cân nhắc lưu thành kỹ năng trước khi hoàn thành.",
 
-		MsgInvalidRole:           "vai trò không hợp lệ: giá trị cho phép là owner, admin, operator, member, viewer",
+		MsgInvalidRole:           "vai trò không hợp lệ: giá trị cho phép là owner, admin, member, viewer",
 		MsgSlugImmutable:         "không thể thay đổi slug",
 		MsgTenantDeleted:         "đã xóa tenant",
 		MsgTenantDeleteFailed:    "không thể xóa tenant: %s",

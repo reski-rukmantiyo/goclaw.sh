@@ -30,7 +30,7 @@ const CliCredentialsTab = lazy(() =>
 
 // --- Permission helper (mirrors require-role.tsx logic) ---
 function hasMinRole(role: string, minRole: string): boolean {
-  const levels: Record<string, number> = { owner: 4, admin: 3, operator: 2, viewer: 1 };
+  const levels: Record<string, number> = { owner: 4, admin: 3, member: 2, viewer: 1 };
   return (levels[role] ?? 0) >= (levels[minRole] ?? 0);
 }
 

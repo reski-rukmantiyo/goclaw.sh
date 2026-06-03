@@ -25,7 +25,6 @@
   "selectRole": "Select Role",
   "roleOwner": "Owner",
   "roleAdmin": "Admin",
-  "roleOperator": "Operator",
   "roleMember": "Member",
   "roleViewer": "Viewer",
   "noUsers": "No users in this tenant",

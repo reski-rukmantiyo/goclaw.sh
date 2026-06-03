@@ -1,11 +1,13 @@
 package http
 
 import (
+	"context"
 	"database/sql"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -28,11 +30,12 @@ type TenantsHandler struct {
 	workspace         string // base workspace directory for tenant dirs
 	defaultSSLMode    string // default sslmode for auto-generated tenant DBs
 	masterDSN         string // master DSN for superuser schema operations on tenant DBs
+	roleStore         store.RoleStore
 }
 
 // NewTenantsHandler creates a handler for tenant management endpoints.
-func NewTenantsHandler(tenantStore store.TenantStore, tenantDBConnStore store.TenantDBConnectionStore, tenantDBManager store.TenantDBManager, masterDB *sql.DB, msgBus *bus.MessageBus, workspace string, defaultSSLMode string, masterDSN string) *TenantsHandler {
-	return &TenantsHandler{tenantStore: tenantStore, tenantDBConnStore: tenantDBConnStore, tenantDBManager: tenantDBManager, masterDB: masterDB, msgBus: msgBus, workspace: workspace, defaultSSLMode: defaultSSLMode, masterDSN: masterDSN}
+func NewTenantsHandler(tenantStore store.TenantStore, tenantDBConnStore store.TenantDBConnectionStore, tenantDBManager store.TenantDBManager, masterDB *sql.DB, msgBus *bus.MessageBus, workspace string, defaultSSLMode string, masterDSN string, roleStore store.RoleStore) *TenantsHandler {
+	return &TenantsHandler{tenantStore: tenantStore, tenantDBConnStore: tenantDBConnStore, tenantDBManager: tenantDBManager, masterDB: masterDB, msgBus: msgBus, workspace: workspace, defaultSSLMode: defaultSSLMode, masterDSN: masterDSN, roleStore: roleStore}
 }
 
 // RegisterRoutes registers all tenant management routes on the given mux.
@@ -109,6 +112,9 @@ func (h *TenantsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgFailedToCreate, "tenant", err.Error())})
 		return
 	}
+
+	// Seed default system roles for the new tenant.
+	h.seedSystemRoles(r.Context(), tenant.ID)
 
 	// Provision tenant database if infrastructure available
 	if h.tenantDBConnStore != nil && h.masterDB != nil {
@@ -300,6 +306,18 @@ func (h *TenantsHandler) handleUsersAdd(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Assign RBAC role for non-owner users (owner bypasses RBAC via is_owner flag).
+	// System roles are seeded by migration 000083: "Admin", "Member", "Viewer".
+	if !isOwner && h.roleStore != nil && input.Role != "" {
+		if rbacRole, rErr := h.roleStore.GetRoleByName(r.Context(), id, capitalizeRole(input.Role)); rErr == nil && rbacRole != nil {
+			if aErr := h.roleStore.AssignUserRole(r.Context(), id, normalized, rbacRole.ID); aErr != nil {
+				slog.Warn("tenants.users.add rbac_assign_failed", "tenant_id", id, "user_id", normalized, "role", input.Role, "error", aErr)
+			}
+		} else if rErr != nil {
+			slog.Warn("tenants.users.add rbac_lookup_failed", "tenant_id", id, "role", input.Role, "error", rErr)
+		}
+	}
+
 	h.emitCacheInvalidate(bus.CacheKindTenantUsers, normalized)
 	emitAudit(h.msgBus, r, "tenant.user.added", "tenant", id.String())
 	writeJSON(w, http.StatusCreated, map[string]string{"ok": "true"})
@@ -330,6 +348,17 @@ func (h *TenantsHandler) handleUsersRemove(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Unassign all RBAC roles for this user in the tenant.
+	if h.roleStore != nil {
+		if roles, rErr := h.roleStore.ListUserRoles(r.Context(), id, userID); rErr == nil {
+			for _, rl := range roles {
+				if uErr := h.roleStore.UnassignUserRole(r.Context(), id, userID, rl.ID); uErr != nil {
+					slog.Warn("tenants.users.remove rbac_unassign_failed", "tenant_id", id, "user_id", userID, "role_id", rl.ID, "error", uErr)
+				}
+			}
+		}
+	}
+
 	h.emitCacheInvalidate(bus.CacheKindTenantUsers, userID)
 	emitAudit(h.msgBus, r, "tenant.user.removed", "tenant", id.String())
 
@@ -352,4 +381,77 @@ func (h *TenantsHandler) emitCacheInvalidate(kind, key string) {
 		Name:    protocol.EventCacheInvalidate,
 		Payload: bus.CacheInvalidatePayload{Kind: kind, Key: key},
 	})
+}
+
+// capitalizeRole maps a lowercase role string to the RBAC system role name
+// (e.g. "admin" → "Admin", "member" → "Member").
+func capitalizeRole(role string) string {
+	if role == "" {
+		return ""
+	}
+	return strings.ToUpper(role[:1]) + role[1:]
+}
+
+// seedSystemRoles creates the default system roles (Admin, Member, Viewer)
+// for a newly created tenant. Mirrors migration 000083 seed data.
+func (h *TenantsHandler) seedSystemRoles(ctx context.Context, tenantID uuid.UUID) {
+	if h.roleStore == nil {
+		return
+	}
+
+	type sysRole struct {
+		name        string
+		description string
+		permissions []string
+	}
+	roles := []sysRole{
+		{
+			name:        "Admin",
+			description: "Full tenant administration",
+			permissions: []string{
+				"user.list", "user.get", "user.create", "user.update", "user.delete",
+				"user.enroll", "user.unenroll", "user.assign_role",
+				"group.list", "group.get", "group.create", "group.update", "group.delete",
+				"group.manage_members", "group.assign_role",
+				"role.list", "role.get", "role.create", "role.update", "role.delete",
+				"audit.view_all", "system.manage_settings", "system.manage_auth", "system.view_health",
+			},
+		},
+		{
+			name:        "Member",
+			description: "Regular member",
+			permissions: []string{
+				"group.list", "group.get", "group.view_hierarchy",
+				"artifact.upload_personal", "artifact.submit_review",
+				"agent.create_personal", "artifact.view_group",
+				"artifact.view_tenant", "artifact.delete_own",
+			},
+		},
+		{
+			name:        "Viewer",
+			description: "Read-only access",
+			permissions: []string{
+				"group.list", "group.get",
+				"artifact.view_group", "artifact.view_tenant",
+			},
+		},
+	}
+
+	for _, r := range roles {
+		rd := &store.RoleData{
+			ID:          store.GenNewID(),
+			TenantID:    tenantID,
+			Name:        r.name,
+			Description: &r.description,
+			IsSystem:    true,
+			Permissions: r.permissions,
+		}
+		if err := h.roleStore.CreateRole(ctx, rd); err != nil {
+			slog.Warn("tenants.seed_roles.create_failed", "tenant_id", tenantID, "role", r.name, "error", err)
+			continue
+		}
+		if err := h.roleStore.SetRolePermissions(ctx, rd.ID, r.permissions); err != nil {
+			slog.Warn("tenants.seed_roles.perms_failed", "tenant_id", tenantID, "role", r.name, "error", err)
+		}
+	}
 }

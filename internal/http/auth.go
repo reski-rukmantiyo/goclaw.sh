@@ -276,7 +276,7 @@ func resolveAuthWithBearer(r *http.Request, bearer string) authResult {
 			}
 		}
 	}
-	// Browser pairing → operator (via X-GoClaw-Sender-Id header)
+	// Browser pairing → member (via X-GoClaw-Sender-Id header)
 	if senderID := r.Header.Get("X-GoClaw-Sender-Id"); senderID != "" && pkgPairingStore != nil {
 		paired, err := pkgPairingStore.IsPaired(r.Context(), senderID, "browser")
 		if err == nil && paired {
@@ -292,7 +292,7 @@ func resolveAuthWithBearer(r *http.Request, bearer string) authResult {
 				return authResult{}
 			}
 			return authResult{
-				Role:          permissions.RoleOperator,
+				Role:          permissions.RoleMember,
 				Authenticated: true,
 				TenantID:      tenantID,
 				TenantSlug:    resolveTenantSlug(r.Context(), tenantID),
@@ -352,7 +352,7 @@ func resolveJWTRole(ctx context.Context, userID string, tenantID uuid.UUID) perm
 			if perms[string(permissions.PermSystemManageSettings)] {
 				return permissions.RoleAdmin
 			}
-			// Any write permission → operator; otherwise viewer
+			// Any write permission → member; otherwise viewer
 			hasWrite := false
 			for p := range perms {
 				if !strings.HasSuffix(p, ".list") && !strings.HasSuffix(p, ".get") {
@@ -361,7 +361,7 @@ func resolveJWTRole(ctx context.Context, userID string, tenantID uuid.UUID) perm
 				}
 			}
 			if hasWrite {
-				return permissions.RoleOperator
+				return permissions.RoleMember
 			}
 			return permissions.RoleViewer
 		}
@@ -440,7 +440,7 @@ func httpMinRole(method string) permissions.Role {
 	case http.MethodGet, http.MethodHead, http.MethodOptions:
 		return permissions.RoleViewer
 	default: // POST, PUT, PATCH, DELETE
-		return permissions.RoleOperator
+		return permissions.RoleMember
 	}
 }
 
@@ -501,7 +501,7 @@ func enrichContext(ctx context.Context, r *http.Request, auth authResult) contex
 }
 
 // requireAuth is a middleware that checks authentication and minimum role.
-// Pass "" for minRole to auto-detect from HTTP method (GET→Viewer, POST→Operator).
+// Pass "" for minRole to auto-detect from HTTP method (GET→Viewer, POST→Member).
 // Injects locale, role, userID and tenantID into request context.
 func requireAuth(minRole permissions.Role, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

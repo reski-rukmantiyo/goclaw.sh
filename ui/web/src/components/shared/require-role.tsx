@@ -2,9 +2,9 @@ import { Navigate } from "react-router";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { ROUTES, route } from "@/lib/constants";
 
-/** Check if role meets minimum level. Owner > Admin > Operator > Viewer. */
+/** Check if role meets minimum level. Owner > Admin > Member > Viewer. */
 function hasMinRole(role: string, minRole: string): boolean {
-  const levels: Record<string, number> = { owner: 4, admin: 3, operator: 2, viewer: 1 };
+  const levels: Record<string, number> = { owner: 4, admin: 3, member: 2, viewer: 1 };
   return (levels[role] ?? 0) >= (levels[minRole] ?? 0);
 }
 
@@ -18,11 +18,11 @@ export function RequireAdmin({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/** Renders children only if user has admin or operator role or higher. */
-export function RequireOperator({ children }: { children: React.ReactNode }) {
+/** Renders children only if user has member role or higher. */
+export function RequireMember({ children }: { children: React.ReactNode }) {
   const role = useAuthStore((s) => s.role);
   const slug = useAuthStore((s) => s.tenantSlug);
-  if (!hasMinRole(role, "operator")) {
+  if (!hasMinRole(role, "member")) {
     return <Navigate to={route(slug, ROUTES.OVERVIEW)} replace />;
   }
   return <>{children}</>;

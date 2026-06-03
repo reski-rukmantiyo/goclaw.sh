@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/nextlevelbuilder/goclaw/internal/auth"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
+	"github.com/nextlevelbuilder/goclaw/internal/permissions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/internal/tenantauth"
 )
@@ -529,15 +531,36 @@ func parseJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	return true
 }
 
-// resolveUserRoleForJWT derives the user's role for JWT claims.
-// Maps: owner -> "owner", else -> "member".
-// TODO(phase B): derive admin/operator from effective permissions.
+// resolveUserRoleForJWT derives the user's role for JWT claims from effective permissions.
+// Returns one of: "owner", "admin", "member", "viewer".
 func resolveUserRoleForJWT(ctx context.Context, tenants store.TenantStore, tenantID uuid.UUID, userID string) string {
+	// 1. Owner check
 	if tenants != nil && tenantID != uuid.Nil && userID != "" {
 		isOwner, err := tenants.IsOwner(ctx, tenantID, userID)
 		if err == nil && isOwner {
 			return "owner"
 		}
 	}
+	// 2. Permission-based derivation (same logic as resolveJWTRole in auth.go)
+	if pkgPermCache != nil && tenantID != uuid.Nil && userID != "" {
+		perms, err := pkgPermCache.EffectivePermissions(ctx, userID, tenantID)
+		if err == nil && len(perms) > 0 {
+			if perms[string(permissions.PermSystemManageSettings)] {
+				return "admin"
+			}
+			hasWrite := false
+			for p := range perms {
+				if !strings.HasSuffix(p, ".list") && !strings.HasSuffix(p, ".get") {
+					hasWrite = true
+					break
+				}
+			}
+			if hasWrite {
+				return "member"
+			}
+			return "viewer"
+		}
+	}
+	// 3. Fallback: member (tenant member exists)
 	return "member"
 }

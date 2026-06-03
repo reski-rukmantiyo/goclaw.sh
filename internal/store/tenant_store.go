@@ -19,13 +19,12 @@ const (
 	TenantStatusArchived  = "archived"
 )
 
-// Tenant role constants (hierarchy: owner > admin > operator > member > viewer).
+// Tenant role constants (hierarchy: owner > admin > member > viewer).
 const (
-	TenantRoleOwner    = "owner"
-	TenantRoleAdmin    = "admin"
-	TenantRoleOperator = "operator"
-	TenantRoleMember   = "member"
-	TenantRoleViewer   = "viewer"
+	TenantRoleOwner  = "owner"
+	TenantRoleAdmin  = "admin"
+	TenantRoleMember = "member"
+	TenantRoleViewer = "viewer"
 )
 
 // TenantData represents a tenant in the database.

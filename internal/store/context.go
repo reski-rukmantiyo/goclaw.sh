@@ -44,7 +44,7 @@ const (
 	CrossTenantKey contextKey = "goclaw_cross_tenant"
 	// TenantSlugKey stores the tenant's URL-safe slug for filesystem paths.
 	TenantSlugKey contextKey = "goclaw_tenant_slug"
-	// RoleKey is the context key for the caller's permission role (e.g. "admin", "operator", "viewer").
+	// RoleKey is the context key for the caller's permission role (e.g. "admin", "member", "viewer").
 	RoleKey contextKey = "goclaw_role"
 	// CredentialUserIDKey holds the resolved tenant user identity for credential lookups.
 	// Falls back to UserIDFromContext if not set.
