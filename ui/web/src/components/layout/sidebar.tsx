@@ -57,6 +57,7 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
   const role = useAuthStore((s) => s.role);
   const { isOwner, currentTenantSlug } = useTenants();
   const isAdmin = role === "admin" || role === "owner";
+  const isMember = role === "member" || isAdmin;
 
   return (
     <aside
@@ -88,26 +89,36 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
 
       {/* Nav items */}
       <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-4">
+        {/* Core — Chat visible to all roles; other core items member+ */}
         <SidebarGroup label={t("groups.core")} collapsed={collapsed}>
-          <SidebarItem to={route(currentTenantSlug, ROUTES.OVERVIEW)} icon={LayoutDashboard} label={t("nav.overview")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.CHAT)} icon={MessageSquare} label={t("nav.chat")} collapsed={collapsed} />
-          <SidebarItem to={route(currentTenantSlug, ROUTES.AGENTS)} icon={Bot} label={t("nav.agents")} collapsed={collapsed} />
-          <SidebarItem to={route(currentTenantSlug, ROUTES.TEAMS)} icon={Users} label={t("nav.agentTeams")} collapsed={collapsed} />
+          {isMember && (
+            <>
+              <SidebarItem to={route(currentTenantSlug, ROUTES.OVERVIEW)} icon={LayoutDashboard} label={t("nav.overview")} collapsed={collapsed} />
+              <SidebarItem to={route(currentTenantSlug, ROUTES.AGENTS)} icon={Bot} label={t("nav.agents")} collapsed={collapsed} />
+              <SidebarItem to={route(currentTenantSlug, ROUTES.TEAMS)} icon={Users} label={t("nav.agentTeams")} collapsed={collapsed} />
+            </>
+          )}
         </SidebarGroup>
 
+        {isMember && (
         <SidebarGroup label={t("groups.conversations")} collapsed={collapsed}>
           <SidebarItem to={route(currentTenantSlug, ROUTES.SESSIONS)} icon={History} label={t("nav.sessions")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.PENDING_MESSAGES)} icon={Inbox} label={t("nav.pendingMessages")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.RAW_MESSAGES)} icon={FileText} label={t("nav.rawMessages")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.CONTACTS)} icon={Contact} label={t("nav.contacts")} collapsed={collapsed} />
         </SidebarGroup>
+        )}
 
+        {isMember && (
         <SidebarGroup label={t("groups.connectivity")} collapsed={collapsed}>
           <SidebarItem to={route(currentTenantSlug, ROUTES.CHANNELS)} icon={Radio} label={t("nav.channels")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.NODES)} icon={Link} label={t("nav.nodes")} collapsed={collapsed} badge={pendingCount} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.WORKSTATIONS)} icon={MonitorCog} label={t("nav.workstations")} collapsed={collapsed} />
         </SidebarGroup>
+        )}
 
+        {isMember && (
         <SidebarGroup label={t("groups.capabilities")} collapsed={collapsed}>
           <SidebarItem to={route(currentTenantSlug, ROUTES.SKILLS)} icon={Zap} label={t("nav.skills")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.BUILTIN_TOOLS)} icon={Package} label={t("nav.builtinTools")} collapsed={collapsed} />
@@ -116,7 +127,9 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
           <SidebarItem to={route(currentTenantSlug, ROUTES.CRON)} icon={Clock} label={t("nav.cron")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.HOOKS)} icon={Webhook} label={t("nav.hooks")} collapsed={collapsed} />
         </SidebarGroup>
+        )}
 
+        {isMember && (
         <SidebarGroup label={t("groups.data")} collapsed={collapsed}>
           <SidebarItem to={route(currentTenantSlug, ROUTES.MEMORY)} icon={Brain} label={t("nav.memory")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.VAULT)} icon={FileArchive} label={t("nav.vault")} collapsed={collapsed} />
@@ -124,6 +137,7 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
           <SidebarItem to={route(currentTenantSlug, ROUTES.EMBEDDINGS)} icon={Layers} label={t("nav.embeddings")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.STORAGE)} icon={HardDrive} label={t("nav.storage")} collapsed={collapsed} />
         </SidebarGroup>
+        )}
 
         <SidebarGroup label={t("groups.monitoring")} collapsed={collapsed}>
           <SidebarItem to={route(currentTenantSlug, ROUTES.TRACES)} icon={Activity} label={t("nav.traces")} collapsed={collapsed} />

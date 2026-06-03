@@ -8,52 +8,51 @@ import (
 type sidebarItem struct {
 	group      string // sidebar group name
 	label      string // menu item label
-	visibility string // "all" | "admin" | "owner" — who can see it in the sidebar
+	visibility string // "all" | "member" | "admin" | "owner" — who can see it in the sidebar
 	wsMethod   string // primary WS method for the page (empty if HTTP-only)
 	httpRoute  string // primary HTTP route (empty if WS-only)
 }
 
 // expectedMenuVisibility defines the complete sidebar menu tree with visibility rules.
 // Visibility matches the sidebar.tsx code:
-//   - "all":   no gate — visible to owner, admin, member, viewer
-//   - "admin": isAdmin gate (role === "admin" || role === "owner")
-//   - "owner": isOwner gate (inside admin block, so also requires admin)
+//   - "all":    no gate — visible to owner, admin, member, viewer
+//   - "member": isMember gate (role === "member" || "admin" || "owner")
+//   - "admin":  isAdmin gate (role === "admin" || role === "owner")
+//   - "owner":  isOwner gate (inside admin block, so also requires admin)
 var expectedMenuVisibility = []sidebarItem{
-	// === Core (no gate) ===
-	{"Core", "Overview", "all", "status", ""},
+	// === Core (Chat=all, rest=member+) ===
 	{"Core", "Chat", "all", "chat.history", ""}, // chat.send=member, chat.history=viewer
-	{"Core", "Agents", "all", "agents.list", ""},
-	{"Core", "Agent Teams", "all", "teams.list", ""},
+	{"Core", "Overview", "member", "status", ""},
+	{"Core", "Agents", "member", "agents.list", ""},
+	{"Core", "Agent Teams", "member", "teams.list", ""},
 
-	// === Conversations (no gate) ===
-	{"Conversations", "Sessions", "all", "sessions.list", ""},
-	{"Conversations", "Pending Messages", "all", "exec.approval.list", ""},
-	{"Conversations", "Raw Messages", "all", "chat.history", ""}, // uses chat history for reads
-	{"Conversations", "Contacts", "all", "channels.list", ""},
+	// === Conversations (member+ only) ===
+	{"Conversations", "Sessions", "member", "sessions.list", ""},
+	{"Conversations", "Pending Messages", "member", "exec.approval.list", ""},
+	{"Conversations", "Raw Messages", "member", "chat.history", ""}, // uses chat history for reads
+	{"Conversations", "Contacts", "member", "channels.list", ""},
 
-	// === Connectivity (no gate) ===
-	{"Connectivity", "Channels", "all", "channels.list", ""},
-	// KNOWN MISMATCH: Nodes visible to all in sidebar, but device.pair.* methods are admin-only.
-	// Sidebar shows the menu but member/viewer get errors when using it.
-	{"Connectivity", "Nodes (Pairing)", "all", "device.pair.list", ""},
-	{"Connectivity", "Workstations", "all", "workstations.list", ""},
+	// === Connectivity (member+ only) ===
+	{"Connectivity", "Channels", "member", "channels.list", ""},
+	{"Connectivity", "Nodes (Pairing)", "member", "device.pair.list", ""},
+	{"Connectivity", "Workstations", "member", "workstations.list", ""},
 
-	// === Capabilities (no gate) ===
-	{"Capabilities", "Skills", "all", "skills.list", ""},
-	{"Capabilities", "Builtin Tools", "all", "", "/v1/tools"}, // HTTP only
-	{"Capabilities", "MCP Servers", "all", "", "/v1/mcp/servers"},
-	{"Capabilities", "TTS", "all", "tts.status", ""},
-	{"Capabilities", "Cron", "all", "cron.list", ""},
-	{"Capabilities", "Hooks", "all", "hooks.list", ""},
+	// === Capabilities (member+ only) ===
+	{"Capabilities", "Skills", "member", "skills.list", ""},
+	{"Capabilities", "Builtin Tools", "member", "", "/v1/tools"},
+	{"Capabilities", "MCP Servers", "member", "", "/v1/mcp/servers"},
+	{"Capabilities", "TTS", "member", "tts.status", ""},
+	{"Capabilities", "Cron", "member", "cron.list", ""},
+	{"Capabilities", "Hooks", "member", "hooks.list", ""},
 
-	// === Data (no gate) ===
-	{"Data", "Memory", "all", "", "/v1/memory"},
-	{"Data", "Vault", "all", "", "/v1/vault"},
-	{"Data", "Knowledge Graph", "all", "", "/v1/knowledge-graph"},
-	{"Data", "Embeddings", "all", "", "/v1/embeddings"},
-	{"Data", "Storage", "all", "", "/v1/files"},
+	// === Data (member+ only) ===
+	{"Data", "Memory", "member", "", "/v1/memory"},
+	{"Data", "Vault", "member", "", "/v1/vault"},
+	{"Data", "Knowledge Graph", "member", "", "/v1/knowledge-graph"},
+	{"Data", "Embeddings", "member", "", "/v1/embeddings"},
+	{"Data", "Storage", "member", "", "/v1/files"},
 
-	// === Monitoring (partial gate) ===
+	// === Monitoring (Traces=all, rest=admin+) ===
 	{"Monitoring", "Traces", "all", "", "/v1/traces"},
 	{"Monitoring", "Realtime Events", "admin", "", "/v1/events"},
 	{"Monitoring", "Activity", "admin", "", "/v1/activity"},
@@ -81,6 +80,8 @@ func roleCanSeeMenu(role Role, visibility string) bool {
 	switch visibility {
 	case "all":
 		return true // owner, admin, member, viewer
+	case "member":
+		return HasMinRole(role, RoleMember) // owner, admin, member
 	case "admin":
 		return HasMinRole(role, RoleAdmin) // owner, admin
 	case "owner":
@@ -122,16 +123,34 @@ func TestSidebarMatchesBackendRBAC(t *testing.T) {
 			label    string
 			expected bool
 		}{
-			// Workstation: all roles see it
+			// Chat: all roles see it
+			{RoleOwner, "Core", "Chat", true},
+			{RoleAdmin, "Core", "Chat", true},
+			{RoleMember, "Core", "Chat", true},
+			{RoleViewer, "Core", "Chat", true},
+			// Overview: member+ only (hidden for viewer)
+			{RoleOwner, "Core", "Overview", true},
+			{RoleAdmin, "Core", "Overview", true},
+			{RoleMember, "Core", "Overview", true},
+			{RoleViewer, "Core", "Overview", false},
+			// Agents: member+ only (hidden for viewer)
+			{RoleOwner, "Core", "Agents", true},
+			{RoleMember, "Core", "Agents", true},
+			{RoleViewer, "Core", "Agents", false},
+			// Workstation: member+ only (hidden for viewer)
 			{RoleOwner, "Connectivity", "Workstations", true},
 			{RoleAdmin, "Connectivity", "Workstations", true},
 			{RoleMember, "Connectivity", "Workstations", true},
-			{RoleViewer, "Connectivity", "Workstations", true},
-			// Cron: all roles see it
+			{RoleViewer, "Connectivity", "Workstations", false},
+			// Cron: member+ only (hidden for viewer)
 			{RoleOwner, "Capabilities", "Cron", true},
 			{RoleAdmin, "Capabilities", "Cron", true},
 			{RoleMember, "Capabilities", "Cron", true},
-			{RoleViewer, "Capabilities", "Cron", true},
+			{RoleViewer, "Capabilities", "Cron", false},
+			// Sessions: member+ only (hidden for viewer)
+			{RoleOwner, "Conversations", "Sessions", true},
+			{RoleMember, "Conversations", "Sessions", true},
+			{RoleViewer, "Conversations", "Sessions", false},
 			// CLI Credentials: admin/owner only
 			{RoleOwner, "System", "CLI Credentials", true},
 			{RoleAdmin, "System", "CLI Credentials", true},
@@ -142,6 +161,11 @@ func TestSidebarMatchesBackendRBAC(t *testing.T) {
 			{RoleAdmin, "Monitoring", "Realtime Events", true},
 			{RoleMember, "Monitoring", "Realtime Events", false},
 			{RoleViewer, "Monitoring", "Realtime Events", false},
+			// Traces: all roles (viewer can see)
+			{RoleOwner, "Monitoring", "Traces", true},
+			{RoleAdmin, "Monitoring", "Traces", true},
+			{RoleMember, "Monitoring", "Traces", true},
+			{RoleViewer, "Monitoring", "Traces", true},
 			// Tenants: owner only (sidebar more restrictive than backend)
 			{RoleOwner, "System", "Tenants", true},
 			{RoleAdmin, "System", "Tenants", false},
@@ -152,11 +176,6 @@ func TestSidebarMatchesBackendRBAC(t *testing.T) {
 			{RoleAdmin, "System", "Config", false},
 			{RoleMember, "System", "Config", false},
 			{RoleViewer, "System", "Config", false},
-			// Traces: all roles
-			{RoleOwner, "Monitoring", "Traces", true},
-			{RoleAdmin, "Monitoring", "Traces", true},
-			{RoleMember, "Monitoring", "Traces", true},
-			{RoleViewer, "Monitoring", "Traces", true},
 			// API Keys: admin/owner only
 			{RoleOwner, "System", "API Keys", true},
 			{RoleAdmin, "System", "API Keys", true},
@@ -207,8 +226,6 @@ func TestSidebarMatchesBackendRBAC(t *testing.T) {
 			{RoleAdmin, "cron.create", true},
 			{RoleMember, "cron.create", true},
 			{RoleViewer, "cron.create", false},
-			// CLI Credentials: requireAuth(RoleAdmin) — no WS method, but same gate
-			// Tested via HasMinRole(role, RoleAdmin) in TestCLICredentialsAccess
 			// Tenants: backend allows reads for all (sidebar hides from non-owners)
 			{RoleOwner, "tenants.list", true},
 			{RoleAdmin, "tenants.list", true},
@@ -219,6 +236,16 @@ func TestSidebarMatchesBackendRBAC(t *testing.T) {
 			{RoleAdmin, "config.get", true},
 			{RoleMember, "config.get", false},
 			{RoleViewer, "config.get", false},
+			// Chat: read=viewer, send=member+
+			{RoleViewer, "chat.history", true},
+			{RoleMember, "chat.send", true},
+			{RoleViewer, "chat.send", false},
+			// Sessions: read=viewer, write=member+
+			{RoleViewer, "sessions.list", true},
+			{RoleMember, "sessions.delete", true},
+			{RoleViewer, "sessions.delete", false},
+			// Traces: viewer can read
+			{RoleViewer, "traces.list", true},
 		}
 
 		for _, tc := range rbacTests {
@@ -237,8 +264,7 @@ func TestSidebarMatchesBackendRBAC(t *testing.T) {
 	// Known mismatches where sidebar shows item to role but backend denies the method.
 	// These are UI polish issues — the page shows but actions fail gracefully.
 	knownMismatches := map[string]bool{
-		"member/Connectivity/Nodes (Pairing)": true, // device.pair.* = admin, but sidebar shows to all
-		"viewer/Connectivity/Nodes (Pairing)": true,
+		"member/Connectivity/Nodes (Pairing)": true, // device.pair.* = admin, but sidebar shows to member+
 	}
 
 	t.Run("visible_implies_backend_read_allowed", func(t *testing.T) {
@@ -296,6 +322,40 @@ func TestSidebarAccessMatrix(t *testing.T) {
 
 	t.Log("")
 	t.Log("Legend: ✓=visible  ✗=hidden  (columns: owner admin member viewer)")
+}
+
+// TestViewerOnlySeesChatAndTraces asserts the viewer sidebar contract:
+// viewers see exactly Chat and Traces — nothing else.
+func TestViewerOnlySeesChatAndTraces(t *testing.T) {
+	viewerVisible := []string{}
+	for _, item := range expectedMenuVisibility {
+		if roleCanSeeMenu(RoleViewer, item.visibility) {
+			viewerVisible = append(viewerVisible, item.group+"/"+item.label)
+		}
+	}
+
+	if len(viewerVisible) != 2 {
+		t.Fatalf("viewer should see exactly 2 menu items, got %d: %v", len(viewerVisible), viewerVisible)
+	}
+
+	expected := map[string]bool{"Core/Chat": true, "Monitoring/Traces": true}
+	for _, item := range viewerVisible {
+		if !expected[item] {
+			t.Errorf("viewer should NOT see: %s (expected only Core/Chat and Monitoring/Traces)", item)
+		}
+	}
+	for exp := range expected {
+		found := false
+		for _, v := range viewerVisible {
+			if v == exp {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("viewer should see: %s but it was not found", exp)
+		}
+	}
 }
 
 // menuItem finds a menu item from expectedMenuVisibility by group+label.

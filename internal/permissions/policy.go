@@ -251,6 +251,7 @@ func isAdminMethod(method string) bool {
 		"tenants.users.remove",
 		"tenants.users.updateRole",
 		"tenants.delete",
+		"tenant.auth.patch",
 
 		// API keys expose secret material — gate list + mutations as admin.
 		protocol.MethodAPIKeysList,
@@ -411,6 +412,7 @@ func isReadMethod(method string) bool {
 		"tenants.get",
 		"tenants.users.list",
 		"tenants.mine",
+		"tenant.auth.get",
 
 		// Teams read
 		protocol.MethodTeamsList,
