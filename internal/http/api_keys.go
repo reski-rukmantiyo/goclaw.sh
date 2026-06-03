@@ -28,19 +28,19 @@ func NewAPIKeysHandler(apiKeys store.APIKeyStore, msgBus *bus.MessageBus) *APIKe
 
 // RegisterRoutes registers all API key management routes on the given mux.
 func (h *APIKeysHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/api-keys", h.adminAuth(h.handleList))
-	mux.HandleFunc("POST /v1/api-keys", h.adminAuth(h.handleCreate))
-	mux.HandleFunc("POST /v1/api-keys/{id}/revoke", h.adminAuth(h.handleRevoke))
+	mux.HandleFunc("GET /v1/api-keys", h.memberAuth(h.handleList))
+	mux.HandleFunc("POST /v1/api-keys", h.memberAuth(h.handleCreate))
+	mux.HandleFunc("POST /v1/api-keys/{id}/revoke", h.memberAuth(h.handleRevoke))
 }
 
-// adminAuth ensures the caller has admin access (gateway token or API key with admin scope).
-func (h *APIKeysHandler) adminAuth(next http.HandlerFunc) http.HandlerFunc {
-	return requireAuth(permissions.RoleAdmin, next)
+// memberAuth ensures the caller has member access (gateway token or API key with write scope).
+func (h *APIKeysHandler) memberAuth(next http.HandlerFunc) http.HandlerFunc {
+	return requireAuth(permissions.RoleMember, next)
 }
 
 func (h *APIKeysHandler) handleList(w http.ResponseWriter, r *http.Request) {
 	locale := extractLocale(r)
-	// HTTP API key list is admin-only (adminAuth middleware), so no owner filter needed.
+	// HTTP API key list is member+ (memberAuth middleware), so no owner filter needed.
 	keys, err := h.apiKeys.List(r.Context(), "")
 	if err != nil {
 		slog.Error("api_keys.list failed", "error", err)

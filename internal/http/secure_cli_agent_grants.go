@@ -61,7 +61,7 @@ func (h *SecureCLIGrantHandler) HandleRevealEnvForTest(w http.ResponseWriter, r 
 // RegisterRoutes registers agent grant routes nested under cli-credentials.
 func (h *SecureCLIGrantHandler) RegisterRoutes(mux *http.ServeMux) {
 	auth := func(next http.HandlerFunc) http.HandlerFunc {
-		return requireAuth(permissions.RoleAdmin, next)
+		return requireAuth(permissions.RoleMember, next)
 	}
 	mux.HandleFunc("GET /v1/cli-credentials/{id}/agent-grants", auth(h.handleList))
 	mux.HandleFunc("POST /v1/cli-credentials/{id}/agent-grants", auth(h.handleCreate))

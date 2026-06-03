@@ -141,14 +141,18 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
 
         <SidebarGroup label={t("groups.monitoring")} collapsed={collapsed}>
           <SidebarItem to={route(currentTenantSlug, ROUTES.TRACES)} icon={Activity} label={t("nav.traces")} collapsed={collapsed} />
-          {isAdmin && (
-            <>
-              <SidebarItem to={route(currentTenantSlug, ROUTES.EVENTS)} icon={Radar} label={t("nav.realtimeEvents")} collapsed={collapsed} />
-              <SidebarItem to={route(currentTenantSlug, ROUTES.ACTIVITY)} icon={ClipboardList} label={t("nav.activity")} collapsed={collapsed} />
-              <SidebarItem to={route(currentTenantSlug, ROUTES.LOGS)} icon={Terminal} label={t("nav.logs")} collapsed={collapsed} />
-            </>
-          )}
+          <SidebarItem to={route(currentTenantSlug, ROUTES.EVENTS)} icon={Radar} label={t("nav.realtimeEvents")} collapsed={collapsed} />
+          <SidebarItem to={route(currentTenantSlug, ROUTES.ACTIVITY)} icon={ClipboardList} label={t("nav.activity")} collapsed={collapsed} />
+          <SidebarItem to={route(currentTenantSlug, ROUTES.LOGS)} icon={Terminal} label={t("nav.logs")} collapsed={collapsed} />
         </SidebarGroup>
+
+        {isMember && (
+        <SidebarGroup label={t("groups.security")} collapsed={collapsed}>
+          <SidebarItem to={route(currentTenantSlug, ROUTES.CLI_CREDENTIALS)} icon={KeyRound} label={t("nav.cliCredentials")} collapsed={collapsed} />
+          <SidebarItem to={route(currentTenantSlug, ROUTES.API_KEYS)} icon={KeyRound} label={t("nav.apiKeys")} collapsed={collapsed} />
+          <SidebarItem to={route(currentTenantSlug, ROUTES.APPROVALS)} icon={ShieldCheck} label={t("nav.approvals")} collapsed={collapsed} />
+        </SidebarGroup>
+        )}
 
         {isAdmin && (
         <SidebarGroup label={t("groups.system")} collapsed={collapsed}>
@@ -160,14 +164,11 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
             <SidebarItem to={route(currentTenantSlug, ROUTES.TENANTS)} icon={Building2} label={t("nav.tenants")} collapsed={collapsed} />
           )}
           <SidebarItem to={route(currentTenantSlug, ROUTES.PROVIDERS)} icon={Cpu} label={t("nav.providers")} collapsed={collapsed} />
-          <SidebarItem to={route(currentTenantSlug, ROUTES.CLI_CREDENTIALS)} icon={KeyRound} label={t("nav.cliCredentials")} collapsed={collapsed} />
-          <SidebarItem to={route(currentTenantSlug, ROUTES.API_KEYS)} icon={KeyRound} label={t("nav.apiKeys")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.PACKAGES)} icon={Blocks} label={t("nav.packages")} collapsed={collapsed} />
           {isOwner && (
             <SidebarItem to={route(currentTenantSlug, ROUTES.CONFIG)} icon={Settings} label={t("nav.config")} collapsed={collapsed} />
           )}
           <SidebarItem to={route(currentTenantSlug, ROUTES.AUTHENTICATION)} icon={ShieldCheck} label={t("nav.authentication")} collapsed={collapsed} />
-          <SidebarItem to={route(currentTenantSlug, ROUTES.APPROVALS)} icon={ShieldCheck} label={t("nav.approvals")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.IMPORT_EXPORT)} icon={ArrowLeftRight} label={t("nav.importExport")} collapsed={collapsed} />
           {isOwner && (
             <SidebarItem to={route(currentTenantSlug, ROUTES.BACKUP_RESTORE)} icon={DatabaseBackup} label={t("nav.backupRestore")} collapsed={collapsed} />

@@ -137,8 +137,8 @@ func (h *ProvidersHandler) RegisterRoutes(mux *http.ServeMux) {
 	// Provider-scoped Codex pool activity monitor
 	mux.HandleFunc("GET /v1/providers/{id}/codex-pool-activity", h.auth(h.handleProviderCodexPoolActivity))
 
-	// Embedding system status
-	mux.HandleFunc("GET /v1/embedding/status", h.auth(h.handleEmbeddingStatus))
+	// Embedding system status — member+ can view
+	mux.HandleFunc("GET /v1/embedding/status", requireAuth(permissions.RoleMember, h.handleEmbeddingStatus))
 
 	// Claude CLI auth status (global — not per-provider)
 	mux.HandleFunc("GET /v1/providers/claude-cli/auth-status", h.auth(h.handleClaudeCLIAuthStatus))

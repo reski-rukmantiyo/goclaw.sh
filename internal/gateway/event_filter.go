@@ -13,7 +13,8 @@ import (
 )
 
 // clientCanReceiveEvent checks whether a WS client should receive a given bus event.
-// Admin clients receive all events. Non-admin clients are filtered by user/team scope.
+// Admin clients receive all events. Member+ clients receive admin-only events (pairing, node, agent links).
+// Non-admin clients are filtered by user/team scope.
 func clientCanReceiveEvent(c *Client, event bus.Event) bool {
 	// Internal events are never forwarded.
 	if strings.HasPrefix(event.Name, "cache.") || event.Name == protocol.EventAuditLog {
@@ -103,9 +104,14 @@ func clientCanReceiveEvent(c *Client, event bus.Event) bool {
 		return false
 	}
 
-	// Admin-only events: pairing, node, agent links.
+	// Background error events: admin-only (may contain sensitive internal details).
+	if event.Name == protocol.EventBackgroundError {
+		return permissions.HasMinRole(c.role, permissions.RoleAdmin)
+	}
+
+	// Admin-only events now member-visible: pairing, node, agent links, workspace file changes.
 	if isAdminOnlyEvent(event.Name) {
-		return false // non-admin clients don't receive these
+		return permissions.HasMinRole(c.role, permissions.RoleMember)
 	}
 
 	// Exec approval events: scoped to the requesting user.

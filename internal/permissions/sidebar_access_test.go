@@ -52,11 +52,16 @@ var expectedMenuVisibility = []sidebarItem{
 	{"Data", "Embeddings", "member", "", "/v1/embeddings"},
 	{"Data", "Storage", "member", "", "/v1/files"},
 
-	// === Monitoring (Traces=all, rest=admin+) ===
+	// === Monitoring (Traces=all, rest=member+) ===
 	{"Monitoring", "Traces", "all", "", "/v1/traces"},
-	{"Monitoring", "Realtime Events", "admin", "", "/v1/events"},
-	{"Monitoring", "Activity", "admin", "", "/v1/activity"},
-	{"Monitoring", "Logs", "admin", "logs.tail", ""},
+	{"Monitoring", "Realtime Events", "member", "", "/v1/events"},
+	{"Monitoring", "Activity", "member", "", "/v1/activity"},
+	{"Monitoring", "Logs", "member", "logs.tail", ""},
+
+	// === Security (member+ gate) ===
+	{"Security", "CLI Credentials", "member", "", "/v1/cli-credentials"},
+	{"Security", "API Keys", "member", "api_keys.list", ""},
+	{"Security", "Approvals", "member", "exec.approval.list", ""},
 
 	// === System (isAdmin gate on whole group) ===
 	{"System", "User Management", "admin", "", "/v1/tenants/{id}/users"},
@@ -65,12 +70,9 @@ var expectedMenuVisibility = []sidebarItem{
 	{"System", "Audit Log", "admin", "", "/v1/audit"},
 	{"System", "Tenants", "owner", "tenants.list", ""},           // isOwner gate inside isAdmin
 	{"System", "Providers", "admin", "config.get", ""},
-	{"System", "CLI Credentials", "admin", "", "/v1/cli-credentials"},
-	{"System", "API Keys", "admin", "api_keys.list", ""},
 	{"System", "Packages", "admin", "", "/v1/packages"},
 	{"System", "Config", "owner", "config.get", ""},              // isOwner gate inside isAdmin
 	{"System", "Authentication", "admin", "", "/v1/auth/config"},
-	{"System", "Approvals", "admin", "exec.approval.list", ""},
 	{"System", "Import & Export", "admin", "", "/v1/import-export"},
 	{"System", "Backup & Restore", "owner", "", "/v1/backup"},    // isOwner gate inside isAdmin
 }
@@ -151,15 +153,15 @@ func TestSidebarMatchesBackendRBAC(t *testing.T) {
 			{RoleOwner, "Conversations", "Sessions", true},
 			{RoleMember, "Conversations", "Sessions", true},
 			{RoleViewer, "Conversations", "Sessions", false},
-			// CLI Credentials: admin/owner only
-			{RoleOwner, "System", "CLI Credentials", true},
-			{RoleAdmin, "System", "CLI Credentials", true},
-			{RoleMember, "System", "CLI Credentials", false},
-			{RoleViewer, "System", "CLI Credentials", false},
-			// Monitoring Events/Activity/Logs: admin/owner only
+			// CLI Credentials: member+ (Security group)
+			{RoleOwner, "Security", "CLI Credentials", true},
+			{RoleAdmin, "Security", "CLI Credentials", true},
+			{RoleMember, "Security", "CLI Credentials", true},
+			{RoleViewer, "Security", "CLI Credentials", false},
+			// Monitoring Events/Activity/Logs: member+
 			{RoleOwner, "Monitoring", "Realtime Events", true},
 			{RoleAdmin, "Monitoring", "Realtime Events", true},
-			{RoleMember, "Monitoring", "Realtime Events", false},
+			{RoleMember, "Monitoring", "Realtime Events", true},
 			{RoleViewer, "Monitoring", "Realtime Events", false},
 			// Traces: all roles (viewer can see)
 			{RoleOwner, "Monitoring", "Traces", true},
@@ -176,16 +178,31 @@ func TestSidebarMatchesBackendRBAC(t *testing.T) {
 			{RoleAdmin, "System", "Config", false},
 			{RoleMember, "System", "Config", false},
 			{RoleViewer, "System", "Config", false},
-			// API Keys: admin/owner only
-			{RoleOwner, "System", "API Keys", true},
-			{RoleAdmin, "System", "API Keys", true},
-			{RoleMember, "System", "API Keys", false},
-			{RoleViewer, "System", "API Keys", false},
+			// API Keys: member+ (Security group)
+			{RoleOwner, "Security", "API Keys", true},
+			{RoleAdmin, "Security", "API Keys", true},
+			{RoleMember, "Security", "API Keys", true},
+			{RoleViewer, "Security", "API Keys", false},
 			// Backup & Restore: owner only
 			{RoleOwner, "System", "Backup & Restore", true},
 			{RoleAdmin, "System", "Backup & Restore", false},
 			{RoleMember, "System", "Backup & Restore", false},
 			{RoleViewer, "System", "Backup & Restore", false},
+			// TTS: member+ in sidebar (isMember gate), but route guard is RequireAdmin
+			{RoleOwner, "Capabilities", "TTS", true},
+			{RoleAdmin, "Capabilities", "TTS", true},
+			{RoleMember, "Capabilities", "TTS", true},
+			{RoleViewer, "Capabilities", "TTS", false},
+			// CLI Credentials: member+ (Security group)
+			{RoleOwner, "Security", "CLI Credentials", true},
+			{RoleAdmin, "Security", "CLI Credentials", true},
+			{RoleMember, "Security", "CLI Credentials", true},
+			{RoleViewer, "Security", "CLI Credentials", false},
+			// Approvals: member+ (Security group)
+			{RoleOwner, "Security", "Approvals", true},
+			{RoleAdmin, "Security", "Approvals", true},
+			{RoleMember, "Security", "Approvals", true},
+			{RoleViewer, "Security", "Approvals", false},
 		}
 
 		for _, tc := range sidebarTests {
@@ -246,6 +263,25 @@ func TestSidebarMatchesBackendRBAC(t *testing.T) {
 			{RoleViewer, "sessions.delete", false},
 			// Traces: viewer can read
 			{RoleViewer, "traces.list", true},
+			// Pairing: member+ can manage (moved from admin)
+			{RoleMember, "device.pair.list", true},
+			{RoleMember, "device.pair.approve", true},
+			{RoleMember, "device.pair.revoke", true},
+			{RoleViewer, "device.pair.list", false},
+			// API Keys: member+ can manage
+			{RoleMember, "api_keys.list", true},
+			{RoleMember, "api_keys.create", true},
+			{RoleMember, "api_keys.revoke", true},
+			{RoleViewer, "api_keys.list", false},
+			// Logs: member+ can tail
+			{RoleMember, "logs.tail", true},
+			{RoleViewer, "logs.tail", false},
+			// TTS: read=viewer+, convert=member+, config mutations=admin-only
+			{RoleViewer, "tts.status", true},
+			{RoleMember, "tts.convert", true},
+			{RoleMember, "tts.enable", false},
+			{RoleAdmin, "tts.enable", true},
+			{RoleViewer, "tts.convert", false},
 		}
 
 		for _, tc := range rbacTests {
@@ -263,9 +299,7 @@ func TestSidebarMatchesBackendRBAC(t *testing.T) {
 	// === Cross-check: visible menu → backend must allow reads ===
 	// Known mismatches where sidebar shows item to role but backend denies the method.
 	// These are UI polish issues — the page shows but actions fail gracefully.
-	knownMismatches := map[string]bool{
-		"member/Connectivity/Nodes (Pairing)": true, // device.pair.* = admin, but sidebar shows to member+
-	}
+	knownMismatches := map[string]bool{}
 
 	t.Run("visible_implies_backend_read_allowed", func(t *testing.T) {
 		for _, item := range expectedMenuVisibility {

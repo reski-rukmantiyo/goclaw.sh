@@ -4,7 +4,7 @@ import { LOCAL_STORAGE_KEYS } from "@/lib/constants";
 import { route } from "@/lib/routes";
 import { AppLayout } from "@/components/layout/app-layout";
 import { RequireAuth } from "@/components/shared/require-auth";
-import { RequireAdmin, RequireCrossTenant } from "@/components/shared/require-role";
+import { RequireAdmin, RequireCrossTenant, RequireMember } from "@/components/shared/require-role";
 import { RequireSetup } from "@/components/shared/require-setup";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
 import { ROUTES } from "@/lib/constants";
@@ -216,17 +216,17 @@ export function AppRoutes() {
             <Route path="providers" element={<RequireAdmin><ProvidersPage key="list" /></RequireAdmin>} />
             <Route path="providers/:id" element={<RequireAdmin><ProvidersPage key="detail" /></RequireAdmin>} />
             <Route path="cli-credentials" element={<Navigate to="packages?tab=cli-credentials" replace />} />
-            <Route path="api-keys" element={<RequireAdmin><ApiKeysPage /></RequireAdmin>} />
+            <Route path="api-keys" element={<RequireMember><ApiKeysPage /></RequireMember>} />
             <Route path="channels" element={<ChannelsPage key="list" />} />
             <Route path="channels/:id" element={<ChannelsPage key="detail" />} />
             <Route path="nodes" element={<NodesPage />} />
             <Route path="workstations" element={<WorkstationsPage />} />
-            <Route path="logs" element={<RequireAdmin><LogsPage /></RequireAdmin>} />
+            <Route path="logs" element={<RequireMember><LogsPage /></RequireMember>} />
             <Route path="builtin-tools" element={<BuiltinToolsPage />} />
             <Route path="mcp" element={<MCPPage />} />
-            <Route path="tts" element={<RequireAdmin><TtsPage /></RequireAdmin>} />
+            <Route path="tts" element={<RequireMember><TtsPage /></RequireMember>} />
             <Route path="storage" element={<StoragePage />} />
-            <Route path="packages" element={<RequireAdmin><PackagesPage /></RequireAdmin>} />
+            <Route path="packages" element={<RequireMember><PackagesPage /></RequireMember>} />
             <Route path="authentication" element={<RequireAdmin><TenantAuthPage /></RequireAdmin>} />
             <Route path="admin/tenants" element={<RequireCrossTenant><TenantsAdminPage /></RequireCrossTenant>} />
             <Route path="admin/tenants/:id" element={<RequireCrossTenant><TenantDetailPage /></RequireCrossTenant>} />
@@ -240,9 +240,9 @@ export function AppRoutes() {
             {/* All-role pages */}
             <Route path="traces" element={<TracesPage key="list" />} />
             <Route path="traces/:id" element={<TracesPage key="detail" />} />
-            <Route path="events" element={<RequireAdmin><EventsPage /></RequireAdmin>} />
+            <Route path="events" element={<RequireMember><EventsPage /></RequireMember>} />
             <Route path="usage" element={<Navigate to="overview" replace />} />
-            <Route path="activity" element={<RequireAdmin><ActivityPage /></RequireAdmin>} />
+            <Route path="activity" element={<RequireMember><ActivityPage /></RequireMember>} />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="approvals" element={<ApprovalsPage />} />
             <Route path="pending-messages" element={<PendingMessagesPage />} />

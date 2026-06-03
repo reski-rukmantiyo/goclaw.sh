@@ -99,7 +99,6 @@ func TestCanAccess_AdminMethods(t *testing.T) {
 		protocol.MethodConfigApply,
 		protocol.MethodAgentsCreate,
 		protocol.MethodAgentsDelete,
-		protocol.MethodAPIKeysCreate,
 		protocol.MethodTeamsCreate,
 	}
 	for _, method := range adminMethods {
@@ -127,6 +126,12 @@ func TestCanAccess_WriteMethods(t *testing.T) {
 		protocol.MethodSessionsDelete,
 		protocol.MethodSessionsCompact,
 		protocol.MethodCronCreate,
+		protocol.MethodPairingList,
+		protocol.MethodPairingApprove,
+		protocol.MethodAPIKeysList,
+		protocol.MethodAPIKeysCreate,
+		protocol.MethodAPIKeysRevoke,
+		protocol.MethodLogsTail,
 	}
 	for _, method := range writeMethods {
 		t.Run(method, func(t *testing.T) {
@@ -171,14 +176,13 @@ func TestCanAccess_UnknownMethod_DeniedForAll(t *testing.T) {
 	}
 }
 
-// TestCanAccess_CVE866_HeartbeatAndLogs asserts that the three RPCs exploited
-// in the issue-#866 chain now require admin. Viewer/member must be denied.
+// TestCanAccess_CVE866_HeartbeatAndLogs asserts that the RPCs exploited
+// in the issue-#866 chain now require appropriate roles. Viewer must be denied.
 func TestCanAccess_CVE866_HeartbeatAndLogs(t *testing.T) {
 	pe := NewPolicyEngine(nil)
 	adminOnly := []string{
 		protocol.MethodHeartbeatSet,
 		protocol.MethodHeartbeatChecklistSet,
-		protocol.MethodLogsTail,
 		protocol.MethodHeartbeatToggle,
 		protocol.MethodHeartbeatTest,
 	}
@@ -189,6 +193,27 @@ func TestCanAccess_CVE866_HeartbeatAndLogs(t *testing.T) {
 			}
 			if pe.CanAccess(RoleMember, method) {
 				t.Fatalf("member must NOT access %s (CVE #866)", method)
+			}
+			if !pe.CanAccess(RoleAdmin, method) {
+				t.Fatalf("admin should access %s", method)
+			}
+			if !pe.CanAccess(RoleOwner, method) {
+				t.Fatalf("owner should access %s", method)
+			}
+		})
+	}
+
+	// Logs moved to member+ with tenant isolation defense-in-depth.
+	memberPlus := []string{
+		protocol.MethodLogsTail,
+	}
+	for _, method := range memberPlus {
+		t.Run(method, func(t *testing.T) {
+			if pe.CanAccess(RoleViewer, method) {
+				t.Fatalf("viewer must NOT access %s", method)
+			}
+			if !pe.CanAccess(RoleMember, method) {
+				t.Fatalf("member should access %s", method)
 			}
 			if !pe.CanAccess(RoleAdmin, method) {
 				t.Fatalf("admin should access %s", method)
@@ -388,36 +413,42 @@ func TestMethodRole_DriftCoverage_AllProtocolMethodsClassified(t *testing.T) {
 
 func TestMethodScopes_PairingMethod(t *testing.T) {
 	scopes := MethodScopes("pairing.request")
-	if len(scopes) != 2 {
-		t.Fatalf("expected 2 scopes for pairing method, got %d", len(scopes))
+	if len(scopes) != 3 {
+		t.Fatalf("expected 3 scopes for pairing method, got %d", len(scopes))
 	}
-	// Should require ScopePairing or ScopeAdmin
-	hasPairing, hasAdmin := false, false
+	// Should require ScopePairing, ScopeWrite, or ScopeAdmin
+	hasPairing, hasWrite, hasAdmin := false, false, false
 	for _, s := range scopes {
 		if s == ScopePairing {
 			hasPairing = true
+		}
+		if s == ScopeWrite {
+			hasWrite = true
 		}
 		if s == ScopeAdmin {
 			hasAdmin = true
 		}
 	}
-	if !hasPairing || !hasAdmin {
-		t.Fatalf("pairing method should require [pairing, admin], got %v", scopes)
+	if !hasPairing || !hasWrite || !hasAdmin {
+		t.Fatalf("pairing method should require [pairing, write, admin], got %v", scopes)
 	}
 }
 
 func TestMethodScopes_ApprovalMethod(t *testing.T) {
 	scopes := MethodScopes("approvals.list")
-	hasScopeApprovals, hasAdmin := false, false
+	hasScopeApprovals, hasWrite, hasAdmin := false, false, false
 	for _, s := range scopes {
 		if s == ScopeApprovals {
 			hasScopeApprovals = true
+		}
+		if s == ScopeWrite {
+			hasWrite = true
 		}
 		if s == ScopeAdmin {
 			hasAdmin = true
 		}
 	}
-	if !hasScopeApprovals || !hasAdmin {
-		t.Fatalf("approvals method should require [approvals, admin], got %v", scopes)
+	if !hasScopeApprovals || !hasWrite || !hasAdmin {
+		t.Fatalf("approvals method should require [approvals, write, admin], got %v", scopes)
 	}
 }

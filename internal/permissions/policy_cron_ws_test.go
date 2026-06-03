@@ -189,11 +189,10 @@ func TestWorkstationMethodAccess(t *testing.T) {
 // Rules:
 //   - Owner:  all routes
 //   - Admin:  all routes
-//   - Member: blocked from all routes (same as workstation admin methods)
+//   - Member: all routes (moved from admin to member)
 //   - Viewer: blocked from all routes
 func TestCLICredentialsAccess(t *testing.T) {
-	// All CLI credential routes are registered with requireAuth(RoleAdmin).
-	// Since there's no read/write split (everything is admin), we list all routes.
+	// All CLI credential routes are registered with requireAuth(RoleMember).
 	readRoutes := []string{
 		"GET /v1/cli-credentials",
 		"GET /v1/cli-credentials/presets",
@@ -215,7 +214,7 @@ func TestCLICredentialsAccess(t *testing.T) {
 		"DELETE /v1/cli-credentials/{id}/user-credentials/{userId}",
 	}
 
-	// All routes require RoleAdmin — same gate as workstation admin methods
+	// All routes require RoleMember
 	tests := []struct {
 		role    Role
 		route   string
@@ -240,15 +239,15 @@ func TestCLICredentialsAccess(t *testing.T) {
 		{RoleAdmin, "PUT /v1/cli-credentials/{id}/user-credentials/{userId}", true},
 		{RoleAdmin, "DELETE /v1/cli-credentials/{id}/user-credentials/{userId}", true},
 
-		// Member: blocked from all (even reads)
-		{RoleMember, "GET /v1/cli-credentials", false},
-		{RoleMember, "GET /v1/cli-credentials/presets", false},
-		{RoleMember, "GET /v1/cli-credentials/{id}", false},
-		{RoleMember, "POST /v1/cli-credentials", false},
-		{RoleMember, "PUT /v1/cli-credentials/{id}", false},
-		{RoleMember, "DELETE /v1/cli-credentials/{id}", false},
-		{RoleMember, "GET /v1/cli-credentials/{id}/agent-grants", false},
-		{RoleMember, "POST /v1/cli-credentials/{id}/agent-grants", false},
+		// Member: all routes (moved from admin to member)
+		{RoleMember, "GET /v1/cli-credentials", true},
+		{RoleMember, "GET /v1/cli-credentials/presets", true},
+		{RoleMember, "GET /v1/cli-credentials/{id}", true},
+		{RoleMember, "POST /v1/cli-credentials", true},
+		{RoleMember, "PUT /v1/cli-credentials/{id}", true},
+		{RoleMember, "DELETE /v1/cli-credentials/{id}", true},
+		{RoleMember, "GET /v1/cli-credentials/{id}/agent-grants", true},
+		{RoleMember, "POST /v1/cli-credentials/{id}/agent-grants", true},
 
 		// Viewer: blocked from all
 		{RoleViewer, "GET /v1/cli-credentials", false},
@@ -259,10 +258,10 @@ func TestCLICredentialsAccess(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(string(tc.role)+"/"+tc.route, func(t *testing.T) {
-			// CLI credentials use requireAuth(RoleAdmin) for ALL routes
-			allowed := HasMinRole(tc.role, RoleAdmin)
+			// CLI credentials use requireAuth(RoleMember) for ALL routes
+			allowed := HasMinRole(tc.role, RoleMember)
 			if allowed != tc.allowed {
-				t.Errorf("HasMinRole(%s, RoleAdmin) = %v, want %v for %s",
+				t.Errorf("HasMinRole(%s, RoleMember) = %v, want %v for %s",
 					tc.role, allowed, tc.allowed, tc.route)
 			}
 		})
@@ -272,7 +271,7 @@ func TestCLICredentialsAccess(t *testing.T) {
 	t.Run("summary", func(t *testing.T) {
 		all := append(append([]string{}, readRoutes...), writeRoutes...)
 		for _, role := range []Role{RoleOwner, RoleAdmin, RoleMember, RoleViewer} {
-			allowed := HasMinRole(role, RoleAdmin)
+			allowed := HasMinRole(role, RoleMember)
 			if allowed {
 				t.Logf("  %-8s: %d/%d routes accessible", role, len(all), len(all))
 			} else {

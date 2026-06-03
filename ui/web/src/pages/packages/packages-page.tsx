@@ -57,14 +57,14 @@ export function PackagesPage() {
   const { refresh } = usePackages();
   const { refresh: refreshRuntimes } = usePackageRuntimes();
   const role = useAuthStore((s) => s.role);
-  const isAdmin = hasMinRole(role, "admin");
+  const canSeeCliCredentials = hasMinRole(role, "member");
 
   // Validate tab param — fall back to "system" for unknown values
   const rawTab = searchParams.get("tab");
   const activeTab: TabId =
     isValidTab(rawTab)
-      ? // Non-admin trying to reach cli-credentials directly via URL → fall back
-        rawTab === "cli-credentials" && !isAdmin
+      ? // Non-member trying to reach cli-credentials directly via URL → fall back
+        rawTab === "cli-credentials" && !canSeeCliCredentials
         ? "system"
         : rawTab
       : "system";
@@ -107,8 +107,8 @@ export function PackagesPage() {
             <TabsTrigger value="python">{t("tabs.python", { defaultValue: "Python" })}</TabsTrigger>
             <TabsTrigger value="node">{t("tabs.node", { defaultValue: "Node" })}</TabsTrigger>
             <TabsTrigger value="github">{t("tabs.github", { defaultValue: "GitHub" })}</TabsTrigger>
-            {/* CLI Credentials tab: visible only to admins */}
-            {isAdmin && (
+            {/* CLI Credentials tab: visible to members+ */}
+            {canSeeCliCredentials && (
               <TabsTrigger value="cli-credentials">
                 {t("tabs.cliCredentials", { defaultValue: "CLI Credentials" })}
               </TabsTrigger>
@@ -149,11 +149,11 @@ export function PackagesPage() {
           </ErrorBoundary>
         </TabsContent>
 
-        {/* CLI Credentials: gate rendered body — direct URL by non-admin must NOT reach panel */}
+        {/* CLI Credentials: gate rendered body — direct URL by non-member must NOT reach panel */}
         <TabsContent value="cli-credentials">
           <ErrorBoundary key="tab-cli-credentials">
             <Suspense fallback={<TabLoader />}>
-              {isAdmin ? (
+              {canSeeCliCredentials ? (
                 <CliCredentialsTab />
               ) : (
                 <div className="py-8 text-center text-sm text-muted-foreground">
