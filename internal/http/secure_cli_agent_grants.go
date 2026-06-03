@@ -138,7 +138,7 @@ func validateAndSerializeEnvVars(w http.ResponseWriter, locale string, envVars m
 }
 
 func (h *SecureCLIGrantHandler) handleList(w http.ResponseWriter, r *http.Request) {
-	if !requireTenantAdmin(w, r, h.tenantStore) {
+	if !requireTenantMember(w, r, h.tenantStore) {
 		return
 	}
 	locale := store.LocaleFromContext(r.Context())
@@ -161,7 +161,7 @@ func (h *SecureCLIGrantHandler) handleList(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *SecureCLIGrantHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
-	if !requireTenantAdmin(w, r, h.tenantStore) {
+	if !requireTenantMember(w, r, h.tenantStore) {
 		return
 	}
 	locale := store.LocaleFromContext(r.Context())
@@ -239,7 +239,7 @@ func (h *SecureCLIGrantHandler) handleCreate(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *SecureCLIGrantHandler) handleGet(w http.ResponseWriter, r *http.Request) {
-	if !requireTenantAdmin(w, r, h.tenantStore) {
+	if !requireTenantMember(w, r, h.tenantStore) {
 		return
 	}
 	locale := store.LocaleFromContext(r.Context())
@@ -258,7 +258,7 @@ func (h *SecureCLIGrantHandler) handleGet(w http.ResponseWriter, r *http.Request
 }
 
 func (h *SecureCLIGrantHandler) handleUpdate(w http.ResponseWriter, r *http.Request) {
-	if !requireTenantAdmin(w, r, h.tenantStore) {
+	if !requireTenantMember(w, r, h.tenantStore) {
 		return
 	}
 	locale := store.LocaleFromContext(r.Context())
@@ -340,7 +340,7 @@ func (h *SecureCLIGrantHandler) handleUpdate(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *SecureCLIGrantHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
-	if !requireTenantAdmin(w, r, h.tenantStore) {
+	if !requireTenantMember(w, r, h.tenantStore) {
 		return
 	}
 	locale := store.LocaleFromContext(r.Context())
@@ -369,7 +369,7 @@ func (h *SecureCLIGrantHandler) handleDelete(w http.ResponseWriter, r *http.Requ
 //   - Audit log emitted with actor, tenant, grant, timestamp.
 //   - Plaintext values NEVER logged; only grant_id/tenant_id appear in logs.
 func (h *SecureCLIGrantHandler) handleRevealEnv(w http.ResponseWriter, r *http.Request) {
-	if !requireTenantAdmin(w, r, h.tenantStore) {
+	if !requireTenantMember(w, r, h.tenantStore) {
 		return
 	}
 	ctx := r.Context()

@@ -215,7 +215,7 @@ export function AppRoutes() {
             <Route path="config" element={<RequireCrossTenant><ConfigPage /></RequireCrossTenant>} />
             <Route path="providers" element={<RequireAdmin><ProvidersPage key="list" /></RequireAdmin>} />
             <Route path="providers/:id" element={<RequireAdmin><ProvidersPage key="detail" /></RequireAdmin>} />
-            <Route path="cli-credentials" element={<Navigate to="packages?tab=cli-credentials" replace />} />
+            <Route path="cli-credentials" element={<Navigate to="../packages?tab=cli-credentials" replace />} />
             <Route path="api-keys" element={<RequireMember><ApiKeysPage /></RequireMember>} />
             <Route path="channels" element={<ChannelsPage key="list" />} />
             <Route path="channels/:id" element={<ChannelsPage key="detail" />} />

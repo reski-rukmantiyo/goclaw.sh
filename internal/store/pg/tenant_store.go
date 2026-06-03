@@ -312,12 +312,16 @@ func (s *PGTenantStore) ListUserTenants(ctx context.Context, userID string) ([]s
 
 func (s *PGTenantStore) ResolveUserTenant(ctx context.Context, userID string) (uuid.UUID, error) {
 	var tenantID uuid.UUID
+	// Prefer non-Master tenants — Master is a shared system tenant that
+	// non-owners cannot scope to.  ORDER BY (tenant_id = master) pushes
+	// Master to the end so a user with both Master + real tenants resolves
+	// to the real tenant.  Falls back to Master if that's the only membership.
 	err := s.db.QueryRowContext(ctx,
 		`SELECT tu.tenant_id FROM tenant_users tu
 		 LEFT JOIN users u ON u.email = tu.user_id
 		 WHERE tu.user_id = $1 OR u.id::text = $1
-		 ORDER BY tu.created_at LIMIT 1`,
-		userID,
+		 ORDER BY (tu.tenant_id = $2) ASC, tu.created_at ASC LIMIT 1`,
+		userID, store.MasterTenantID,
 	).Scan(&tenantID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.MasterTenantID, nil

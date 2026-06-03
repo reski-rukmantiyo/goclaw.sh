@@ -29,9 +29,9 @@ func NewTTSConfigHandler(sc store.SystemConfigStore, cs store.ConfigSecretsStore
 	return &TTSConfigHandler{systemConfigs: sc, configSecrets: cs}
 }
 
-// RegisterRoutes wires TTS config endpoints onto mux with RoleAdmin auth.
+// RegisterRoutes wires TTS config endpoints onto mux with member+ read, admin write.
 func (h *TTSConfigHandler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/tts/config", requireAuth(permissions.RoleAdmin, h.handleGet))
+	mux.HandleFunc("GET /v1/tts/config", requireAuth(permissions.RoleMember, h.handleGet))
 	mux.HandleFunc("POST /v1/tts/config", requireAuth(permissions.RoleAdmin, h.handleSave))
 }
 

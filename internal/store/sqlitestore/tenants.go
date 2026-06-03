@@ -323,12 +323,13 @@ func (s *SQLiteTenantStore) ListUserTenants(ctx context.Context, userID string) 
 
 func (s *SQLiteTenantStore) ResolveUserTenant(ctx context.Context, userID string) (uuid.UUID, error) {
 	var tenantID uuid.UUID
+	// Prefer non-Master tenants — same logic as PG implementation.
 	err := s.db.QueryRowContext(ctx,
 		`SELECT tu.tenant_id FROM tenant_users tu
 		 LEFT JOIN users u ON u.email = tu.user_id
 		 WHERE tu.user_id = ? OR u.id = ?
-		 ORDER BY tu.created_at LIMIT 1`,
-		userID, userID,
+		 ORDER BY (tu.tenant_id = ?) ASC, tu.created_at ASC LIMIT 1`,
+		userID, userID, store.MasterTenantID,
 	).Scan(&tenantID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.MasterTenantID, nil

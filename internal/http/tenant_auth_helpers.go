@@ -59,6 +59,58 @@ func requireTenantAdmin(w http.ResponseWriter, r *http.Request, ts store.TenantS
 	return false
 }
 
+// requireTenantMember verifies the caller is a member of the tenant (owner bypass,
+// tenant owner, admin with PermSystemManageSettings, OR any authenticated user
+// with a valid tenant ID). Less restrictive than requireTenantAdmin — used for
+// endpoints that should be accessible to all tenant members, not just admins.
+// Returns true if authorized, false if an error response was written.
+func requireTenantMember(w http.ResponseWriter, r *http.Request, ts store.TenantStore) bool {
+	ctx := r.Context()
+
+	// System-wide owner bypasses tenant membership check.
+	if store.IsOwnerRole(ctx) {
+		return true
+	}
+
+	if ts == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "tenant store not available"})
+		return false
+	}
+
+	tid := store.TenantIDFromContext(ctx)
+	if tid == uuid.Nil {
+		locale := store.LocaleFromContext(ctx)
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": i18n.T(locale, i18n.MsgPermissionDenied, "tenant config"),
+		})
+		return false
+	}
+
+	// Tenant owner bypass.
+	userID := store.UserIDFromContext(ctx)
+	isOwner, err := ts.IsOwner(ctx, tid, userID)
+	if err == nil && isOwner {
+		return true
+	}
+
+	// Admin via permission resolver.
+	if pkgPermCache != nil && pkgPermCache.HasPermission(ctx, userID, tid, permissions.PermSystemManageSettings) {
+		return true
+	}
+
+	// Member: verify tenant membership exists (role in context from auth middleware).
+	role := store.RoleFromContext(ctx)
+	if permissions.HasMinRole(permissions.Role(role), permissions.RoleMember) {
+		return true
+	}
+
+	locale := store.LocaleFromContext(ctx)
+	writeJSON(w, http.StatusForbidden, map[string]string{
+		"error": i18n.T(locale, i18n.MsgPermissionDenied, "tenant config"),
+	})
+	return false
+}
+
 // requireMasterScope guards endpoints that write to global (non-tenant-scoped)
 // tables or execute server-wide side effects (shell, filesystem). Rejects
 // callers whose ctx is scoped to a non-master tenant even if they hold
