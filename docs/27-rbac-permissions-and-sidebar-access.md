@@ -12,7 +12,7 @@ Four roles exist, ordered by privilege level. Higher roles inherit all lower-rol
 |:-----:|------|-------------|
 | 4 | **Owner** | Global system owner. Full access to all tenants and config. Only role that sees master tenant data, config page, tenants admin, and backup/restore. |
 | 3 | **Admin** | Tenant-level administrator. Full CRUD within their tenant. Sees system section (users, providers, API keys, etc.) but NOT config, tenants, or backup/restore. |
-| 2 | **Member** | Standard user. Can chat, create sessions, run agents, use skills. Cannot access admin pages or mutation endpoints for admin-scoped resources. |
+| 2 | **Member** | Standard user. Can chat, create sessions, run agents, use skills, manage monitoring, API keys, CLI credentials, approvals, and nodes. Cannot access admin pages or mutation endpoints for admin-scoped resources. |
 | 1 | **Viewer** | Read-only user. Can browse data but cannot create, update, or delete anything. |
 
 ### Role Resolution Flow
@@ -21,6 +21,7 @@ A user's role is resolved in this priority order:
 
 ```
 1. Config-based owner IDs (gateway.owner_ids in config.json5) → RoleOwner
+   ⚠ Fail-closed: when owner_ids is empty/unset, only user ID "system" is treated as owner.
 2. Tenant ownership (tenant_users.is_owner = true) → RoleOwner
 3. RBAC permission derivation via Resolver:
    a. Has system.manage_settings → RoleAdmin
@@ -29,6 +30,21 @@ A user's role is resolved in this priority order:
 4. Fallback → RoleMember (if tenant membership exists)
 5. Fallback → RoleViewer (if caches unavailable)
 ```
+
+### Master Tenant Restriction for Non-Owners
+
+Non-owners **cannot scope to the Master tenant**. This is enforced at auth resolution time (not just at the SQL layer):
+
+- **WS connect:** If a non-owner resolves to Master tenant, the connection is rejected with `ErrTenantAccessRevoked`.
+- **HTTP auth:** If a non-owner's tenant resolution yields Master, `resolveAuth()` returns an empty `authResult` (unauthenticated).
+- **Tenant resolution:** `ResolveUserTenant()` prefers non-Master tenants — a user with both Master + real tenant memberships resolves to the real tenant. Master is returned only when it's the sole membership.
+- **`tenants.mine`:** The WS `tenants.mine` method skips Master from results for non-owners, so the tenant selector never offers Master as a selectable scope.
+
+**Code locations:**
+- Master rejection (WS): `internal/gateway/router.go:199`, `internal/gateway/router.go:319`
+- Master rejection (HTTP): `internal/http/auth.go:213`, `internal/http/auth.go:291`
+- Non-master preference: `internal/store/pg/tenant_store.go:313` (`ResolveUserTenant`)
+- `tenants.mine` filter: `internal/gateway/methods/tenants.go:548`
 
 **Code locations:**
 - Role levels: `internal/permissions/policy.go:466` (`roleLevel`)
@@ -45,10 +61,10 @@ The system supports multiple auth methods, each producing a role:
 | Auth Method | Role Derivation | Scope |
 |-------------|-----------------|-------|
 | Gateway token + owner ID | RoleOwner | All tenants (master scope) |
-| Gateway token + non-owner ID | RoleAdmin | Scoped to user's tenant membership |
+| Gateway token + non-owner ID | RoleAdmin | Scoped to user's first non-master tenant membership. Master tenant is **explicitly denied** — if no other membership exists, auth fails. |
 | API key | From key scopes (admin/write/read) | Key's bound tenant or master |
-| JWT (email/OIDC login) | From tenant_users + RBAC | JWT claims tenant |
-| Browser pairing | RoleMember | Paired user's tenant |
+| JWT (email/OIDC login) | From tenant_users + RBAC | JWT `tid` claim. Login resolves to first non-master tenant via `ResolveUserTenant`. |
+| Browser pairing | RoleMember | Paired user's first non-master tenant. Master is denied. |
 | No token (dev mode) | RoleAdmin | Master tenant |
 
 ---
@@ -60,37 +76,41 @@ The system supports multiple auth methods, each producing a role:
 | Sidebar Menu | Owner | Admin | Member | Viewer | Backend Guard |
 |:-------------|:-----:|:-----:|:------:|:------:|:--------------|
 | **Core** | | | | | |
-| Overview | ✓ | ✓ | ✓ | ✓ | Viewer |
-| Chat | ✓ | ✓ | ✓ | ✓ | Read=Viewer, Send=Member+ |
-| Agents | ✓ | ✓ | ✓ | ✓ | Read=Viewer, CUD=Admin |
-| Agent Teams | ✓ | ✓ | ✓ | ✓ | Read=Viewer, CUD=Admin |
-| **Conversations** | | | | | |
-| Sessions | ✓ | ✓ | ✓ | ✓ | Read=Viewer, Delete/Reset=Member |
-| Pending Messages | ✓ | ✓ | ✓ | ✓ | Viewer |
-| Raw Messages | ✓ | ✓ | ✓ | ✓ | Viewer |
-| Contacts | ✓ | ✓ | ✓ | ✓ | Viewer |
-| **Connectivity** | | | | | |
-| Channels | ✓ | ✓ | ✓ | ✓ | Read=Viewer, Toggle/CUD=Admin |
-| Nodes (Pairing) | ✓ | ✓ | ⚠ | ⚠ | **UI shows to all; backend admin-only** for approve/deny/revoke/list |
-| Workstations | ✓ | ✓ | ✓ | ✓ | Read=Viewer, CUD=Admin |
-| **Capabilities** | | | | | |
-| Skills | ✓ | ✓ | ✓ | ✓ | Read=Viewer, Update=Admin |
-| Builtin Tools | ✓ | ✓ | ✓ | ✓ | Viewer |
-| MCP | ✓ | ✓ | ✓ | ✓ | Viewer |
-| TTS | ✓ | ✓ | ✗ | ✗ | Read=Admin, Write=Admin (sidebar hidden for non-admin) |
-| Cron | ✓ | ✓ | ✓ | ✓ | Read=Viewer, CUD=Member |
-| Hooks | ✓ | ✓ | ✓ | ✓ | Read=Viewer, CUD=Admin |
-| **Data** | | | | | |
-| Memory | ✓ | ✓ | ✓ | ✓ | Viewer |
-| Vault | ✓ | ✓ | ✓ | ✓ | Viewer (owner-only write ops) |
-| Knowledge Graph | ✓ | ✓ | ✓ | ✓ | Viewer |
-| Embeddings | ✓ | ✓ | ✓ | ✓ | Viewer |
-| Storage | ✓ | ✓ | ✓ | ✓ | Viewer |
-| **Monitoring** | | | | | |
+| Chat | ✓ | ✓ | ✓ | ✓ | Read=Viewer, Send=Member+ (viewer can full CRUD via chat) |
+| Overview | ✓ | ✓ | ✓ | ✗ | Viewer (hidden for viewer) |
+| Agents | ✓ | ✓ | ✓ | ✗ | Read=Viewer, CUD=Admin (hidden for viewer) |
+| Agent Teams | ✓ | ✓ | ✓ | ✗ | Read=Viewer, CUD=Admin (hidden for viewer) |
+| **Conversations** *(member+ only)* | | | | | |
+| Sessions | ✓ | ✓ | ✓ | ✗ | Read=Viewer, Delete/Reset=Member (hidden for viewer) |
+| Pending Messages | ✓ | ✓ | ✓ | ✗ | Viewer (hidden for viewer) |
+| Raw Messages | ✓ | ✓ | ✓ | ✗ | Viewer (hidden for viewer) |
+| Contacts | ✓ | ✓ | ✓ | ✗ | Viewer (hidden for viewer) |
+| **Connectivity** *(member+ only)* | | | | | |
+| Channels | ✓ | ✓ | ✓ | ✗ | Read=Viewer, Toggle/CUD=Admin (hidden for viewer) |
+| Nodes (Pairing) | ✓ | ✓ | ✓ | ✗ | Member+ for approve/deny/revoke/list |
+| Workstations | ✓ | ✓ | ✓ | ✗ | Read=Viewer, CUD=Admin (hidden for viewer) |
+| **Capabilities** *(member+ only)* | | | | | |
+| Skills | ✓ | ✓ | ✓ | ✗ | Read=Viewer, Update=Admin (hidden for viewer) |
+| Builtin Tools | ✓ | ✓ | ✓ | ✗ | Viewer (hidden for viewer) |
+| MCP | ✓ | ✓ | ✓ | ✗ | Viewer (hidden for viewer) |
+| TTS | ✓ | ✓ | ✓ | ✗ | Read=Viewer, Convert=Member, Config=Admin (hidden for viewer) |
+| Cron | ✓ | ✓ | ✓ | ✗ | Read=Viewer, CUD=Member (hidden for viewer) |
+| Hooks | ✓ | ✓ | ✓ | ✗ | Read=Viewer, CUD=Admin (hidden for viewer) |
+| **Data** *(member+ only)* | | | | | |
+| Memory | ✓ | ✓ | ✓ | ✗ | Viewer (hidden for viewer) |
+| Vault | ✓ | ✓ | ✓ | ✗ | Viewer, owner-only write ops (hidden for viewer) |
+| Knowledge Graph | ✓ | ✓ | ✓ | ✗ | Viewer (hidden for viewer) |
+| Embeddings | ✓ | ✓ | ✓ | ✗ | Viewer (hidden for viewer) |
+| Storage | ✓ | ✓ | ✓ | ✗ | Viewer (hidden for viewer) |
+| **Monitoring** *(member+ for events/activity/logs)* | | | | | |
 | Traces | ✓ | ✓ | ✓ | ✓ | Viewer |
-| Events | ✓ | ✓ | ✗ | ✗ | Admin (sidebar hidden for non-admin) |
-| Activity | ✓ | ✓ | ✗ | ✗ | Admin (sidebar hidden for non-admin) |
-| Logs | ✓ | ✓ | ✗ | ✗ | Admin (sidebar hidden for non-admin) |
+| Events | ✓ | ✓ | ✓ | ✗ | Member+ (hidden for viewer) |
+| Activity | ✓ | ✓ | ✓ | ✗ | Member+ (hidden for viewer) |
+| Logs | ✓ | ✓ | ✓ | ✗ | Member+ via `logs.tail` (hidden for viewer) |
+| **Security** *(member+ only)* | | | | | |
+| CLI Credentials | ✓ | ✓ | ✓ | ✗ | Redirects to `packages?tab=cli-credentials` (no guard on redirect, `RequireMember` on Packages page) |
+| API Keys | ✓ | ✓ | ✓ | ✗ | Member+ list/create/revoke (hidden for viewer) |
+| Approvals | ✓ | ✓ | ✓ | ✗ | Read=Viewer, Approve/Deny=Member (hidden for viewer) |
 | **System** *(admin-only section)* | | | | | |
 | User Management | ✓ | ✓ | ✗ | ✗ | Admin + `requireTenantAdmin` |
 | Groups | ✓ | ✓ | ✗ | ✗ | Admin + `requireTenantAdmin` |
@@ -98,11 +118,8 @@ The system supports multiple auth methods, each producing a role:
 | Audit Log | ✓ | ✓ | ✗ | ✗ | Admin |
 | Tenants | ✓ | ✗ | ✗ | ✗ | **Owner-only** (`isOwner` guard) |
 | Providers | ✓ | ✓ | ✗ | ✗ | Admin |
-| CLI Credentials | ✓ | ✓ | ✗ | ✗ | Admin |
-| API Keys | ✓ | ✓ | ✗ | ✗ | Admin |
-| Packages | ✓ | ✓ | ✗ | ✗ | Admin + `requireMasterScope` |
+| Packages | ✓ | ✓ | ⚠ | ✗ | Sidebar: admin+. Route: `RequireMember`. Members reach via CLI Credentials redirect, see only `cli-credentials` tab. |
 | Authentication | ✓ | ✓ | ✗ | ✗ | Admin |
-| Approvals | ✓ | ✓ | ✗ | ✗ | Admin (approve/deny = Member+) |
 | Import/Export | ✓ | ✓ | ✗ | ✗ | Admin |
 | Config | ✓ | ✗ | ✗ | ✗ | **Owner-only** (`isOwner` + `requireMasterScope`) |
 | Backup & Restore | ✓ | ✗ | ✗ | ✗ | **Owner-only** (`isOwner` guard) |
@@ -134,6 +151,8 @@ WS:   handleConnect() → client{role, tenantID, authenticated}
 
 If `Authenticated == false`, the request is rejected immediately with `401 Unauthorized`.
 
+**Non-owner master rejection:** For non-owners, if the resolved tenant is the Master tenant, the auth result is cleared (treated as unauthenticated). This happens before role checks or scope guards. The tenant resolution functions (`ResolveUserTenant`, `resolveDefaultTenant`) prefer non-Master tenants using SQL `ORDER BY (tenant_id = master_uuid) ASC`, pushing Master to the end.
+
 **Code:** `internal/http/auth.go:178` (HTTP), `internal/gateway/router.go:140` (WS)
 
 ### Layer 2: Role-Based Method Access
@@ -151,8 +170,8 @@ CanAccess(role, method) → roleLevel(role) >= roleLevel(MethodRole(method))
 |----------|:------------:|----------|
 | Public (pre-auth) | Viewer | `connect`, `health`, `status` |
 | Read-only | Viewer | `*.list`, `*.get`, `*.view_*` |
-| Write | Member | `chat.send`, `sessions.delete`, `cron.create` |
-| Admin | Admin | `config.*`, `agents.create`, `teams.create`, `api_keys.*` |
+| Write | Member | `chat.send`, `sessions.delete`, `cron.create`, `device.pair.*`, `api_keys.*`, `logs.tail` |
+| Admin | Admin | `config.*`, `agents.create`, `teams.create` |
 | Unclassified | **Denied** (RoleNone) | Any new method not yet classified |
 
 **Fail-closed design:** Methods absent from all allowlists return `RoleNone` and are denied for **every** role including owner. New RPCs must be explicitly added to the appropriate list. This prevents security regressions like CVE #866.
@@ -254,7 +273,8 @@ React Router wraps pages with guard components:
 |----------------|:------------:|-----------------|
 | `RequireAuth` | Any authenticated | All app pages (checks token/userId) |
 | `RequireSetup` | Setup completed | All pages under `/t/:slug` |
-| `RequireAdmin` | Admin or Owner | Config, Providers, API Keys, Logs, TTS, Packages, Authentication, User Mgmt, Groups, Audit, Roles, Import/Export, Activity, Events |
+| `RequireMember` | Member or above | Events, Activity, Logs, API Keys, Packages (incl. CLI Credentials tab), TTS |
+| `RequireAdmin` | Admin or Owner | Config, Providers, TTS, User Mgmt, Groups, Audit, Roles, Import/Export, Authentication |
 | `RequireCrossTenant` | Owner (deprecated alias) | Config, Tenants Admin, Tenant Detail |
 
 **Code:** `ui/web/src/components/shared/require-role.tsx`
@@ -266,19 +286,23 @@ function hasMinRole(role, required) → ROLE_LEVELS[role] >= ROLE_LEVELS[require
 
 ### 6.2 Sidebar Visibility Logic
 
-Sidebar visibility is driven by two variables from `useAuthStore` and `useTenants`:
+Sidebar visibility is driven by role from `useAuthStore` and `isOwner` from `useTenants`:
 
 ```typescript
 const role = useAuthStore((s) => s.role);           // "owner" | "admin" | "member" | "viewer"
 const { isOwner, currentTenantSlug } = useTenants();
 const isAdmin = role === "admin" || role === "owner";
+const isMember = role === "member" || isAdmin;
 ```
 
 | Condition | Visible Items |
 |-----------|--------------|
-| Always (all roles) | Core, Conversations, Connectivity, Capabilities (except TTS), Data, Traces |
-| `isAdmin` (admin + owner) | Events, Activity, Logs, entire System section |
-| `isOwner` (owner only) | Tenants, Config, Backup & Restore (within System section) |
+| **Viewer** (only) | Chat, Traces |
+| **Member+** (`isMember`) | Overview, Agents, Teams, Conversations, Connectivity (incl. Nodes), Capabilities, Data, Monitoring (Events, Activity, Logs), Security (CLI Credentials, API Keys, Approvals) |
+| **Admin+** (`isAdmin`) | User Mgmt, Groups, Roles, Audit Log, Providers, Packages, Authentication, Import/Export (System section) |
+
+> **Note:** "CLI Credentials" sidebar link redirects to the Packages page (`../packages?tab=cli-credentials`). The Packages sidebar item is admin-only, but the Packages route guard is `RequireMember` — members can access it via the CLI Credentials redirect. Members see only the `cli-credentials` tab; admin+ sees all tabs.
+| **Owner** (`isOwner`) | Tenants, Config, Backup & Restore (within System section) |
 
 **Code:** `ui/web/src/components/layout/sidebar.tsx`
 
@@ -328,7 +352,7 @@ const isAdmin = role === "admin" || role === "owner";
 | Config get / apply / patch / schema | ✓ | ✗ | ✗ | ✗ |
 | Config permissions list/grant/revoke | ✓ | ✗ | ✗ | ✗ |
 | Health / Status | ✓ | ✓ | ✓ | ✓ |
-| Logs tail | ✓ | ✗ | ✗ | ✗ |
+| Logs tail | ✓ | ✓ | ✓ | ✗ |
 
 ### 7.5 Channels & Connectivity
 
@@ -338,13 +362,16 @@ const isAdmin = role === "admin" || role === "owner";
 | Channels toggle | ✓ | ✓ | ✗ | ✗ |
 | Channel instances CUD | ✓ | ✓ | ✗ | ✗ |
 | Pairing request | ✓ | ✓ | ✓ | ✗ |
-| Pairing approve / deny / revoke / list | ✓ | ✓ | ✗ | ✗ |
+| Pairing approve / deny / revoke / list | ✓ | ✓ | ✓ | ✗ |
 
 ### 7.6 Tenants
 
 | Action | Owner | Admin | Member | Viewer |
 |--------|:-----:|:-----:|:------:|:------:|
 | List / Get / Mine | ✓ | ✓ | ✓ | ✓ |
+| Mine (non-owner) | ✓ | ✓ | ✓* | ✓* |
+
+*\*For non-owners, `tenants.mine` omits the Master tenant from results. Only real tenant memberships are returned, affecting the tenant selector UI.*
 | Create / Update / Delete | ✓ | ✗ | ✗ | ✗ |
 | Users list | ✓ | ✓ | ✓ | ✓ |
 | Users add / remove / updateRole | ✓ | ✗ | ✗ | ✗ |
@@ -353,7 +380,7 @@ const isAdmin = role === "admin" || role === "owner";
 
 | Action | Owner | Admin | Member | Viewer |
 |--------|:-----:|:-----:|:------:|:------:|
-| List / Create / Revoke | ✓ | ✓ | ✗ | ✗ |
+| List / Create / Revoke | ✓ | ✓ | ✓ | ✗ |
 
 ### 7.8 Cron & Hooks
 
@@ -371,6 +398,32 @@ const isAdmin = role === "admin" || role === "owner";
 |--------|:-----:|:-----:|:------:|:------:|
 | Skills list / get | ✓ | ✓ | ✓ | ✓ |
 | Skills update | ✓ | ✓ | ✗ | ✗ |
+
+### 7.10 Monitoring
+
+| Action | Owner | Admin | Member | Viewer |
+|--------|:-----:|:-----:|:------:|:------:|
+| Traces list / get / export | ✓ | ✓ | ✓ | ✓ |
+| Events (realtime) | ✓ | ✓ | ✓ | ✗ |
+| Activity list | ✓ | ✓ | ✓ | ✗ |
+| Logs tail | ✓ | ✓ | ✓ | ✗ |
+
+### 7.11 Security
+
+| Action | Owner | Admin | Member | Viewer |
+|--------|:-----:|:-----:|:------:|:------:|
+| CLI Credentials CRUD | ✓ | ✓ | ✓ | ✗ |
+| API Keys list / create / revoke | ✓ | ✓ | ✓ | ✗ |
+| Approvals list | ✓ | ✓ | ✓ | ✗ |
+| Approvals approve / deny | ✓ | ✓ | ✓ | ✗ |
+
+### 7.12 TTS
+
+| Action | Owner | Admin | Member | Viewer |
+|--------|:-----:|:-----:|:------:|:------:|
+| Status / providers / voices list | ✓ | ✓ | ✓ | ✓ |
+| Convert (synthesize) | ✓ | ✓ | ✓ | ✗ |
+| Enable / disable / set provider | ✓ | ✓ | ✗ | ✗ |
 
 ---
 
@@ -404,17 +457,19 @@ const isAdmin = role === "admin" || role === "owner";
 
 ## 9. Known Gaps and Design Notes
 
-### 9.1 Nodes (Pairing) — UI/Backend Mismatch
+### 9.1 Viewer Sidebar — Minimal by Design
 
-The sidebar shows "Nodes" to all roles, but backend pairing management methods (`pairing.approve`, `pairing.deny`, `pairing.list`, `pairing.revoke`) require **Admin**. Members and viewers see the menu but cannot approve/deny pairing requests.
+Viewers see only **Chat** and **Traces** in the sidebar. All other menus (Overview, Agents, Conversations, Connectivity, Capabilities, Data, Monitoring, Security) are hidden behind `isMember` guard. This is intentionally restrictive — viewers can chat and view traces, nothing else.
 
-**Status:** Known gap. Low risk — read operations still work, only management actions are gated.
+### 9.2 Nodes (Pairing) — Member Access
 
-### 9.2 Workstations — Mixed Access
+Members can approve/deny/revoke/list pairing requests via `device.pair.*` RPC methods (classified as `isWriteMethod` → Member+). The sidebar shows "Nodes" to members+ in the Connectivity group. Previously this was a known gap where the sidebar showed the menu but the backend blocked management actions — now resolved.
 
-Workstation read operations are available to all roles (`workstations.list`, `workstations.get`), but create/update/delete/toggle and command group management require Admin. The sidebar shows Workstations to all users.
+### 9.3 Workstations — Mixed Access
 
-### 9.3 Sidebar vs Backend Consistency
+Workstation read operations are available to all roles (`workstations.list`, `workstations.get`), but create/update/delete/toggle and command group management require Admin. The sidebar shows Workstations to members+ only (hidden for viewers).
+
+### 9.4 Sidebar vs Backend Consistency
 
 The sidebar uses `isAdmin` (admin OR owner) for most System section items. Three items use `isOwner` (owner only):
 
@@ -426,7 +481,26 @@ The sidebar uses `isAdmin` (admin OR owner) for most System section items. Three
 
 The sidebar is intentionally stricter than backend for these items — even if an admin could technically call some backend endpoints, the UI hides them.
 
-### 9.4 RBAC Resolver Cache
+### 9.7 Packages Page — Sidebar vs Route Guard Mismatch
+
+The Packages page has a dual-access pattern:
+
+| Access Path | Sidebar Guard | Route Guard | What the user sees |
+|-------------|:------------:|:-----------:|-------------------|
+| Packages sidebar item | `isAdmin` (admin+ only) | `RequireMember` | All tabs (system, python, node, github, cli-credentials) |
+| CLI Credentials sidebar item | `isMember` (member+) | Redirect to `../packages?tab=cli-credentials` (no guard) | Only the `cli-credentials` tab |
+
+Members never see the Packages sidebar item but can reach the Packages page via the CLI Credentials redirect. The `PackagesPage` component gates the CLI Credentials tab with `hasMinRole(role, "member")`, and the tab trigger is hidden for viewers.
+
+### 9.8 Owner IDs Configuration
+
+The `gateway.owner_ids` config field (in `config.json` or via `GOCLAW_OWNER_IDS` env var) controls which user IDs are recognized as global owners. When unset/empty, the system falls back to recognizing only the literal user ID `"system"` as owner. **All deployments must set `owner_ids`** — otherwise no user gets owner privileges, locking out the tenant admin UI and config page.
+
+### 9.5 Logs Access — Security Consideration
+
+Logs (`logs.tail`) were previously admin-only due to CVE #866 (data exfiltration risk from unauthenticated access). Members now have access with tenant isolation (SQL `WHERE tenant_id = $N`) providing defense-in-depth against cross-tenant log exfiltration. Viewer access remains restricted.
+
+### 9.6 RBAC Resolver Cache
 
 Effective permissions are cached with a 5-minute TTL (`internal/permissions/resolver.go`). Role changes may take up to 5 minutes to propagate. Call `Resolver.Invalidate(userID, tenantID)` after role mutations for immediate effect.
 
