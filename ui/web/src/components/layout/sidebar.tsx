@@ -91,10 +91,12 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
       <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-4">
         {/* Core — Chat visible to all roles; other core items member+ */}
         <SidebarGroup label={t("groups.core")} collapsed={collapsed}>
+          {isMember && (
+            <SidebarItem to={route(currentTenantSlug, ROUTES.OVERVIEW)} icon={LayoutDashboard} label={t("nav.overview")} collapsed={collapsed} />
+          )}
           <SidebarItem to={route(currentTenantSlug, ROUTES.CHAT)} icon={MessageSquare} label={t("nav.chat")} collapsed={collapsed} />
           {isMember && (
             <>
-              <SidebarItem to={route(currentTenantSlug, ROUTES.OVERVIEW)} icon={LayoutDashboard} label={t("nav.overview")} collapsed={collapsed} />
               <SidebarItem to={route(currentTenantSlug, ROUTES.AGENTS)} icon={Bot} label={t("nav.agents")} collapsed={collapsed} />
               <SidebarItem to={route(currentTenantSlug, ROUTES.TEAMS)} icon={Users} label={t("nav.agentTeams")} collapsed={collapsed} />
             </>
