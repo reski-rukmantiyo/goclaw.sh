@@ -83,6 +83,8 @@ type UserStore interface {
 	List(ctx context.Context, tenantID uuid.UUID, params UserListParams) (*UserListResult, error)
 	// Delete permanently removes a user (hard delete for deactivated users past retention).
 	Delete(ctx context.Context, id uuid.UUID) error
+	// GetByIDs returns users matching the given UUIDs in a single query.
+	GetByIDs(ctx context.Context, ids []uuid.UUID) ([]UserData, error)
 
 	// Identity management
 	// CreateIdentity links a new auth provider identity to a user.

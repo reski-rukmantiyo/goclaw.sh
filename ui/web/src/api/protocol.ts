@@ -181,6 +181,7 @@ export const Methods = {
   TENANTS_USERS_LIST: "tenants.users.list",
   TENANTS_USERS_ADD: "tenants.users.add",
   TENANTS_USERS_REMOVE: "tenants.users.remove",
+  TENANTS_USERS_UPDATE_ROLE: "tenants.users.updateRole",
   TENANTS_DELETE: "tenants.delete",
 
   // Tenant auth config

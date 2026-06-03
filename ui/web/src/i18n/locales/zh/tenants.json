@@ -37,5 +37,8 @@
   "authentication": "认证",
   "authenticationDescription": "配置此租户的登录方式和会话设置。",
   "authSaved": "认证设置已保存",
-  "authSaveFailed": "保存认证设置失败"
+  "authSaveFailed": "保存认证设置失败",
+  "updateRole": "更新角色",
+  "roleUpdated": "角色已更新",
+  "roleUpdateFailed": "更新角色失败"
 }

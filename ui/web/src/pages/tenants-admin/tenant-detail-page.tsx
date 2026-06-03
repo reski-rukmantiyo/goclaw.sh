@@ -56,7 +56,7 @@ export function TenantDetailPage() {
 
   const { currentTenantSlug } = useTenants();
 
-  const { tenant, tenantLoading, users, usersLoading, usersRefreshing, refreshUsers, addUser, removeUser, updateTenantName, deleteTenant } =
+  const { tenant, tenantLoading, users, usersLoading, usersRefreshing, refreshUsers, addUser, removeUser, updateUserRole, updateTenantName, deleteTenant } =
     useTenantDetail(id);
 
   const spinning = useMinLoading(usersRefreshing);
@@ -72,6 +72,7 @@ export function TenantDetailPage() {
   const [adding, setAdding] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [savingRole, setSavingRole] = useState(false);
 
   // Edit name
   const [editOpen, setEditOpen] = useState(false);
@@ -104,6 +105,15 @@ export function TenantDetailPage() {
       setRemoveTarget(null);
     } finally {
       setRemoving(false);
+    }
+  };
+
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    setSavingRole(true);
+    try {
+      await updateUserRole(userId, newRole);
+    } finally {
+      setSavingRole(false);
     }
   };
 
@@ -215,17 +225,30 @@ export function TenantDetailPage() {
               <div key={u.user_id} className="flex items-center justify-between rounded-lg border px-4 py-3 hover:bg-muted/30 transition-colors">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium uppercase">
-                    {(u.display_name || formatUserLabel(u.user_id, resolve)).charAt(0)}
+                    {(u.display_name || u.email || u.user_id).charAt(0)}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{u.display_name || formatUserLabel(u.user_id, resolve)}</p>
-                    <p className="text-xs text-muted-foreground">{new Date(u.created_at).toLocaleDateString()}</p>
+                    <p className="text-sm font-medium truncate">{u.display_name || u.email || formatUserLabel(u.user_id, resolve)}</p>
+                    <p className="text-xs text-muted-foreground truncate">{u.email || u.user_id}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ROLE_COLORS[u.role] || ROLE_COLORS.member}`}>
-                    {t(ROLE_KEYS[u.role] ?? u.role)}
-                  </span>
+                  {u.is_owner || u.role === "owner" ? (
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ROLE_COLORS.owner}`}>
+                      {t("roleOwner")}
+                    </span>
+                  ) : (
+                    <Select value={u.role} onValueChange={(r) => handleRoleChange(u.user_id, r)} disabled={savingRole}>
+                      <SelectTrigger className="h-7 w-[100px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(["admin", "member", "viewer"] as const).map((r) => (
+                          <SelectItem key={r} value={r}>{t(ROLE_KEYS[r] ?? r)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"

@@ -1,5 +1,7 @@
 package permissions
 
+import "strings"
+
 // Permission represents a granular permission string in the role system.
 type Permission string
 
@@ -48,6 +50,15 @@ const (
 	PermSystemManageAuth     Permission = "system.manage_auth"
 	PermSystemViewHealth     Permission = "system.view_health"
 )
+
+// IsReadOnlyPermission returns true if a permission string represents a read-only action.
+// Read-only patterns: *.list, *.get, and *.view_* (e.g., artifact.view_group, audit.view_all).
+// All other permissions are considered write actions for role derivation purposes.
+func IsReadOnlyPermission(p string) bool {
+	return strings.HasSuffix(p, ".list") ||
+		strings.HasSuffix(p, ".get") ||
+		strings.Contains(p, ".view_")
+}
 
 // AllPermissions returns the full catalog of known permissions.
 func AllPermissions() []Permission {

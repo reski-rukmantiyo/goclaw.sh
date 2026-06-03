@@ -249,6 +249,7 @@ func isAdminMethod(method string) bool {
 		"tenants.update",
 		"tenants.users.add",
 		"tenants.users.remove",
+		"tenants.users.updateRole",
 		"tenants.delete",
 
 		// API keys expose secret material — gate list + mutations as admin.

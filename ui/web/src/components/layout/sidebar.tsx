@@ -105,18 +105,14 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
         <SidebarGroup label={t("groups.connectivity")} collapsed={collapsed}>
           <SidebarItem to={route(currentTenantSlug, ROUTES.CHANNELS)} icon={Radio} label={t("nav.channels")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.NODES)} icon={Link} label={t("nav.nodes")} collapsed={collapsed} badge={pendingCount} />
-          {isAdmin && (
-            <SidebarItem to={route(currentTenantSlug, ROUTES.WORKSTATIONS)} icon={MonitorCog} label={t("nav.workstations")} collapsed={collapsed} />
-          )}
+          <SidebarItem to={route(currentTenantSlug, ROUTES.WORKSTATIONS)} icon={MonitorCog} label={t("nav.workstations")} collapsed={collapsed} />
         </SidebarGroup>
 
         <SidebarGroup label={t("groups.capabilities")} collapsed={collapsed}>
           <SidebarItem to={route(currentTenantSlug, ROUTES.SKILLS)} icon={Zap} label={t("nav.skills")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.BUILTIN_TOOLS)} icon={Package} label={t("nav.builtinTools")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.MCP)} icon={Plug} label={t("nav.mcpServers")} collapsed={collapsed} />
-          {isOwner && (
-            <SidebarItem to={route(currentTenantSlug, ROUTES.TTS)} icon={Volume2} label={t("nav.tts")} collapsed={collapsed} />
-          )}
+          <SidebarItem to={route(currentTenantSlug, ROUTES.TTS)} icon={Volume2} label={t("nav.tts")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.CRON)} icon={Clock} label={t("nav.cron")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.HOOKS)} icon={Webhook} label={t("nav.hooks")} collapsed={collapsed} />
         </SidebarGroup>

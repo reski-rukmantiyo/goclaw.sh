@@ -21,7 +21,9 @@ export interface TenantUserData {
   tenant_id: string
   user_id: string
   display_name?: string
+  email: string
   role: string
+  is_owner: boolean
   metadata?: Record<string, unknown>
   created_at: string
   updated_at: string

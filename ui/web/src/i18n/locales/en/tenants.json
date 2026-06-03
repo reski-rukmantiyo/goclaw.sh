@@ -37,5 +37,8 @@
   "authentication": "Authentication",
   "authenticationDescription": "Configure sign-in methods and session settings for this tenant.",
   "authSaved": "Authentication settings saved",
-  "authSaveFailed": "Failed to save authentication settings"
+  "authSaveFailed": "Failed to save authentication settings",
+  "updateRole": "Update Role",
+  "roleUpdated": "Role updated",
+  "roleUpdateFailed": "Failed to update role"
 }

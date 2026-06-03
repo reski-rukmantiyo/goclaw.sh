@@ -355,7 +355,7 @@ func resolveJWTRole(ctx context.Context, userID string, tenantID uuid.UUID) perm
 			// Any write permission → member; otherwise viewer
 			hasWrite := false
 			for p := range perms {
-				if !strings.HasSuffix(p, ".list") && !strings.HasSuffix(p, ".get") {
+				if !permissions.IsReadOnlyPermission(p) {
 					hasWrite = true
 					break
 				}

@@ -24,6 +24,7 @@ func NewPGRoleStore(db *sql.DB) *PGRoleStore {
 }
 
 const roleSelectCols = `id, tenant_id, name, description, is_system, permissions, created_at, updated_at`
+const roleSelectColsQualified = `r.id, r.tenant_id, r.name, r.description, r.is_system, r.permissions, r.created_at, r.updated_at`
 
 func scanRole(row interface{ Scan(dest ...any) error }) (*store.RoleData, error) {
 	var r store.RoleData
@@ -226,7 +227,8 @@ func (s *PGRoleStore) GetRolePermissions(ctx context.Context, roleID uuid.UUID) 
 
 func (s *PGRoleStore) AssignUserRole(ctx context.Context, tenantID uuid.UUID, userID string, roleID uuid.UUID) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO user_roles (id, tenant_id, user_id, role_id) VALUES ($1, $2, $3, $4)`,
+		`INSERT INTO user_roles (id, tenant_id, user_id, role_id) VALUES ($1, $2, $3, $4)
+		 ON CONFLICT ON CONSTRAINT user_roles_tenant_id_user_id_role_id_key DO NOTHING`,
 		store.GenNewID(), tenantID, userID, roleID,
 	)
 	return err
@@ -242,7 +244,7 @@ func (s *PGRoleStore) UnassignUserRole(ctx context.Context, tenantID uuid.UUID, 
 
 func (s *PGRoleStore) ListUserRoles(ctx context.Context, tenantID uuid.UUID, userID string) ([]store.RoleData, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT r.`+roleSelectCols+`
+		`SELECT `+roleSelectColsQualified+`
 		 FROM roles r
 		 JOIN user_roles ur ON ur.role_id = r.id
 		 WHERE ur.tenant_id = $1 AND ur.user_id = $2
@@ -289,7 +291,7 @@ func (s *PGRoleStore) UnassignGroupRole(ctx context.Context, groupID, roleID uui
 
 func (s *PGRoleStore) ListGroupRoles(ctx context.Context, groupID uuid.UUID) ([]store.RoleData, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT r.`+roleSelectCols+`
+		`SELECT `+roleSelectColsQualified+`
 		 FROM roles r
 		 JOIN group_roles gr ON gr.role_id = r.id
 		 WHERE gr.group_id = $1

@@ -297,10 +297,12 @@ func (r *MethodRouter) handleConnect(ctx context.Context, client *Client, req *p
 				if t, tErr := r.tenantStore.GetTenantBySlug(ctx, requestedScope); tErr == nil && t != nil {
 					if role, rErr := r.getUserTenantRole(ctx, t.ID, claims.Subject); rErr == nil && role != "" {
 						client.tenantID = t.ID
+						client.role = mapRoleString(role)
 					}
 				} else if tid, pErr := uuid.Parse(requestedScope); pErr == nil {
 					if role, rErr := r.getUserTenantRole(ctx, tid, claims.Subject); rErr == nil && role != "" {
 						client.tenantID = tid
+						client.role = mapRoleString(role)
 					}
 				}
 			}
@@ -526,7 +528,8 @@ func (r *MethodRouter) resolveDefaultTenant(ctx context.Context, userID string) 
 }
 
 // getUserTenantRole returns the user's role in a tenant, using permission cache if available.
-// Used for membership verification (non-empty = member). Actual client.role is derived from JWT claims.
+// getUserTenantRole resolves the user's role on a specific tenant.
+// Returns one of: "owner", "admin", "member", "viewer", or "" (no membership).
 func (r *MethodRouter) getUserTenantRole(ctx context.Context, tenantID uuid.UUID, userID string) (string, error) {
 	// Check cache first
 	if r.permCache != nil {
@@ -537,34 +540,84 @@ func (r *MethodRouter) getUserTenantRole(ctx context.Context, tenantID uuid.UUID
 		slog.Debug("perm_cache.tenant_role.miss", "tenant", tenantID, "user", userID)
 	}
 
-	// Fallback to DB
+	// Check ownership first
 	isOwner, err := r.tenantStore.IsOwner(ctx, tenantID, userID)
 	if err != nil {
 		return "", err
 	}
-	role := ""
 	if isOwner {
-		role = "owner"
-	} else {
-		// Check for any membership
-		memberships, err := r.tenantStore.ListUserTenants(ctx, userID)
-		if err != nil {
-			return "", err
+		if r.permCache != nil {
+			r.permCache.SetTenantRole(ctx, tenantID, userID, "owner")
 		}
-		for _, m := range memberships {
-			if m.TenantID == tenantID {
-				role = "member"
+		return "owner", nil
+	}
+
+	// Check for membership
+	memberships, err := r.tenantStore.ListUserTenants(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	isMember := false
+	for _, m := range memberships {
+		if m.TenantID == tenantID {
+			isMember = true
+			break
+		}
+	}
+	if !isMember {
+		if r.permCache != nil {
+			r.permCache.SetTenantRole(ctx, tenantID, userID, "")
+		}
+		return "", nil
+	}
+
+	// Derive role from RBAC effective permissions
+	perms, pErr := httpapi.GetUserPermissions(ctx, userID, tenantID)
+	if pErr != nil || len(perms) == 0 {
+		// No RBAC data -> default to member
+		if r.permCache != nil {
+			r.permCache.SetTenantRole(ctx, tenantID, userID, "member")
+		}
+		return "member", nil
+	}
+	role := "viewer"
+	if perms[string(permissions.PermSystemManageSettings)] {
+		role = "admin"
+	} else {
+		hasWrite := false
+		for p := range perms {
+			if !permissions.IsReadOnlyPermission(p) {
+				hasWrite = true
 				break
 			}
 		}
+		if hasWrite {
+			role = "member"
+		}
 	}
 
-	// Cache the result (including empty role = not a member)
 	if r.permCache != nil {
 		r.permCache.SetTenantRole(ctx, tenantID, userID, role)
 	}
 	return role, nil
 }
+
+// mapRoleString converts a role string from getUserTenantRole to a permissions.Role.
+func mapRoleString(role string) permissions.Role {
+	switch role {
+	case "owner":
+		return permissions.RoleOwner
+	case "admin":
+		return permissions.RoleAdmin
+	case "member":
+		return permissions.RoleMember
+	case "viewer":
+		return permissions.RoleViewer
+	default:
+		return permissions.RoleMember
+	}
+}
+
 
 // applyTenantScope narrows an owner client's data scope to a specific tenant.
 // Sets client.tenantID so the router injects WithTenantID for data filtering.

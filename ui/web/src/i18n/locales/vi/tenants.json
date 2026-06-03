@@ -37,5 +37,8 @@
   "authentication": "Xác thực",
   "authenticationDescription": "Cấu hình phương thức đăng nhập và cài đặt phiên cho tổ chức này.",
   "authSaved": "Đã lưu cài đặt xác thực",
-  "authSaveFailed": "Không thể lưu cài đặt xác thực"
+  "authSaveFailed": "Không thể lưu cài đặt xác thực",
+  "updateRole": "Cập nhật vai trò",
+  "roleUpdated": "Đã cập nhật vai trò",
+  "roleUpdateFailed": "Không thể cập nhật vai trò"
 }

@@ -223,7 +223,7 @@ func (s *SQLiteRoleStore) GetRolePermissions(ctx context.Context, roleID uuid.UU
 
 func (s *SQLiteRoleStore) AssignUserRole(ctx context.Context, tenantID uuid.UUID, userID string, roleID uuid.UUID) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO user_roles (id, tenant_id, user_id, role_id) VALUES (?, ?, ?, ?)`,
+		`INSERT OR IGNORE INTO user_roles (id, tenant_id, user_id, role_id) VALUES (?, ?, ?, ?)`,
 		store.GenNewID(), tenantID, userID, roleID,
 	)
 	return err

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -14,6 +15,16 @@ var pkgPermCache *permissions.Resolver
 // InitPermCache sets the shared permission resolver for RBAC checks.
 func InitPermCache(resolver *permissions.Resolver) {
 	pkgPermCache = resolver
+}
+
+// GetUserPermissions returns the effective permissions for a user in a tenant.
+// Returns nil if the resolver is unavailable or an error occurs.
+// Exported for use by the gateway router to re-derive roles during WS connect.
+func GetUserPermissions(ctx context.Context, userID string, tenantID uuid.UUID) (map[string]bool, error) {
+	if pkgPermCache == nil {
+		return nil, nil
+	}
+	return pkgPermCache.EffectivePermissions(ctx, userID, tenantID)
 }
 
 // requireAuthAction checks that the authenticated user has permission to perform an action.

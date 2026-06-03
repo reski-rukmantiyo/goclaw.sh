@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -550,7 +549,7 @@ func resolveUserRoleForJWT(ctx context.Context, tenants store.TenantStore, tenan
 			}
 			hasWrite := false
 			for p := range perms {
-				if !strings.HasSuffix(p, ".list") && !strings.HasSuffix(p, ".get") {
+				if !permissions.IsReadOnlyPermission(p) {
 					hasWrite = true
 					break
 				}

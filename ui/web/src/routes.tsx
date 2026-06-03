@@ -220,11 +220,11 @@ export function AppRoutes() {
             <Route path="channels" element={<ChannelsPage key="list" />} />
             <Route path="channels/:id" element={<ChannelsPage key="detail" />} />
             <Route path="nodes" element={<NodesPage />} />
-            <Route path="workstations" element={<RequireAdmin><WorkstationsPage /></RequireAdmin>} />
+            <Route path="workstations" element={<WorkstationsPage />} />
             <Route path="logs" element={<RequireAdmin><LogsPage /></RequireAdmin>} />
             <Route path="builtin-tools" element={<BuiltinToolsPage />} />
             <Route path="mcp" element={<MCPPage />} />
-            <Route path="tts" element={<RequireCrossTenant><TtsPage /></RequireCrossTenant>} />
+            <Route path="tts" element={<RequireAdmin><TtsPage /></RequireAdmin>} />
             <Route path="storage" element={<StoragePage />} />
             <Route path="packages" element={<RequireAdmin><PackagesPage /></RequireAdmin>} />
             <Route path="authentication" element={<RequireAdmin><TenantAuthPage /></RequireAdmin>} />

@@ -108,6 +108,34 @@ func (s *SQLiteUserStore) GetByEmail(ctx context.Context, email string) (*store.
 	return u, nil
 }
 
+func (s *SQLiteUserStore) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]store.UserData, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id.String()
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+userCols+` FROM users WHERE id IN (`+placeholders+`)`,
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("batch user lookup: %w", err)
+	}
+	defer rows.Close()
+	var result []store.UserData
+	for rows.Next() {
+		u, sErr := scanUser(rows)
+		if sErr != nil {
+			return nil, sErr
+		}
+		result = append(result, *u)
+	}
+	return result, rows.Err()
+}
+
 func (s *SQLiteUserStore) Update(ctx context.Context, user *store.UserData) error {
 	now := time.Now().UTC()
 	user.UpdatedAt = now

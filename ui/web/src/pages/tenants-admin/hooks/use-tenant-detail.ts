@@ -69,6 +69,20 @@ export function useTenantDetail(tenantId: string) {
     [ws, tenantId, invalidateUsers],
   );
 
+  const updateUserRole = useCallback(
+    async (userId: string, role: string) => {
+      try {
+        await ws.call(Methods.TENANTS_USERS_UPDATE_ROLE, { tenant_id: tenantId, user_id: userId, role });
+        await invalidateUsers();
+        toast.success(i18next.t("tenants:roleUpdated"));
+      } catch (err) {
+        toast.error(i18next.t("tenants:roleUpdateFailed"), err instanceof Error ? err.message : "");
+        throw err;
+      }
+    },
+    [ws, tenantId, invalidateUsers],
+  );
+
   const updateTenantName = useCallback(
     async (name: string) => {
       try {
@@ -106,6 +120,7 @@ export function useTenantDetail(tenantId: string) {
     refreshUsers: invalidateUsers,
     addUser,
     removeUser,
+    updateUserRole,
     updateTenantName,
     deleteTenant,
   };

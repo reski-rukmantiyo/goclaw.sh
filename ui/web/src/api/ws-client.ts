@@ -238,14 +238,6 @@ export class WsClient {
       }
       this.pairingInProgress = false;
 
-      // Server accepted connection but assigned viewer role → token is invalid
-      if (this.getToken() && res?.role === "viewer") {
-        this.intentionalClose = true;
-        this.ws?.close();
-        this.onAuthFailure?.();
-        return;
-      }
-
       this.authenticated = true;
       this.role = (res?.role as "owner" | "admin" | "member" | "viewer") ?? "";
       this.tenantId = res?.tenant_id ?? "";

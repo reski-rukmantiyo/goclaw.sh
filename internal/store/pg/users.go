@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
@@ -71,6 +72,20 @@ func (s *PGUserStore) GetByEmail(ctx context.Context, email string) (*store.User
 		return nil, err
 	}
 	return u, nil
+}
+
+func (s *PGUserStore) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]store.UserData, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, email, display_name, avatar_url, auth_provider, password_hash, status, last_login_at, created_at, updated_at
+		 FROM users WHERE id = ANY($1)`, pq.Array(ids))
+	if err != nil {
+		return nil, fmt.Errorf("batch user lookup: %w", err)
+	}
+	defer rows.Close()
+	return scanUserRows(rows)
 }
 
 func (s *PGUserStore) Update(ctx context.Context, user *store.UserData) error {
@@ -319,6 +334,31 @@ func scanUserRow(row *sql.Row) (*store.UserData, error) {
 		u.LastLoginAt = &t
 	}
 	return &u, nil
+}
+
+func scanUserRows(rows *sql.Rows) ([]store.UserData, error) {
+	var result []store.UserData
+	for rows.Next() {
+		var u store.UserData
+		var avatarURL, passwordHash sql.NullString
+		var lastLoginAt sql.NullTime
+		if err := rows.Scan(
+			&u.ID, &u.Email, &u.DisplayName, &avatarURL, &u.AuthProvider, &passwordHash,
+			&u.Status, &lastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		u.AvatarURL = nilStr(avatarURL.String)
+		if passwordHash.Valid {
+			u.PasswordHash = nilStr(passwordHash.String)
+		}
+		if lastLoginAt.Valid {
+			t := lastLoginAt.Time
+			u.LastLoginAt = &t
+		}
+		result = append(result, u)
+	}
+	return result, rows.Err()
 }
 
 func scanIdentityRow(row *sql.Row) (*store.UserIdentity, error) {

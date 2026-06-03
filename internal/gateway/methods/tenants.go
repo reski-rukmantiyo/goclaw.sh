@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -42,11 +43,12 @@ type TenantsMethods struct {
 	masterDSN         string // master DSN for superuser schema operations on tenant DBs
 	ownerIDs          []string // global owner IDs from config; used to distinguish global owners from tenant owners
 	roleStore         store.RoleStore // RBAC role assignment for tenant users
+	userStore         store.UserStore // batch user lookups for email resolution
 }
 
 // NewTenantsMethods creates a new TenantsMethods handler.
-func NewTenantsMethods(tenantStore store.TenantStore, tenantDBConnStore store.TenantDBConnectionStore, tenantDBManager store.TenantDBManager, masterDB *sql.DB, msgBus *bus.MessageBus, workspace string, defaultSSLMode string, masterDSN string, systemConfigStore store.SystemConfigStore, authLoader tenantauth.Loader, encKey string, ownerIDs []string, roleStore store.RoleStore) *TenantsMethods {
-	return &TenantsMethods{tenantStore: tenantStore, tenantDBConnStore: tenantDBConnStore, tenantDBManager: tenantDBManager, masterDB: masterDB, msgBus: msgBus, workspace: workspace, defaultSSLMode: defaultSSLMode, masterDSN: masterDSN, systemConfigStore: systemConfigStore, authLoader: authLoader, encKey: encKey, ownerIDs: ownerIDs, roleStore: roleStore}
+func NewTenantsMethods(tenantStore store.TenantStore, tenantDBConnStore store.TenantDBConnectionStore, tenantDBManager store.TenantDBManager, masterDB *sql.DB, msgBus *bus.MessageBus, workspace string, defaultSSLMode string, masterDSN string, systemConfigStore store.SystemConfigStore, authLoader tenantauth.Loader, encKey string, ownerIDs []string, roleStore store.RoleStore, userStore store.UserStore) *TenantsMethods {
+	return &TenantsMethods{tenantStore: tenantStore, tenantDBConnStore: tenantDBConnStore, tenantDBManager: tenantDBManager, masterDB: masterDB, msgBus: msgBus, workspace: workspace, defaultSSLMode: defaultSSLMode, masterDSN: masterDSN, systemConfigStore: systemConfigStore, authLoader: authLoader, encKey: encKey, ownerIDs: ownerIDs, roleStore: roleStore, userStore: userStore}
 }
 
 // Register registers tenant management RPC methods.
@@ -58,6 +60,7 @@ func (m *TenantsMethods) Register(router *gateway.MethodRouter) {
 	router.Register("tenants.users.list", m.handleUsersList)
 	router.Register("tenants.users.add", m.handleUsersAdd)
 	router.Register("tenants.users.remove", m.handleUsersRemove)
+	router.Register("tenants.users.updateRole", m.handleUsersUpdateRole)
 	router.Register("tenants.delete", m.handleDelete)
 	router.Register("tenants.mine", m.handleMine)
 	router.Register(protocol.MethodTenantAuthGet, m.requireAdmin(m.handleAuthGet))
@@ -83,6 +86,43 @@ func capitalizeRole(role string) string {
 		return ""
 	}
 	return strings.ToUpper(role[:1]) + role[1:]
+}
+
+// resolveRoleFromPermissions derives the user's role on a tenant from RBAC effective permissions.
+// Returns "admin", "member", or "viewer". Falls back to "member" if RBAC data is unavailable.
+func (m *TenantsMethods) resolveRoleFromPermissions(ctx context.Context, tenantID uuid.UUID, userID string) string {
+	if m.roleStore == nil {
+		return "member"
+	}
+	roles, err := m.roleStore.ListUserRoles(ctx, tenantID, userID)
+	if err != nil || len(roles) == 0 {
+		return "member"
+	}
+	// Collect all permissions across assigned roles
+	permSet := make(map[string]bool)
+	for _, r := range roles {
+		perms, pErr := m.roleStore.GetRolePermissions(ctx, r.ID)
+		if pErr != nil {
+			continue
+		}
+		for _, p := range perms {
+			permSet[p] = true
+		}
+	}
+	if permSet[string(permissions.PermSystemManageSettings)] {
+		return "admin"
+	}
+	hasWrite := false
+	for p := range permSet {
+		if !permissions.IsReadOnlyPermission(p) {
+			hasWrite = true
+			break
+		}
+	}
+	if hasWrite {
+		return "member"
+	}
+	return "viewer"
 }
 
 // seedSystemRoles creates the default system roles (Admin, Member, Viewer)
@@ -396,7 +436,59 @@ func (m *TenantsMethods) handleUsersList(ctx context.Context, client *gateway.Cl
 	if users == nil {
 		users = []store.TenantUserData{}
 	}
-	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"users": users}))
+
+	// Enrich with email and resolved role.
+	type tenantUserEntry struct {
+		ID          string  `json:"id"`
+		TenantID    string  `json:"tenant_id"`
+		UserID      string  `json:"user_id"`
+		DisplayName *string `json:"display_name,omitempty"`
+		Email       string  `json:"email"`
+		Role        string  `json:"role"`
+		IsOwner     bool    `json:"is_owner"`
+		CreatedAt   string  `json:"created_at"`
+		UpdatedAt   string  `json:"updated_at"`
+	}
+
+	// Batch-resolve emails via UserStore.GetByIDs.
+	emailMap := make(map[string]string, len(users))
+	if m.userStore != nil {
+		userUUIDs := make([]uuid.UUID, 0, len(users))
+		for _, u := range users {
+			if id, pErr := uuid.Parse(u.UserID); pErr == nil {
+				userUUIDs = append(userUUIDs, id)
+			}
+		}
+		if userDatas, bErr := m.userStore.GetByIDs(ctx, userUUIDs); bErr == nil {
+			for _, ud := range userDatas {
+				emailMap[ud.ID.String()] = ud.Email
+			}
+		} else {
+			slog.Warn("tenants.users.list: batch user lookup failed", "error", bErr)
+		}
+	}
+
+	entries := make([]tenantUserEntry, len(users))
+	for i, u := range users {
+		role := "member"
+		if u.IsOwner {
+			role = "owner"
+		} else {
+			role = m.resolveRoleFromPermissions(ctx, tid, u.UserID)
+		}
+		entries[i] = tenantUserEntry{
+			ID:          u.ID.String(),
+			TenantID:    u.TenantID.String(),
+			UserID:      u.UserID,
+			DisplayName: u.DisplayName,
+			Email:       emailMap[u.UserID],
+			Role:        role,
+			IsOwner:     u.IsOwner,
+			CreatedAt:   u.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:   u.UpdatedAt.Format(time.RFC3339),
+		}
+	}
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"users": entries}))
 }
 
 func (m *TenantsMethods) handleUsersAdd(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
@@ -515,6 +607,78 @@ func (m *TenantsMethods) handleUsersRemove(ctx context.Context, client *gateway.
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]string{"ok": "true"}))
 }
 
+func (m *TenantsMethods) handleUsersUpdateRole(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	if !client.IsOwner() {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrUnauthorized, i18n.T(locale, i18n.MsgPermissionDenied, "tenants.users.updateRole")))
+		return
+	}
+
+	var params struct {
+		TenantID string `json:"tenant_id"`
+		UserID   string `json:"user_id"`
+		Role     string `json:"role"`
+	}
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidJSON)))
+			return
+		}
+	}
+
+	if params.UserID == "" {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgRequired, "user_id")))
+		return
+	}
+	if params.Role == "" {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgRequired, "role")))
+		return
+	}
+	if params.Role == store.TenantRoleOwner {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest)))
+		return
+	}
+
+	tid, err := uuid.Parse(params.TenantID)
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidID, "tenant_id")))
+		return
+	}
+
+	// Unassign all current RBAC roles for the user in this tenant.
+	if m.roleStore == nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgInternalError, "role store")))
+		return
+	}
+	currentRoles, rErr := m.roleStore.ListUserRoles(ctx, tid, params.UserID)
+	if rErr != nil {
+		slog.Error("tenants.users.updateRole: list roles failed", "error", rErr)
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToUpdate, "tenant user role", rErr.Error())))
+		return
+	}
+	for _, r := range currentRoles {
+		if uErr := m.roleStore.UnassignUserRole(ctx, tid, params.UserID, r.ID); uErr != nil {
+			slog.Warn("tenants.users.updateRole: unassign failed", "tenant_id", tid, "user_id", params.UserID, "role_id", r.ID, "error", uErr)
+		}
+	}
+
+	// Assign the new role.
+	rbacRole, lErr := m.roleStore.GetRoleByName(ctx, tid, capitalizeRole(params.Role))
+	if lErr != nil || rbacRole == nil {
+		slog.Error("tenants.users.updateRole: role lookup failed", "tenant_id", tid, "role", params.Role, "error", lErr)
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToUpdate, "tenant user role", lErr.Error())))
+		return
+	}
+	if aErr := m.roleStore.AssignUserRole(ctx, tid, params.UserID, rbacRole.ID); aErr != nil {
+		slog.Error("tenants.users.updateRole: assign failed", "tenant_id", tid, "user_id", params.UserID, "role_id", rbacRole.ID, "error", aErr)
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToUpdate, "tenant user role", aErr.Error())))
+		return
+	}
+
+	m.emitCacheInvalidate(bus.CacheKindTenantUsers, params.UserID)
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]string{"ok": "true"}))
+}
+
 func (m *TenantsMethods) handleDelete(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
 	locale := store.LocaleFromContext(ctx)
 	if !client.IsOwner() {
@@ -622,6 +786,9 @@ func (m *TenantsMethods) handleMine(ctx context.Context, client *gateway.Client,
 		role := "member"
 		if mem.IsOwner {
 			role = "owner"
+		} else {
+			// Derive role from RBAC effective permissions
+			role = m.resolveRoleFromPermissions(ctx, t.ID, userID)
 		}
 		entries = append(entries, tenantEntry{ID: t.ID.String(), Name: t.Name, Slug: t.Slug, Role: role, Status: t.Status})
 	}
