@@ -299,5 +299,13 @@ func init() {
 		MsgRoleUnassigned:             "role unassigned",
 		MsgRoleDeleteBlocked:          "cannot delete role: assigned to %d user(s) or group(s)",
 		MsgGroupDeleteBlockedChildren: "cannot delete group: has %d child group(s)",
+
+		// Tenant User CRUD
+		MsgSelfDeleteBlocked:    "Cannot delete your own account",
+		MsgLastOwnerBlocked:     "Cannot remove the last owner of a tenant",
+		MsgTargetRoleForbidden:  "Insufficient permissions for target user's role",
+		MsgFieldNotUpdatable:    "Field %s is not updatable",
+		MsgTenantNotActive:      "Tenant is not active",
+		MsgRoleNotPermitted:     "Role %s is not permitted for this operation",
 	})
 }

@@ -324,4 +324,12 @@ const (
 	MsgRoleUnassigned         = "role.unassigned"          // "role unassigned"
 	MsgRoleDeleteBlocked      = "role.delete_blocked"      // "cannot delete role: assigned to %d user(s) or group(s)"
 	MsgGroupDeleteBlockedChildren = "group.delete_blocked_children" // "cannot delete group: has %d child group(s)"
+
+	// --- Tenant User CRUD ---
+	MsgSelfDeleteBlocked    = "error.self_delete_blocked"     // "cannot delete your own account"
+	MsgLastOwnerBlocked     = "error.last_owner_blocked"      // "cannot remove the last owner of a tenant"
+	MsgTargetRoleForbidden  = "error.target_role_forbidden"    // "insufficient permissions for target user's role"
+	MsgFieldNotUpdatable    = "error.field_not_updatable"      // "field %s is not updatable"
+	MsgTenantNotActive      = "error.tenant_not_active"        // "tenant is not active"
+	MsgRoleNotPermitted     = "error.role_not_permitted"       // "role %s is not permitted for this operation"
 )

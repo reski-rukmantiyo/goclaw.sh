@@ -30,6 +30,7 @@ type UserData struct {
 	AuthProvider string     `json:"auth_provider" db:"auth_provider"`
 	PasswordHash *string    `json:"-" db:"password_hash"`
 	Status       string     `json:"status" db:"status"`
+	Phone        *string    `json:"phone,omitempty" db:"phone"`
 	LastLoginAt  *time.Time `json:"last_login_at,omitempty" db:"last_login_at"`
 	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`

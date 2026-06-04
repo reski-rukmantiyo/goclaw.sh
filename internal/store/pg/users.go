@@ -28,13 +28,14 @@ func NewPGUserStore(db *sql.DB) *PGUserStore {
 
 func (s *PGUserStore) Create(ctx context.Context, user *store.UserData) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO users (id, email, display_name, avatar_url, auth_provider, password_hash, status, last_login_at, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		`INSERT INTO users (id, email, display_name, avatar_url, auth_provider, password_hash, status, phone, last_login_at, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		user.ID, user.Email, user.DisplayName,
 		sql.NullString{String: derefStr(user.AvatarURL), Valid: user.AvatarURL != nil && *user.AvatarURL != ""},
 		user.AuthProvider,
 		sql.NullString{String: derefStr(user.PasswordHash), Valid: user.PasswordHash != nil && *user.PasswordHash != ""},
 		user.Status,
+		sql.NullString{String: derefStr(user.Phone), Valid: user.Phone != nil && *user.Phone != ""},
 		sql.NullTime{Time: func() time.Time {
 			if user.LastLoginAt != nil {
 				return *user.LastLoginAt
@@ -48,7 +49,7 @@ func (s *PGUserStore) Create(ctx context.Context, user *store.UserData) error {
 
 func (s *PGUserStore) GetByID(ctx context.Context, id uuid.UUID) (*store.UserData, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, email, display_name, avatar_url, auth_provider, password_hash, status, last_login_at, created_at, updated_at
+		`SELECT id, email, display_name, avatar_url, auth_provider, password_hash, status, phone, last_login_at, created_at, updated_at
 		 FROM users WHERE id = $1`, id)
 	u, err := scanUserRow(row)
 	if err != nil {
@@ -62,7 +63,7 @@ func (s *PGUserStore) GetByID(ctx context.Context, id uuid.UUID) (*store.UserDat
 
 func (s *PGUserStore) GetByEmail(ctx context.Context, email string) (*store.UserData, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, email, display_name, avatar_url, auth_provider, password_hash, status, last_login_at, created_at, updated_at
+		`SELECT id, email, display_name, avatar_url, auth_provider, password_hash, status, phone, last_login_at, created_at, updated_at
 		 FROM users WHERE email = $1`, email)
 	u, err := scanUserRow(row)
 	if err != nil {
@@ -79,7 +80,7 @@ func (s *PGUserStore) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]store.Us
 		return nil, nil
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, email, display_name, avatar_url, auth_provider, password_hash, status, last_login_at, created_at, updated_at
+		`SELECT id, email, display_name, avatar_url, auth_provider, password_hash, status, phone, last_login_at, created_at, updated_at
 		 FROM users WHERE id = ANY($1)`, pq.Array(ids))
 	if err != nil {
 		return nil, fmt.Errorf("batch user lookup: %w", err)
@@ -90,9 +91,10 @@ func (s *PGUserStore) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]store.Us
 
 func (s *PGUserStore) Update(ctx context.Context, user *store.UserData) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE users SET display_name = $1, avatar_url = $2, updated_at = NOW() WHERE id = $3`,
+		`UPDATE users SET display_name = $1, avatar_url = $2, phone = $3, updated_at = NOW() WHERE id = $4`,
 		user.DisplayName,
 		sql.NullString{String: derefStr(user.AvatarURL), Valid: user.AvatarURL != nil && *user.AvatarURL != ""},
+		sql.NullString{String: derefStr(user.Phone), Valid: user.Phone != nil && *user.Phone != ""},
 		user.ID,
 	)
 	return err
@@ -143,7 +145,7 @@ func (s *PGUserStore) List(ctx context.Context, tenantID uuid.UUID, params store
 	where := "WHERE " + strings.Join(conditions, " AND ")
 
 	query := fmt.Sprintf(
-		`SELECT u.id, u.email, u.display_name, u.avatar_url, u.auth_provider, u.password_hash, u.status, u.last_login_at, u.created_at, u.updated_at,
+		`SELECT u.id, u.email, u.display_name, u.avatar_url, u.auth_provider, u.password_hash, u.status, u.phone, u.last_login_at, u.created_at, u.updated_at,
 		        COUNT(*) OVER() AS total_count
 		 FROM users u
 		 JOIN tenant_users tu ON tu.user_id = u.id::text
@@ -162,15 +164,16 @@ func (s *PGUserStore) List(ctx context.Context, tenantID uuid.UUID, params store
 	var total int
 	for rows.Next() {
 		var u store.UserData
-		var avatarURL, passwordHash sql.NullString
+		var avatarURL, passwordHash, phone sql.NullString
 		var lastLoginAt sql.NullTime
 		if err := rows.Scan(
 			&u.ID, &u.Email, &u.DisplayName, &avatarURL, &u.AuthProvider, &passwordHash,
-			&u.Status, &lastLoginAt, &u.CreatedAt, &u.UpdatedAt, &total,
+			&u.Status, &phone, &lastLoginAt, &u.CreatedAt, &u.UpdatedAt, &total,
 		); err != nil {
 			return nil, err
 		}
 		u.AvatarURL = nilStr(avatarURL.String)
+		u.Phone = nilStr(phone.String)
 		if passwordHash.Valid {
 			u.PasswordHash = nilStr(passwordHash.String)
 		}
@@ -316,16 +319,17 @@ func (s *PGUserStore) PruneExpiredRefreshTokens(ctx context.Context) error {
 
 func scanUserRow(row *sql.Row) (*store.UserData, error) {
 	var u store.UserData
-	var avatarURL, passwordHash sql.NullString
+	var avatarURL, passwordHash, phone sql.NullString
 	var lastLoginAt sql.NullTime
 	err := row.Scan(
 		&u.ID, &u.Email, &u.DisplayName, &avatarURL, &u.AuthProvider, &passwordHash,
-		&u.Status, &lastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.Status, &phone, &lastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
 	u.AvatarURL = nilStr(avatarURL.String)
+	u.Phone = nilStr(phone.String)
 	if passwordHash.Valid {
 		u.PasswordHash = nilStr(passwordHash.String)
 	}
@@ -340,15 +344,16 @@ func scanUserRows(rows *sql.Rows) ([]store.UserData, error) {
 	var result []store.UserData
 	for rows.Next() {
 		var u store.UserData
-		var avatarURL, passwordHash sql.NullString
+		var avatarURL, passwordHash, phone sql.NullString
 		var lastLoginAt sql.NullTime
 		if err := rows.Scan(
 			&u.ID, &u.Email, &u.DisplayName, &avatarURL, &u.AuthProvider, &passwordHash,
-			&u.Status, &lastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+			&u.Status, &phone, &lastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
 		u.AvatarURL = nilStr(avatarURL.String)
+		u.Phone = nilStr(phone.String)
 		if passwordHash.Valid {
 			u.PasswordHash = nilStr(passwordHash.String)
 		}

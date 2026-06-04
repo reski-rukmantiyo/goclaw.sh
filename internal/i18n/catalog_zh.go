@@ -299,5 +299,13 @@ func init() {
 		MsgRoleUnassigned:             "已取消分配角色",
 		MsgRoleDeleteBlocked:          "无法删除角色：已分配给 %d 个用户或组",
 		MsgGroupDeleteBlockedChildren: "无法删除组：包含 %d 个子组",
+
+		// Tenant User CRUD
+		MsgSelfDeleteBlocked:    "无法删除自己的账户",
+		MsgLastOwnerBlocked:     "无法移除租户的最后一位所有者",
+		MsgTargetRoleForbidden:  "权限不足，无法操作目标用户的角色",
+		MsgFieldNotUpdatable:    "字段 %s 不可更新",
+		MsgTenantNotActive:      "租户未激活",
+		MsgRoleNotPermitted:     "角色 %s 不允许执行此操作",
 	})
 }

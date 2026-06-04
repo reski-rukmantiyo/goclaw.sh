@@ -95,7 +95,7 @@ func (m *mockTenantStore) ListTenants(context.Context) ([]store.TenantData, erro
 func (m *mockTenantStore) UpdateTenant(context.Context, uuid.UUID, map[string]any) error {
 	return nil
 }
-func (m *mockTenantStore) AddUser(context.Context, uuid.UUID, string, string) error { return nil }
+func (m *mockTenantStore) AddUser(context.Context, uuid.UUID, string, bool) error { return nil }
 func (m *mockTenantStore) RemoveUser(context.Context, uuid.UUID, string) error      { return nil }
 func (m *mockTenantStore) GetUserRole(_ context.Context, tenantID uuid.UUID, userID string) (string, error) {
 	if role := m.roles[tenantID][userID]; role != "" {
@@ -115,11 +115,23 @@ func (m *mockTenantStore) ResolveUserTenant(context.Context, string) (uuid.UUID,
 func (m *mockTenantStore) GetTenantUser(context.Context, uuid.UUID) (*store.TenantUserData, error) {
 	return nil, fmt.Errorf("not found")
 }
-func (m *mockTenantStore) CreateTenantUserReturning(context.Context, uuid.UUID, string, string, string) (*store.TenantUserData, error) {
+func (m *mockTenantStore) CreateTenantUserReturning(context.Context, uuid.UUID, string, string) (*store.TenantUserData, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 func (m *mockTenantStore) GetTenantsByIDs(context.Context, []uuid.UUID) ([]store.TenantData, error) {
 	return nil, nil
+}
+func (m *mockTenantStore) IsOwner(context.Context, uuid.UUID, string) (bool, error) {
+	return false, nil
+}
+func (m *mockTenantStore) CountOwners(context.Context, uuid.UUID) (int, error) {
+	return 0, nil
+}
+func (m *mockTenantStore) GetTenantUserByUser(context.Context, uuid.UUID, string) (*store.TenantUserData, error) {
+	return nil, nil
+}
+func (m *mockTenantStore) UpdateOwnerFlag(context.Context, uuid.UUID, string, bool) error {
+	return nil
 }
 
 type mockPairingStore struct {

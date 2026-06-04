@@ -299,5 +299,13 @@ func init() {
 		MsgRoleUnassigned:             "đã bỏ gán vai trò",
 		MsgRoleDeleteBlocked:          "không thể xóa vai trò: đã gán cho %d thành viên hoặc nhóm",
 		MsgGroupDeleteBlockedChildren: "không thể xóa nhóm: có %d nhóm con",
+
+		// Tenant User CRUD
+		MsgSelfDeleteBlocked:    "Không thể xóa tài khoản của chính bạn",
+		MsgLastOwnerBlocked:     "Không thể xóa chủ sở hữu cuối cùng của tenant",
+		MsgTargetRoleForbidden:  "Không đủ quyền đối với vai trò của người dùng mục tiêu",
+		MsgFieldNotUpdatable:    "Trường %s không thể cập nhật",
+		MsgTenantNotActive:      "Tenant không hoạt động",
+		MsgRoleNotPermitted:     "Vai trò %s không được phép cho thao tác này",
 	})
 }

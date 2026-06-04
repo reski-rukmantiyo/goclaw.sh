@@ -36,28 +36,28 @@ func (s *SQLiteUserStore) Create(ctx context.Context, user *store.UserData) erro
 	user.UpdatedAt = now
 
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO users (id, email, display_name, avatar_url, auth_provider, password_hash, status, last_login_at, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO users (id, email, display_name, avatar_url, auth_provider, password_hash, status, phone, last_login_at, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.ID.String(), user.Email, user.DisplayName, user.AvatarURL,
 		user.AuthProvider, user.PasswordHash,
-		user.Status, user.LastLoginAt, user.CreatedAt, user.UpdatedAt,
+		user.Status, user.Phone, user.LastLoginAt, user.CreatedAt, user.UpdatedAt,
 	)
 	return err
 }
 
-const userCols = `id, email, display_name, avatar_url, auth_provider, password_hash, status, last_login_at, created_at, updated_at`
+const userCols = `id, email, display_name, avatar_url, auth_provider, password_hash, status, phone, last_login_at, created_at, updated_at`
 
 func scanUser(row interface{ Scan(dest ...any) error }) (*store.UserData, error) {
 	var u store.UserData
 	var id string
-	var avatarURL, passwordHash *string
+	var avatarURL, passwordHash, phone *string
 	var lastLoginAt nullSqliteTime
 	createdAt, updatedAt := scanTimePair()
 
 	err := row.Scan(
 		&id, &u.Email, &u.DisplayName, &avatarURL,
 		&u.AuthProvider, &passwordHash,
-		&u.Status, &lastLoginAt, createdAt, updatedAt,
+		&u.Status, &phone, &lastLoginAt, createdAt, updatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -69,6 +69,7 @@ func scanUser(row interface{ Scan(dest ...any) error }) (*store.UserData, error)
 	}
 	u.AvatarURL = avatarURL
 	u.PasswordHash = passwordHash
+	u.Phone = phone
 	if lastLoginAt.Valid {
 		u.LastLoginAt = &lastLoginAt.Time
 	}
@@ -141,8 +142,8 @@ func (s *SQLiteUserStore) Update(ctx context.Context, user *store.UserData) erro
 	user.UpdatedAt = now
 
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE users SET display_name = ?, avatar_url = ?, updated_at = ? WHERE id = ?`,
-		user.DisplayName, user.AvatarURL, now, user.ID.String(),
+		`UPDATE users SET display_name = ?, avatar_url = ?, phone = ?, updated_at = ? WHERE id = ?`,
+		user.DisplayName, user.AvatarURL, user.Phone, now, user.ID.String(),
 	)
 	if err != nil {
 		return err

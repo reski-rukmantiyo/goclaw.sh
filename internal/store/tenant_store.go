@@ -83,4 +83,13 @@ type TenantStore interface {
 	// CreateTenantUserReturning creates a tenant_user and returns the row.
 	// On conflict (tenant_id, user_id), updates display_name and returns existing row.
 	CreateTenantUserReturning(ctx context.Context, tenantID uuid.UUID, userID, displayName string) (*TenantUserData, error)
+
+	// CountOwners returns the number of tenant_users with is_owner=true for a tenant.
+	CountOwners(ctx context.Context, tenantID uuid.UUID) (int, error)
+
+	// GetTenantUserByUser returns the tenant_user record for a specific (tenantID, userID) pair.
+	GetTenantUserByUser(ctx context.Context, tenantID uuid.UUID, userID string) (*TenantUserData, error)
+
+	// UpdateOwnerFlag sets or clears the is_owner flag for a tenant_user membership.
+	UpdateOwnerFlag(ctx context.Context, tenantID uuid.UUID, userID string, isOwner bool) error
 }
