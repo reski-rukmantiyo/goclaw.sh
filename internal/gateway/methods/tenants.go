@@ -127,61 +127,6 @@ func (m *TenantsMethods) resolveRoleFromPermissions(ctx context.Context, tenantI
 
 // seedSystemRoles creates the default system roles (Admin, Member, Viewer)
 // for a newly created tenant. Mirrors migration 000083 seed data.
-func (m *TenantsMethods) seedSystemRoles(ctx context.Context, tenantID uuid.UUID) {
-	if m.roleStore == nil {
-		return
-	}
-
-	type sysRole struct {
-		name        string
-		description string
-		permissions []string
-	}
-	roles := []sysRole{
-		{
-			name:        "Admin",
-			description: "Full tenant administration",
-			permissions: permissions.AdminSeedPermissions,
-		},
-		{
-			name:        "Member",
-			description: "Regular member",
-			permissions: []string{
-				"group.list", "group.get", "group.view_hierarchy",
-				"artifact.upload_personal", "artifact.submit_review",
-				"agent.create_personal", "artifact.view_group",
-				"artifact.view_tenant", "artifact.delete_own",
-			},
-		},
-		{
-			name:        "Viewer",
-			description: "Read-only access",
-			permissions: []string{
-				"group.list", "group.get",
-				"artifact.view_group", "artifact.view_tenant",
-			},
-		},
-	}
-
-	for _, r := range roles {
-		rd := &store.RoleData{
-			ID:          store.GenNewID(),
-			TenantID:    tenantID,
-			Name:        r.name,
-			Description: &r.description,
-			IsSystem:    true,
-			Permissions: r.permissions,
-		}
-		if err := m.roleStore.CreateRole(ctx, rd); err != nil {
-			slog.Warn("tenants.seed_roles.create_failed", "tenant_id", tenantID, "role", r.name, "error", err)
-			continue
-		}
-		if err := m.roleStore.SetRolePermissions(ctx, rd.ID, r.permissions); err != nil {
-			slog.Warn("tenants.seed_roles.perms_failed", "tenant_id", tenantID, "role", r.name, "error", err)
-		}
-	}
-}
-
 func (m *TenantsMethods) handleList(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
 	locale := store.LocaleFromContext(ctx)
 	if !slices.Contains(m.ownerIDs, client.UserID()) {
@@ -286,7 +231,7 @@ func (m *TenantsMethods) handleCreate(ctx context.Context, client *gateway.Clien
 	}
 
 	// Seed default system roles for the new tenant.
-	m.seedSystemRoles(ctx, tenant.ID)
+	permissions.SeedSystemRoles(ctx, m.roleStore, tenant.ID)
 
 	// Provision tenant database if infrastructure available
 	if m.tenantDBConnStore != nil && m.masterDB != nil {
@@ -669,6 +614,13 @@ func (m *TenantsMethods) handleUsersUpdateRole(ctx context.Context, client *gate
 	}
 
 	m.emitCacheInvalidate(bus.CacheKindTenantUsers, params.UserID)
+
+	// Notify affected user's WS sessions to force reconnect with updated role
+	m.msgBus.Broadcast(bus.Event{
+		Name:    protocol.EventTenantAccessRevoked,
+		Payload: map[string]string{"user_id": params.UserID, "tenant_id": tid.String()},
+	})
+
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]string{"ok": "true"}))
 }
 

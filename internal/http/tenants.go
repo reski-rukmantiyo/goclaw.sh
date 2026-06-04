@@ -120,7 +120,7 @@ func (h *TenantsHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Seed default system roles for the new tenant.
-	h.seedSystemRoles(r.Context(), tenant.ID)
+	permissions.SeedSystemRoles(r.Context(), h.roleStore, tenant.ID)
 
 	// Provision tenant database if infrastructure available
 	if h.tenantDBConnStore != nil && h.masterDB != nil {
@@ -256,6 +256,20 @@ func (h *TenantsHandler) handleUsersList(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgInvalidID, "tenant")})
 		return
+	}
+
+	// Non-owner callers must be a member of the requested tenant.
+	if !h.isCallerOwnerOrGateway(ctx, tenantID) {
+		callerID := store.UserIDFromContext(ctx)
+		if callerID == "" {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgPermissionDenied, "tenants.users.list")})
+			return
+		}
+		membership, mErr := h.tenantStore.GetTenantUserByUser(ctx, tenantID, callerID)
+		if mErr != nil || membership == nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgPermissionDenied, "tenants.users.list")})
+			return
+		}
 	}
 
 	users, err := h.tenantStore.ListUsers(ctx, tenantID)
@@ -521,61 +535,6 @@ func capitalizeRole(role string) string {
 
 // seedSystemRoles creates the default system roles (Admin, Member, Viewer)
 // for a newly created tenant. Mirrors migration 000083 seed data.
-func (h *TenantsHandler) seedSystemRoles(ctx context.Context, tenantID uuid.UUID) {
-	if h.roleStore == nil {
-		return
-	}
-
-	type sysRole struct {
-		name        string
-		description string
-		permissions []string
-	}
-	roles := []sysRole{
-		{
-			name:        "Admin",
-			description: "Full tenant administration",
-			permissions: permissions.AdminSeedPermissions,
-		},
-		{
-			name:        "Member",
-			description: "Regular member",
-			permissions: []string{
-				"group.list", "group.get", "group.view_hierarchy",
-				"artifact.upload_personal", "artifact.submit_review",
-				"agent.create_personal", "artifact.view_group",
-				"artifact.view_tenant", "artifact.delete_own",
-			},
-		},
-		{
-			name:        "Viewer",
-			description: "Read-only access",
-			permissions: []string{
-				"group.list", "group.get",
-				"artifact.view_group", "artifact.view_tenant",
-			},
-		},
-	}
-
-	for _, r := range roles {
-		rd := &store.RoleData{
-			ID:          store.GenNewID(),
-			TenantID:    tenantID,
-			Name:        r.name,
-			Description: &r.description,
-			IsSystem:    true,
-			Permissions: r.permissions,
-		}
-		if err := h.roleStore.CreateRole(ctx, rd); err != nil {
-			slog.Warn("tenants.seed_roles.create_failed", "tenant_id", tenantID, "role", r.name, "error", err)
-			continue
-		}
-		if err := h.roleStore.SetRolePermissions(ctx, rd.ID, r.permissions); err != nil {
-			slog.Warn("tenants.seed_roles.perms_failed", "tenant_id", tenantID, "role", r.name, "error", err)
-		}
-	}
-}
-
 // ──────────────────────────────────────────────────────────────
 // Target-role-aware authorization helpers
 // ──────────────────────────────────────────────────────────────
@@ -893,6 +852,15 @@ func (h *TenantsHandler) handleUsersUpdateRole(w http.ResponseWriter, r *http.Re
 
 	h.emitCacheInvalidate(bus.CacheKindTenantUsers, normalized)
 	emitAudit(h.msgBus, r, "tenant.user.role_changed", "tenant_user", normalized)
+
+	// Notify affected user's WS sessions to force reconnect with updated role
+	if h.msgBus != nil {
+		h.msgBus.Broadcast(bus.Event{
+			Name:    protocol.EventTenantAccessRevoked,
+			Payload: map[string]string{"user_id": normalized, "tenant_id": tenantID.String()},
+		})
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "role_updated"})
 }
 

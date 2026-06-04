@@ -366,8 +366,8 @@ func resolveJWTRole(ctx context.Context, userID string, tenantID uuid.UUID) perm
 			return permissions.RoleViewer
 		}
 	}
-	// Safe fallback when caches are unavailable
-	return permissions.RoleViewer
+	// Safe fallback when caches are unavailable — tenant membership exists (SRS §6.1.1 step 4).
+	return permissions.RoleMember
 }
 
 func resolveTenantHint(ctx context.Context, hint, userID string) (uuid.UUID, bool) {

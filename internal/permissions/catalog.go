@@ -54,6 +54,17 @@ const (
 	PermSystemViewHealth     Permission = "system.view_health"
 )
 
+// Artifact and agent permissions (used in Member/Viewer seed roles).
+const (
+	PermArtifactUploadPersonal Permission = "artifact.upload_personal"
+	PermArtifactSubmitReview   Permission = "artifact.submit_review"
+	PermArtifactViewGroup      Permission = "artifact.view_group"
+	PermArtifactViewTenant     Permission = "artifact.view_tenant"
+	PermArtifactDeleteOwn      Permission = "artifact.delete_own"
+	PermAgentCreatePersonal    Permission = "agent.create_personal"
+	PermGroupViewHierarchy     Permission = "group.view_hierarchy"
+)
+
 // AdminSeedPermissions is the canonical set of permissions assigned to the Admin
 // system role when a new tenant is created. Both the HTTP and WS seedSystemRoles
 // functions must use this slice — do NOT inline the list.
@@ -86,5 +97,7 @@ func AllPermissions() []Permission {
 		PermRoleList, PermRoleGet, PermRoleCreate, PermRoleUpdate, PermRoleDelete,
 		PermAuditViewAll, PermAuditViewGroup, PermAuditExport,
 		PermSystemManageSettings, PermSystemManageAuth, PermSystemViewHealth,
+		PermArtifactUploadPersonal, PermArtifactSubmitReview, PermArtifactViewGroup, PermArtifactViewTenant, PermArtifactDeleteOwn,
+		PermAgentCreatePersonal, PermGroupViewHierarchy,
 	}
 }

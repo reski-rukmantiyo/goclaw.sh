@@ -128,15 +128,16 @@ type GroupListResult struct {
 
 // AuditListParams controls pagination and filtering for audit logs.
 type AuditListParams struct {
-	Offset       int
-	Limit        int
-	Action       string
-	ResourceType string
-	ResourceID   *uuid.UUID
-	GroupID      *uuid.UUID
-	ActorID      *uuid.UUID
-	FromTime     *time.Time
-	ToTime       *time.Time
+	Offset            int
+	Limit             int
+	Action            string
+	ResourceType      string
+	ResourceID        *uuid.UUID
+	GroupID           *uuid.UUID
+	ActorID           *uuid.UUID
+	FromTime          *time.Time
+	ToTime            *time.Time
+	ExcludeActorRoles []string // When set, exclude entries from actors with these effective roles
 }
 
 // GroupStore manages groups, memberships, and join requests.

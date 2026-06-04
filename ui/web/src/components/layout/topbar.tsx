@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { useUiStore } from "@/stores/use-ui-store";
 import { useAuthStore } from "@/stores/use-auth-store";
+import { useRole } from "@/hooks/use-role";
 import { useTenants } from "@/hooks/use-tenants";
 import { useIsMobile } from "@/hooks/use-media-query";
 import { useEmbeddingStatus } from "@/hooks/use-embedding-status";
@@ -35,8 +36,7 @@ export function Topbar({ settingsOpen, onSettingsOpenChange }: TopbarProps) {
   const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   const { status: embStatus } = useEmbeddingStatus();
   const setSettingsOpen = onSettingsOpenChange;
-  const role = useAuthStore((s) => s.role);
-  const isAdmin = role === "admin" || role === "owner";
+  const { isAdmin } = useRole();
 
   const handleSidebarToggle = isMobile
     ? () => setMobileSidebarOpen(true)

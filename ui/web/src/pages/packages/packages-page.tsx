@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { useAuthStore } from "@/stores/use-auth-store";
+import { useRole } from "@/hooks/use-role";
 import { usePackages } from "./hooks/use-packages";
 import { usePackageRuntimes } from "./hooks/use-package-runtimes";
 import { RuntimesStickyHeader } from "./runtimes-sticky-header";
@@ -27,12 +27,6 @@ const GithubBinariesTab = lazy(() =>
 const CliCredentialsTab = lazy(() =>
   import("./tabs/cli-credentials-tab").then((m) => ({ default: m.CliCredentialsTab }))
 );
-
-// --- Permission helper (mirrors require-role.tsx logic) ---
-function hasMinRole(role: string, minRole: string): boolean {
-  const levels: Record<string, number> = { owner: 4, admin: 3, member: 2, viewer: 1 };
-  return (levels[role] ?? 0) >= (levels[minRole] ?? 0);
-}
 
 // --- Valid tab ids ---
 const VALID_TABS = ["system", "python", "node", "github", "cli-credentials"] as const;
@@ -56,8 +50,8 @@ export function PackagesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { refresh } = usePackages();
   const { refresh: refreshRuntimes } = usePackageRuntimes();
-  const role = useAuthStore((s) => s.role);
-  const canSeeCliCredentials = hasMinRole(role, "member");
+  const { hasMinRole } = useRole();
+  const canSeeCliCredentials = hasMinRole("member");
 
   // Validate tab param — fall back to "system" for unknown values
   const rawTab = searchParams.get("tab");
