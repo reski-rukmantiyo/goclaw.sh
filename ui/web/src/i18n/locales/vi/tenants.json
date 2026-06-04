@@ -40,5 +40,22 @@
   "authSaveFailed": "Không thể lưu cài đặt xác thực",
   "updateRole": "Cập nhật vai trò",
   "roleUpdated": "Đã cập nhật vai trò",
-  "roleUpdateFailed": "Không thể cập nhật vai trò"
+  "roleUpdateFailed": "Không thể cập nhật vai trò",
+  "createUser": "Tạo người dùng",
+  "createUserTitle": "Tạo người dùng mới",
+  "email": "Email",
+  "phone": "Số điện thoại",
+  "password": "Mật khẩu",
+  "confirmPassword": "Xác nhận mật khẩu",
+  "displayName": "Tên hiển thị",
+  "selfDeleteBlocked": "Không thể xóa tài khoản của chính bạn",
+  "lastOwnerBlocked": "Không thể xóa chủ sở hữu cuối cùng",
+  "userCreated": "Đã tạo người dùng thành công",
+  "userDeleted": "Đã xóa người dùng thành công",
+  "userUpdated": "Đã cập nhật người dùng thành công",
+  "createUserFailed": "Không thể tạo người dùng",
+  "deleteUserFailed": "Không thể xóa người dùng",
+  "updateUserFailed": "Không thể cập nhật người dùng",
+  "passwordHint": "Phải chứa chữ hoa và ký tự đặc biệt",
+  "orEnrollExisting": "Hoặc thêm người dùng đã có"
 }

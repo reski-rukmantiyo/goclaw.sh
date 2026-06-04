@@ -1416,17 +1416,41 @@ Notes:
 
 ## 32. Tenants
 
-Multi-tenant management (admin only).
+Multi-tenant management (admin only). Tenant user CRUD uses target-role-aware authorization — see [SRS: Tenant-Scoped User CRUD](srs/tenant-user-crud.md) for full specification.
+
+### Tenant CRUD
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/v1/tenants` | List tenants |
-| `POST` | `/v1/tenants` | Create tenant |
+| `GET` | `/v1/tenants` | List tenants (master-scope only) |
+| `POST` | `/v1/tenants/{id}` | Create tenant (owner only) |
 | `GET` | `/v1/tenants/{id}` | Get tenant |
-| `PATCH` | `/v1/tenants/{id}` | Update tenant |
-| `GET` | `/v1/tenants/{id}/users` | List tenant users |
-| `POST` | `/v1/tenants/{id}/users` | Add user to tenant |
-| `DELETE` | `/v1/tenants/{id}/users/{userId}` | Remove user from tenant |
+| `PATCH` | `/v1/tenants/{id}` | Update tenant name/status/settings |
+| `DELETE` | `/v1/tenants/{id}` | Delete tenant |
+
+### Tenant User Management
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/v1/tenants/{id}/users` | Admin+ | List users (enriched with email, phone, role) |
+| `POST` | `/v1/tenants/{id}/users` | Admin+ | Create new user + enroll, or enroll existing user |
+| `GET` | `/v1/tenants/{id}/users/{userId}` | Admin+ | Get single tenant user |
+| `PUT` | `/v1/tenants/{id}/users/{userId}` | Admin+ | Update display_name, phone |
+| `PUT` | `/v1/tenants/{id}/users/{userId}/role` | Owner only | Change user role (owner toggle, RBAC assignment) |
+| `DELETE` | `/v1/tenants/{id}/users/{userId}` | Admin+ | Remove user (self-delete blocked, last-owner guarded) |
+
+**Auth column:** Admin+ = minimum gateway `RoleAdmin`. Owner only = gateway `RoleOwner` or per-tenant `is_owner=true`. Admin callers are restricted to Member/Viewer targets only.
+
+**POST dual mode:**
+- Create mode: `{ "email", "display_name", "phone", "password", "role" }` → creates new user + enrolls
+- Enroll mode: `{ "user_id", "role" }` → enrolls existing user
+
+**Guards:**
+- Self-deletion: caller ID matches target → 422
+- Last-owner: removing sole owner → 409
+- Admin creating Owner/Admin → 403
+- Admin reading/updating/deleting Owner/Admin → 403
+- Admin changing any role → 403
 
 ---
 

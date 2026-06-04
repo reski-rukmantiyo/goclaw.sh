@@ -40,5 +40,22 @@
   "authSaveFailed": "Failed to save authentication settings",
   "updateRole": "Update Role",
   "roleUpdated": "Role updated",
-  "roleUpdateFailed": "Failed to update role"
+  "roleUpdateFailed": "Failed to update role",
+  "createUser": "Create User",
+  "createUserTitle": "Create New User",
+  "email": "Email",
+  "phone": "Phone",
+  "password": "Password",
+  "confirmPassword": "Confirm Password",
+  "displayName": "Display Name",
+  "selfDeleteBlocked": "Cannot delete your own account",
+  "lastOwnerBlocked": "Cannot remove the last owner",
+  "userCreated": "User created successfully",
+  "userDeleted": "User removed successfully",
+  "userUpdated": "User updated successfully",
+  "createUserFailed": "Failed to create user",
+  "deleteUserFailed": "Failed to remove user",
+  "updateUserFailed": "Failed to update user",
+  "passwordHint": "Must contain uppercase letter and symbol",
+  "orEnrollExisting": "Or enroll an existing user"
 }

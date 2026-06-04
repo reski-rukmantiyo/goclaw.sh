@@ -1,14 +1,28 @@
 import { useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import i18next from "i18next";
-import { useWs } from "@/hooks/use-ws";
+import { useWs, useHttp } from "@/hooks/use-ws";
 import { queryKeys } from "@/lib/query-keys";
 import { toast } from "@/stores/use-toast-store";
 import { Methods } from "@/api/protocol";
 import type { TenantData, TenantUserData } from "@/types/tenant";
 
+interface CreateUserInput {
+  email: string;
+  display_name: string;
+  phone?: string;
+  password: string;
+  role: string;
+}
+
+interface UpdateUserInput {
+  display_name?: string;
+  phone?: string;
+}
+
 export function useTenantDetail(tenantId: string) {
   const ws = useWs();
+  const http = useHttp();
   const queryClient = useQueryClient();
 
   const { data: tenant, isLoading: tenantLoading } = useQuery({
@@ -41,47 +55,74 @@ export function useTenantDetail(tenantId: string) {
     [queryClient, tenantId],
   );
 
-  const addUser = useCallback(
-    async (userId: string, role: string) => {
-      try {
-        await ws.call(Methods.TENANTS_USERS_ADD, { tenant_id: tenantId, user_id: userId, role });
-        await invalidateUsers();
-        toast.success(i18next.t("tenants:addUser"), userId);
-      } catch (err) {
-        toast.error(i18next.t("tenants:addUser"), err instanceof Error ? err.message : "");
-        throw err;
-      }
-    },
-    [ws, tenantId, invalidateUsers],
-  );
+  // --- HTTP mutations ---
 
-  const removeUser = useCallback(
-    async (userId: string) => {
-      try {
-        await ws.call(Methods.TENANTS_USERS_REMOVE, { tenant_id: tenantId, user_id: userId });
-        await invalidateUsers();
-        toast.success(i18next.t("tenants:removeUser"), userId);
-      } catch (err) {
-        toast.error(i18next.t("tenants:removeUser"), err instanceof Error ? err.message : "");
-        throw err;
-      }
+  const createUserMutation = useMutation({
+    mutationFn: async (input: CreateUserInput) => {
+      return http.post(`/v1/tenants/${tenantId}/users`, input);
     },
-    [ws, tenantId, invalidateUsers],
-  );
+    onSuccess: () => {
+      invalidateUsers();
+      toast.success(i18next.t("tenants:userCreated"));
+    },
+    onError: (err: Error) => {
+      toast.error(i18next.t("tenants:createUserFailed"), err.message);
+    },
+  });
 
-  const updateUserRole = useCallback(
-    async (userId: string, role: string) => {
-      try {
-        await ws.call(Methods.TENANTS_USERS_UPDATE_ROLE, { tenant_id: tenantId, user_id: userId, role });
-        await invalidateUsers();
-        toast.success(i18next.t("tenants:roleUpdated"));
-      } catch (err) {
-        toast.error(i18next.t("tenants:roleUpdateFailed"), err instanceof Error ? err.message : "");
-        throw err;
-      }
+  const enrollUserMutation = useMutation({
+    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
+      return http.post(`/v1/tenants/${tenantId}/users`, { user_id: userId, role });
     },
-    [ws, tenantId, invalidateUsers],
-  );
+    onSuccess: () => {
+      invalidateUsers();
+      toast.success(i18next.t("tenants:addUser"));
+    },
+    onError: (err: Error) => {
+      toast.error(i18next.t("tenants:addUser"), err.message);
+    },
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: async ({ userId, input }: { userId: string; input: UpdateUserInput }) => {
+      return http.put(`/v1/tenants/${tenantId}/users/${userId}`, input);
+    },
+    onSuccess: () => {
+      invalidateUsers();
+      toast.success(i18next.t("tenants:userUpdated"));
+    },
+    onError: (err: Error) => {
+      toast.error(i18next.t("tenants:updateUserFailed"), err.message);
+    },
+  });
+
+  const removeUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      return http.delete(`/v1/tenants/${tenantId}/users/${userId}`);
+    },
+    onSuccess: () => {
+      invalidateUsers();
+      toast.success(i18next.t("tenants:userDeleted"));
+    },
+    onError: (err: Error) => {
+      toast.error(i18next.t("tenants:deleteUserFailed"), err.message);
+    },
+  });
+
+  const updateUserRoleMutation = useMutation({
+    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
+      return http.put(`/v1/tenants/${tenantId}/users/${userId}/role`, { role });
+    },
+    onSuccess: () => {
+      invalidateUsers();
+      toast.success(i18next.t("tenants:roleUpdated"));
+    },
+    onError: (err: Error) => {
+      toast.error(i18next.t("tenants:roleUpdateFailed"), err.message);
+    },
+  });
+
+  // --- WS-based tenant ops (unchanged) ---
 
   const updateTenantName = useCallback(
     async (name: string) => {
@@ -118,9 +159,19 @@ export function useTenantDetail(tenantId: string) {
     usersLoading,
     usersRefreshing,
     refreshUsers: invalidateUsers,
-    addUser,
-    removeUser,
-    updateUserRole,
+    // HTTP mutations
+    createUser: createUserMutation.mutateAsync,
+    enrollUser: enrollUserMutation.mutateAsync,
+    updateUser: updateUserMutation.mutateAsync,
+    removeUser: removeUserMutation.mutateAsync,
+    updateUserRole: updateUserRoleMutation.mutateAsync,
+    // Pending flags
+    isCreating: createUserMutation.isPending,
+    isEnrolling: enrollUserMutation.isPending,
+    isUpdating: updateUserMutation.isPending,
+    isRemoving: removeUserMutation.isPending,
+    isSavingRole: updateUserRoleMutation.isPending,
+    // WS mutations
     updateTenantName,
     deleteTenant,
   };
