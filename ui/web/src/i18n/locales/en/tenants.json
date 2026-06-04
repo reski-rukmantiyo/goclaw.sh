@@ -57,5 +57,10 @@
   "deleteUserFailed": "Failed to remove user",
   "updateUserFailed": "Failed to update user",
   "passwordHint": "Must contain uppercase letter and symbol",
-  "orEnrollExisting": "Or enroll an existing user"
+  "orEnrollExisting": "Or enroll an existing user",
+  "tabs": {
+    "users": "Users",
+    "roles": "Roles",
+    "groups": "Groups"
+  }
 }

@@ -16,6 +16,7 @@ export interface RoleInfo {
   isAdmin: boolean;
   isMember: boolean;
   isViewer: boolean;
+  isGatewayToken: boolean;
   hasMinRole: (min: UserRole | string) => boolean;
 }
 
@@ -29,6 +30,7 @@ export interface RoleInfo {
  */
 export function useRole(): RoleInfo {
   const role = useAuthStore((s) => s.role) as UserRole;
+  const isGatewayToken = useAuthStore((s) => s.isGatewayToken);
   const { isOwner: isTenantOwner } = useTenants();
 
   return {
@@ -37,6 +39,7 @@ export function useRole(): RoleInfo {
     isAdmin: role === "admin" || role === "owner",
     isMember: role === "member" || role === "admin" || role === "owner",
     isViewer: role === "viewer",
+    isGatewayToken,
     hasMinRole: (min) => (ROLE_LEVELS[role] ?? 0) >= (ROLE_LEVELS[min] ?? 0),
   };
 }

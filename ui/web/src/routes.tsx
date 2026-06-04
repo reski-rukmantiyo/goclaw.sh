@@ -4,7 +4,7 @@ import { LOCAL_STORAGE_KEYS } from "@/lib/constants";
 import { route } from "@/lib/routes";
 import { AppLayout } from "@/components/layout/app-layout";
 import { RequireAuth } from "@/components/shared/require-auth";
-import { RequireAdmin, RequireCrossTenant, RequireMember } from "@/components/shared/require-role";
+import { RequireAdmin, RequireCrossTenant, RequireMember, RequireOwner } from "@/components/shared/require-role";
 import { RequireSetup } from "@/components/shared/require-setup";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
 import { ROUTES } from "@/lib/constants";
@@ -110,6 +110,9 @@ const ApiKeysPage = lazyWithRetry(() =>
 const PackagesPage = lazyWithRetry(() =>
   import("@/pages/packages/packages-page").then((m) => ({ default: m.PackagesPage })),
 );
+const CliCredentialsPage = lazyWithRetry(() =>
+  import("@/pages/cli-credentials/cli-credentials-page").then((m) => ({ default: m.CliCredentialsPage })),
+);
 const TenantsAdminPage = lazyWithRetry(() =>
   import("@/pages/tenants-admin/tenants-admin-page").then((m) => ({ default: m.TenantsAdminPage })),
 );
@@ -198,7 +201,7 @@ export function AppRoutes() {
             <Route path="chat/:sessionKey?" element={<ChatPage />} />
             <Route path="agents" element={<RequireMember><AgentsPage key="list" /></RequireMember>} />
             <Route path="import-export" element={<RequireAdmin><ImportExportPage /></RequireAdmin>} />
-            <Route path="backup-restore" element={<RequireAdmin><BackupRestorePage /></RequireAdmin>} />
+            <Route path="backup-restore" element={<RequireOwner><BackupRestorePage /></RequireOwner>} />
             <Route path="agents/:id/codex-pool" element={<RequireAdmin><AgentCodexPoolPage /></RequireAdmin>} />
             <Route path="agents/:id" element={<RequireMember><AgentsPage key="detail" /></RequireMember>} />
             <Route path="teams" element={<RequireMember><TeamsPage key="list" /></RequireMember>} />
@@ -215,7 +218,7 @@ export function AppRoutes() {
             <Route path="config" element={<RequireCrossTenant><ConfigPage /></RequireCrossTenant>} />
             <Route path="providers" element={<RequireAdmin><ProvidersPage key="list" /></RequireAdmin>} />
             <Route path="providers/:id" element={<RequireAdmin><ProvidersPage key="detail" /></RequireAdmin>} />
-            <Route path="cli-credentials" element={<Navigate to="../packages?tab=cli-credentials" replace />} />
+            <Route path="cli-credentials" element={<RequireMember><CliCredentialsPage /></RequireMember>} />
             <Route path="api-keys" element={<RequireMember><ApiKeysPage /></RequireMember>} />
             <Route path="channels" element={<RequireMember><ChannelsPage key="list" /></RequireMember>} />
             <Route path="channels/:id" element={<RequireMember><ChannelsPage key="detail" /></RequireMember>} />
@@ -226,10 +229,10 @@ export function AppRoutes() {
             <Route path="mcp" element={<RequireMember><MCPPage /></RequireMember>} />
             <Route path="tts" element={<RequireMember><TtsPage /></RequireMember>} />
             <Route path="storage" element={<RequireMember><StoragePage /></RequireMember>} />
-            <Route path="packages" element={<RequireMember><PackagesPage /></RequireMember>} />
+            <Route path="packages" element={<RequireAdmin><PackagesPage /></RequireAdmin>} />
             <Route path="authentication" element={<RequireAdmin><TenantAuthPage /></RequireAdmin>} />
-            <Route path="admin/tenants" element={<RequireCrossTenant><TenantsAdminPage /></RequireCrossTenant>} />
-            <Route path="admin/tenants/:id" element={<RequireCrossTenant><TenantDetailPage /></RequireCrossTenant>} />
+            <Route path="admin/tenants" element={<RequireOwner><TenantsAdminPage /></RequireOwner>} />
+            <Route path="admin/tenants/:id" element={<RequireAdmin><TenantDetailPage /></RequireAdmin>} />
             <Route path="admin/users" element={<RequireAdmin><UsersAdminPage /></RequireAdmin>} />
             <Route path="admin/users/:id" element={<RequireAdmin><UsersAdminPage /></RequireAdmin>} />
             <Route path="admin/groups" element={<RequireAdmin><GroupsAdminPage /></RequireAdmin>} />

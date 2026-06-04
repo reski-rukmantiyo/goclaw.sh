@@ -57,5 +57,10 @@
   "deleteUserFailed": "Không thể xóa người dùng",
   "updateUserFailed": "Không thể cập nhật người dùng",
   "passwordHint": "Phải chứa chữ hoa và ký tự đặc biệt",
-  "orEnrollExisting": "Hoặc thêm người dùng đã có"
+  "orEnrollExisting": "Hoặc thêm người dùng đã có",
+  "tabs": {
+    "users": "Người dùng",
+    "roles": "Vai trò",
+    "groups": "Nhóm"
+  }
 }

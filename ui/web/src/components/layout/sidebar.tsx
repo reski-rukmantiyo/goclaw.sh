@@ -55,7 +55,7 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
   const { t } = useTranslation("sidebar");
   const { pendingCount } = usePendingPairingsCount();
   const { isOwner, currentTenantSlug } = useTenants();
-  const { isAdmin, isMember } = useRole();
+  const { isAdmin, isMember, isGatewayToken } = useRole();
 
   return (
     <aside
@@ -157,7 +157,7 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
         {isMember && (
         <SidebarGroup label={t("groups.system")} collapsed={collapsed}>
           <SidebarItem to={route(currentTenantSlug, ROUTES.AUDIT_LOG)} icon={FileText} label={t("nav.auditLog")} collapsed={collapsed} />
-          {isAdmin && (
+          {isAdmin && !isGatewayToken && (
             <>
               <SidebarItem to={route(currentTenantSlug, ROUTES.USER_MGMT)} icon={Users} label={t("nav.userMgmt")} collapsed={collapsed} />
               <SidebarItem to={route(currentTenantSlug, ROUTES.GROUPS)} icon={FolderTree} label={t("nav.groups")} collapsed={collapsed} />

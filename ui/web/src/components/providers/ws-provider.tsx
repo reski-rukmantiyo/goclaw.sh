@@ -99,6 +99,7 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
           store.setPermissions([]);
           store.setAvailableTenants([]);
           store.setTenantSelected(false);
+          store.setIsGatewayToken(false);
         }
       },
     );

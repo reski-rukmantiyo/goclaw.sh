@@ -21,6 +21,7 @@ export function LoginPage() {
   const senderID = useAuthStore((s) => s.senderID);
   const setCredentials = useAuthStore((s) => s.setCredentials);
   const setPairing = useAuthStore((s) => s.setPairing);
+  const setIsGatewayToken = useAuthStore((s) => s.setIsGatewayToken);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -37,11 +38,13 @@ export function LoginPage() {
 
   function handleTokenLogin(userId: string, token: string) {
     setCredentials(token, userId);
+    setIsGatewayToken(true);
     navigate(from, { replace: true });
   }
 
   function handlePairingApproved(senderID: string, userId: string) {
     setPairing(senderID, userId);
+    setIsGatewayToken(false);
     setTimeout(() => navigate(from, { replace: true }), 500);
   }
 
@@ -50,6 +53,7 @@ export function LoginPage() {
       localStorage.setItem(LOCAL_STORAGE_KEYS.TENANT_ID, tenantSlug);
     }
     setCredentials(accessToken, userId);
+    setIsGatewayToken(false);
     navigate(from, { replace: true });
   }
 

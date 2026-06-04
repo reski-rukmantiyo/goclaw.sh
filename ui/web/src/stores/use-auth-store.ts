@@ -23,6 +23,7 @@ interface AuthState {
   permissions: string[]; // effective permissions from /v1/users/me/permissions
   availableTenants: TenantMembership[];
   tenantSelected: boolean; // true after user picks a tenant (or auto-selected)
+  isGatewayToken: boolean; // true when logged in via Gateway Auth Token
 
   setCredentials: (token: string, userId: string) => void;
   setPairing: (senderID: string, userId: string) => void;
@@ -33,6 +34,7 @@ interface AuthState {
   setPermissions: (permissions: string[]) => void;
   setAvailableTenants: (tenants: TenantMembership[]) => void;
   setTenantSelected: (selected: boolean) => void;
+  setIsGatewayToken: (value: boolean) => void;
   logout: () => void;
 }
 
@@ -71,6 +73,7 @@ export const useAuthStore = create<AuthState>()(
       permissions: [],
       availableTenants: [],
       tenantSelected: !!localStorage.getItem(LOCAL_STORAGE_KEYS.TENANT_ID),
+      isGatewayToken: false,
 
       setCredentials: (token, userId) => {
         set({ token, userId });
@@ -108,6 +111,10 @@ export const useAuthStore = create<AuthState>()(
         set({ tenantSelected: selected });
       },
 
+      setIsGatewayToken: (value) => {
+        set({ isGatewayToken: value });
+      },
+
       logout: () => {
         // Remove tenant scope keys that are still managed outside persist
         localStorage.removeItem("goclaw:tenant_id");
@@ -117,7 +124,7 @@ export const useAuthStore = create<AuthState>()(
           token: "", userId: "", senderID: "", connected: false, role: "", serverInfo: null,
           tenantId: "", tenantName: "", tenantSlug: "", isOwner: false,
           isMasterScope: false, edition: "standard", permissions: [],
-          availableTenants: [], tenantSelected: false,
+          availableTenants: [], tenantSelected: false, isGatewayToken: false,
         });
       },
     }),
@@ -128,6 +135,7 @@ export const useAuthStore = create<AuthState>()(
         token: state.token,
         userId: state.userId,
         senderID: state.senderID,
+        isGatewayToken: state.isGatewayToken,
       }),
     }
   )
