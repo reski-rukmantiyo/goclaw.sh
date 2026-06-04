@@ -302,116 +302,94 @@ func (h *TenantsHandler) handleUsersAdd(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var input struct {
-		// Enrollment mode (existing user)
-		UserID string `json:"user_id"`
-		// Create mode (new user)
 		Email       string  `json:"email"`
 		DisplayName string  `json:"display_name"`
 		Password    string  `json:"password"`
 		Phone       *string `json:"phone"`
-		// Shared
-		Role string `json:"role"`
+		Role        string  `json:"role"`
 	}
 	if !bindJSON(w, r, locale, &input) {
 		return
 	}
 
-	// Determine mode: create (email) vs enroll (user_id)
-	isCreateMode := input.Email != "" && input.UserID == ""
-	if !isCreateMode && input.UserID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgRequired, "user_id or email")})
+	// Auth: Owner/Gateway can create any role; Admin can only create Member/Viewer
+	isOwnerOrGateway := h.isCallerOwnerOrGateway(ctx, tenantID)
+	isAdmin := h.isCallerAdmin(ctx, tenantID)
+
+	if !isOwnerOrGateway && !isAdmin {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgPermissionDenied, "tenants.users.add")})
 		return
 	}
 
-	var normalized string
-
-	if isCreateMode {
-		// ── Create + enroll mode ──
-		// Auth: Owner/Gateway can create any role; Admin can only create Member/Viewer
-		isOwnerOrGateway := h.isCallerOwnerOrGateway(ctx, tenantID)
-		isAdmin := h.isCallerAdmin(ctx, tenantID)
-
-		if !isOwnerOrGateway && !isAdmin {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgPermissionDenied, "tenants.users.add")})
-			return
-		}
-
-		// Role validation
-		if input.Role == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgRequired, "role")})
-			return
-		}
-		validRoles := map[string]bool{
-			store.TenantRoleOwner: true, store.TenantRoleAdmin: true,
-			store.TenantRoleMember: true, store.TenantRoleViewer: true,
-		}
-		if !validRoles[input.Role] {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": i18n.T(locale, i18n.MsgInvalidRole)})
-			return
-		}
-		// Admin cannot create Owner or Admin
-		if isAdmin && (input.Role == store.TenantRoleOwner || input.Role == store.TenantRoleAdmin) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgRoleNotPermitted, input.Role)})
-			return
-		}
-
-		// Password validation
-		if input.Password == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgRequired, "password")})
-			return
-		}
-		lengthOK, hasUpper, hasSymbol := auth.ValidatePasswordComplexity(input.Password)
-		if !lengthOK || !hasUpper || !hasSymbol {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgAuthPasswordComplexity)})
-			return
-		}
-
-		// Duplicate email check
-		existing, _ := h.userStore.GetByEmail(ctx, input.Email)
-		if existing != nil {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": i18n.T(locale, i18n.MsgAlreadyExists, "email", input.Email)})
-			return
-		}
-
-		// Create user
-		hash, hashErr := auth.HashPassword(input.Password)
-		if hashErr != nil {
-			slog.Error("tenants.users.add hash_password failed", "error", hashErr)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgInternalError, hashErr.Error())})
-			return
-		}
-
-		now := time.Now()
-		newUser := &store.UserData{
-			ID:           uuid.New(),
-			Email:        input.Email,
-			DisplayName:  input.DisplayName,
-			Phone:        input.Phone,
-			AuthProvider: store.AuthProviderLocal,
-			PasswordHash: &hash,
-			Status:       store.UserStatusActive,
-			CreatedAt:    now,
-			UpdatedAt:    now,
-		}
-		if err := h.userStore.Create(ctx, newUser); err != nil {
-			slog.Error("tenants.users.add create_user failed", "error", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgFailedToCreate, "user", err.Error())})
-			return
-		}
-		normalized = newUser.ID.String()
-	} else {
-		// ── Enrollment mode (existing user) ──
-		if !h.isCallerOwnerOrGateway(ctx, tenantID) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgPermissionDenied, "tenants.users.add")})
-			return
-		}
-		normalized, err = base.NormalizeUserID(ctx, h.masterDB, input.UserID)
-		if err != nil {
-			slog.Error("tenants.users.add normalize failed", "error", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgFailedToCreate, "tenant user", err.Error())})
-			return
-		}
+	// Role validation
+	if input.Role == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgRequired, "role")})
+		return
 	}
+	validRoles := map[string]bool{
+		store.TenantRoleOwner: true, store.TenantRoleAdmin: true,
+		store.TenantRoleMember: true, store.TenantRoleViewer: true,
+	}
+	if !validRoles[input.Role] {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": i18n.T(locale, i18n.MsgInvalidRole)})
+		return
+	}
+	// Admin cannot create Owner or Admin (SRS v1.5 §6.5.10)
+	if isAdmin && (input.Role == store.TenantRoleOwner || input.Role == store.TenantRoleAdmin) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgRoleNotPermitted, input.Role)})
+		return
+	}
+
+	// Email required
+	if input.Email == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgRequired, "email")})
+		return
+	}
+
+	// Password validation
+	if input.Password == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgRequired, "password")})
+		return
+	}
+	lengthOK, hasUpper, hasSymbol := auth.ValidatePasswordComplexity(input.Password)
+	if !lengthOK || !hasUpper || !hasSymbol {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgAuthPasswordComplexity)})
+		return
+	}
+
+	// Duplicate email check
+	existing, _ := h.userStore.GetByEmail(ctx, input.Email)
+	if existing != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": i18n.T(locale, i18n.MsgAlreadyExists, "email", input.Email)})
+		return
+	}
+
+	// Create user account
+	hash, hashErr := auth.HashPassword(input.Password)
+	if hashErr != nil {
+		slog.Error("tenants.users.add hash_password failed", "error", hashErr)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgInternalError, hashErr.Error())})
+		return
+	}
+
+	now := time.Now()
+	newUser := &store.UserData{
+		ID:           uuid.New(),
+		Email:        input.Email,
+		DisplayName:  input.DisplayName,
+		Phone:        input.Phone,
+		AuthProvider: store.AuthProviderLocal,
+		PasswordHash: &hash,
+		Status:       store.UserStatusActive,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := h.userStore.Create(ctx, newUser); err != nil {
+		slog.Error("tenants.users.add create_user failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgFailedToCreate, "user", err.Error())})
+		return
+	}
+	normalized := newUser.ID.String()
 
 	isOwner := input.Role == store.TenantRoleOwner
 
@@ -422,7 +400,7 @@ func (h *TenantsHandler) handleUsersAdd(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Assign RBAC role for non-owner users
-	if !isOwner && h.roleStore != nil && input.Role != "" {
+	if !isOwner && h.roleStore != nil {
 		if rbacRole, rErr := h.roleStore.GetRoleByName(ctx, tenantID, capitalizeRole(input.Role)); rErr == nil && rbacRole != nil {
 			if aErr := h.roleStore.AssignUserRole(ctx, tenantID, normalized, rbacRole.ID); aErr != nil {
 				slog.Warn("tenants.users.add rbac_assign_failed", "tenant_id", tenantID, "user_id", normalized, "role", input.Role, "error", aErr)
@@ -620,8 +598,13 @@ func (h *TenantsHandler) checkTenantUserAuth(w http.ResponseWriter, r *http.Requ
 			}
 			return targetRole
 		case "update_role":
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgTargetRoleForbidden)})
-			return ""
+			// Admin can change Member↔Viewer roles (SRS v1.5 §9.7)
+			targetRole := h.resolveTargetRole(ctx, tenantID, targetUserID)
+			if targetRole == store.TenantRoleOwner || targetRole == store.TenantRoleAdmin {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgTargetRoleForbidden)})
+				return ""
+			}
+			return targetRole
 		}
 	}
 
@@ -779,8 +762,10 @@ func (h *TenantsHandler) handleUsersUpdateRole(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Only Owner or Gateway Token can change roles
-	if !h.isCallerOwnerOrGateway(ctx, tenantID) {
+	// Auth: Owner/Gateway full access; Admin can change Member↔Viewer only (SRS v1.5)
+	isOwnerOrGateway := h.isCallerOwnerOrGateway(ctx, tenantID)
+	isAdminCaller := h.isCallerAdmin(ctx, tenantID)
+	if !isOwnerOrGateway && !isAdminCaller {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgTargetRoleForbidden)})
 		return
 	}
@@ -790,6 +775,19 @@ func (h *TenantsHandler) handleUsersUpdateRole(w http.ResponseWriter, r *http.Re
 	}
 	if !bindJSON(w, r, locale, &input) {
 		return
+	}
+
+	// Admin restrictions: new role must be Member/Viewer, target must be Member/Viewer
+	if isAdminCaller {
+		if input.Role != store.TenantRoleMember && input.Role != store.TenantRoleViewer {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgRoleNotPermitted, input.Role)})
+			return
+		}
+		targetRole := h.resolveTargetRole(ctx, tenantID, normalized)
+		if targetRole == store.TenantRoleOwner || targetRole == store.TenantRoleAdmin {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgTargetRoleForbidden)})
+			return
+		}
 	}
 
 	validRoles := map[string]bool{

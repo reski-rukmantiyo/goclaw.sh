@@ -7,17 +7,15 @@ type Permission string
 
 // User management permissions.
 const (
-	PermUserList       Permission = "user.list"
-	PermUserGet        Permission = "user.get"
-	PermUserCreate     Permission = "user.create"
-	PermUserUpdate     Permission = "user.update"
-	PermUserDelete     Permission = "user.delete"
-	PermUserEnroll     Permission = "user.enroll"
-	PermUserUnenroll   Permission = "user.unenroll"
-	PermUserAssignRole   Permission = "user.assign_role"
+	PermUserList        Permission = "user.list"
+	PermUserGet         Permission = "user.get"
+	PermUserCreate      Permission = "user.create"
+	PermUserUpdate      Permission = "user.update"
+	PermUserDelete      Permission = "user.delete"
+	PermUserAssignRole  Permission = "user.assign_role"
 	PermUserPreProvision Permission = "user.pre_provision"
-	PermUserSuspend      Permission = "user.suspend"
-	PermUserDeactivate   Permission = "user.deactivate"
+	PermUserSuspend     Permission = "user.suspend"
+	PermUserDeactivate  Permission = "user.deactivate"
 )
 
 // Group management permissions.
@@ -72,7 +70,7 @@ const (
 // Keep in sync with: sqlitestore/schema.go Admin INSERT, migrations/000083+000085.
 var AdminSeedPermissions = []string{
 	"user.list", "user.get", "user.create", "user.update", "user.delete",
-	"user.enroll", "user.unenroll", "user.assign_role",
+	"user.assign_role",
 	"user.pre_provision", "user.suspend", "user.deactivate",
 	"group.list", "group.get", "group.create", "group.update", "group.delete",
 	"group.manage_members", "group.assign_role",
@@ -92,7 +90,7 @@ func IsReadOnlyPermission(p string) bool {
 // AllPermissions returns the full catalog of known permissions.
 func AllPermissions() []Permission {
 	return []Permission{
-		PermUserList, PermUserGet, PermUserCreate, PermUserUpdate, PermUserDelete, PermUserEnroll, PermUserUnenroll, PermUserAssignRole, PermUserPreProvision, PermUserSuspend, PermUserDeactivate,
+		PermUserList, PermUserGet, PermUserCreate, PermUserUpdate, PermUserDelete, PermUserAssignRole, PermUserPreProvision, PermUserSuspend, PermUserDeactivate,
 		PermGroupList, PermGroupGet, PermGroupCreate, PermGroupUpdate, PermGroupDelete, PermGroupManageMembers, PermGroupAssignRole,
 		PermRoleList, PermRoleGet, PermRoleCreate, PermRoleUpdate, PermRoleDelete,
 		PermAuditViewAll, PermAuditViewGroup, PermAuditExport,

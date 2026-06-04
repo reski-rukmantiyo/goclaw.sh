@@ -70,19 +70,6 @@ export function useTenantDetail(tenantId: string) {
     },
   });
 
-  const enrollUserMutation = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
-      return http.post(`/v1/tenants/${tenantId}/users`, { user_id: userId, role });
-    },
-    onSuccess: () => {
-      invalidateUsers();
-      toast.success(i18next.t("tenants:addUser"));
-    },
-    onError: (err: Error) => {
-      toast.error(i18next.t("tenants:addUser"), err.message);
-    },
-  });
-
   const updateUserMutation = useMutation({
     mutationFn: async ({ userId, input }: { userId: string; input: UpdateUserInput }) => {
       return http.put(`/v1/tenants/${tenantId}/users/${userId}`, input);
@@ -122,7 +109,7 @@ export function useTenantDetail(tenantId: string) {
     },
   });
 
-  // --- WS-based tenant ops (unchanged) ---
+  // --- WS-based tenant ops ---
 
   const updateTenantName = useCallback(
     async (name: string) => {
@@ -161,13 +148,11 @@ export function useTenantDetail(tenantId: string) {
     refreshUsers: invalidateUsers,
     // HTTP mutations
     createUser: createUserMutation.mutateAsync,
-    enrollUser: enrollUserMutation.mutateAsync,
     updateUser: updateUserMutation.mutateAsync,
     removeUser: removeUserMutation.mutateAsync,
     updateUserRole: updateUserRoleMutation.mutateAsync,
     // Pending flags
     isCreating: createUserMutation.isPending,
-    isEnrolling: enrollUserMutation.isPending,
     isUpdating: updateUserMutation.isPending,
     isRemoving: removeUserMutation.isPending,
     isSavingRole: updateUserRoleMutation.isPending,

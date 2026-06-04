@@ -25,7 +25,6 @@ import {
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
-import { UserPickerCombobox } from "@/components/shared/user-picker-combobox";
 import { useContactResolver } from "@/hooks/use-contact-resolver";
 import { formatUserLabel } from "@/lib/format-user-label";
 import { useDeferredLoading } from "@/hooks/use-deferred-loading";
@@ -34,8 +33,9 @@ import { useTenantDetail } from "./hooks/use-tenant-detail";
 import { ROUTES, route } from "@/lib/constants";
 import { useTenants } from "@/hooks/use-tenants";
 
-const TENANT_ROLES = ["owner", "admin", "member", "viewer"] as const;
-const NON_OWNER_ROLES = ["admin", "member", "viewer"] as const;
+const ALL_ROLES = ["owner", "admin", "member", "viewer"] as const;
+const ADMIN_CREATE_ROLES = ["member", "viewer"] as const;
+const ADMIN_ROLE_CHANGE_ROLES = ["member", "viewer"] as const;
 
 const ROLE_KEYS: Record<string, string> = {
   owner: "roleOwner", admin: "roleAdmin",
@@ -56,12 +56,15 @@ export function TenantDetailPage() {
   const { t: tc } = useTranslation("common");
 
   const { isOwner, currentTenantSlug } = useTenants();
-  const availableRoles = isOwner ? TENANT_ROLES : NON_OWNER_ROLES;
+
+  // Role dropdowns: Owner sees all, Admin sees Member/Viewer only
+  const createRoles = isOwner ? ALL_ROLES : ADMIN_CREATE_ROLES;
+  const roleChangeRoles = isOwner ? ALL_ROLES : ADMIN_ROLE_CHANGE_ROLES;
 
   const {
     tenant, tenantLoading, users, usersLoading, usersRefreshing, refreshUsers,
-    createUser, enrollUser, updateUser, removeUser, updateUserRole,
-    isCreating, isEnrolling, isUpdating, isRemoving, isSavingRole,
+    createUser, updateUser, removeUser, updateUserRole,
+    isCreating, isUpdating, isRemoving, isSavingRole,
     updateTenantName, deleteTenant,
   } = useTenantDetail(id);
 
@@ -72,30 +75,22 @@ export function TenantDetailPage() {
   const userIds = useMemo(() => users.map((u) => u.user_id), [users]);
   const { resolve } = useContactResolver(userIds);
 
-  // --- Create/Enroll dialog state ---
+  // --- Create user dialog state ---
   const [addOpen, setAddOpen] = useState(false);
-  const [addMode, setAddMode] = useState<"create" | "enroll">("create");
-  // Create fields
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [createRole, setCreateRole] = useState("member");
-  // Enroll fields
-  const [enrollUserId, setEnrollUserId] = useState("");
-  const [enrollRole, setEnrollRole] = useState("member");
 
   // Reset dialog state on close
   useEffect(() => {
     if (!addOpen) {
-      setAddMode("create");
       setEmail("");
       setDisplayName("");
       setPhone("");
       setPassword("");
       setCreateRole("member");
-      setEnrollUserId("");
-      setEnrollRole("member");
     }
   }, [addOpen]);
 
@@ -127,16 +122,6 @@ export function TenantDetailPage() {
         password: password.trim(),
         role: createRole,
       });
-      setAddOpen(false);
-    } catch {
-      // error handled by mutation
-    }
-  };
-
-  const handleEnroll = async () => {
-    if (!enrollUserId.trim()) return;
-    try {
-      await enrollUser({ userId: enrollUserId.trim(), role: enrollRole });
       setAddOpen(false);
     } catch {
       // error handled by mutation
@@ -357,7 +342,7 @@ export function TenantDetailPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {availableRoles.map((r) => (
+                          {roleChangeRoles.map((r) => (
                             <SelectItem key={r} value={r}>{t(ROLE_KEYS[r] ?? r)}</SelectItem>
                           ))}
                         </SelectContent>
@@ -380,125 +365,76 @@ export function TenantDetailPage() {
         )}
       </div>
 
-      {/* Create / Enroll User Dialog */}
+      {/* Create User Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-sm:inset-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{addMode === "create" ? t("createUserTitle") : t("addUserTitle")}</DialogTitle>
-            <DialogDescription className="sr-only">{addMode === "create" ? t("createUserTitle") : t("addUserTitle")}</DialogDescription>
+            <DialogTitle>{t("createUserTitle")}</DialogTitle>
+            <DialogDescription className="sr-only">{t("createUserTitle")}</DialogDescription>
           </DialogHeader>
 
-          {addMode === "create" ? (
-            <>
-              <div className="space-y-4 py-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="tenant-user-email">{t("email")}</Label>
-                  <Input
-                    id="tenant-user-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="user@example.com"
-                    className="text-base md:text-sm"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="tenant-user-name">{t("displayName")}</Label>
-                  <Input
-                    id="tenant-user-name"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder={t("displayName")}
-                    className="text-base md:text-sm"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="tenant-user-phone">{t("phone")}</Label>
-                  <Input
-                    id="tenant-user-phone"
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+1 234 567 890"
-                    className="text-base md:text-sm"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="tenant-user-password">{t("password")}</Label>
-                  <Input
-                    id="tenant-user-password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder={t("password")}
-                    className="text-base md:text-sm"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">{t("passwordHint")}</p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{t("selectRole")}</Label>
-                  <Select value={createRole} onValueChange={setCreateRole}>
-                    <SelectTrigger className="text-base md:text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {availableRoles.map((r) => (
-                        <SelectItem key={r} value={r}>{t(ROLE_KEYS[r] ?? r)}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter className="flex-col gap-2 sm:flex-row">
-                <Button onClick={handleCreate} disabled={isCreating || !email.trim() || !displayName.trim() || !password.trim()}>
-                  {isCreating ? "..." : t("createUser")}
-                </Button>
-                <button
-                  type="button"
-                  className="text-xs text-muted-foreground hover:text-foreground underline"
-                  onClick={() => setAddMode("enroll")}
-                >
-                  {t("orEnrollExisting")}
-                </button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <div className="space-y-4 py-2">
-                <div className="space-y-1.5">
-                  <Label>{t("userId")}</Label>
-                  <UserPickerCombobox
-                    value={enrollUserId}
-                    onChange={setEnrollUserId}
-                    placeholder="user-id"
-                    source="tenant_user"
-                    allowCustom={true}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{t("selectRole")}</Label>
-                  <Select value={enrollRole} onValueChange={setEnrollRole}>
-                    <SelectTrigger className="text-base md:text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {availableRoles.map((r) => (
-                        <SelectItem key={r} value={r}>{t(ROLE_KEYS[r] ?? r)}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter className="flex-col gap-2 sm:flex-row">
-                <Button onClick={handleEnroll} disabled={isEnrolling || !enrollUserId.trim()}>
-                  {isEnrolling ? "..." : t("addUser")}
-                </Button>
-                <button
-                  type="button"
-                  className="text-xs text-muted-foreground hover:text-foreground underline"
-                  onClick={() => setAddMode("create")}
-                >
-                  {t("createUser")}
-                </button>
-              </DialogFooter>
-            </>
-          )}
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="tenant-user-email">{t("email")}</Label>
+              <Input
+                id="tenant-user-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="user@example.com"
+                className="text-base md:text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="tenant-user-name">{t("displayName")}</Label>
+              <Input
+                id="tenant-user-name"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder={t("displayName")}
+                className="text-base md:text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="tenant-user-phone">{t("phone")}</Label>
+              <Input
+                id="tenant-user-phone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+1 234 567 890"
+                className="text-base md:text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="tenant-user-password">{t("password")}</Label>
+              <Input
+                id="tenant-user-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={t("password")}
+                className="text-base md:text-sm"
+              />
+              <p className="text-xs text-muted-foreground mt-1">{t("passwordHint")}</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("selectRole")}</Label>
+              <Select value={createRole} onValueChange={setCreateRole}>
+                <SelectTrigger className="text-base md:text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {createRoles.map((r) => (
+                    <SelectItem key={r} value={r}>{t(ROLE_KEYS[r] ?? r)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleCreate} disabled={isCreating || !email.trim() || !displayName.trim() || !password.trim()}>
+              {isCreating ? "..." : t("createUser")}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

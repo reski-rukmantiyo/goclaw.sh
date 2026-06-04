@@ -547,7 +547,11 @@ func (m *TenantsMethods) handleUsersRemove(ctx context.Context, client *gateway.
 
 func (m *TenantsMethods) handleUsersUpdateRole(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
 	locale := store.LocaleFromContext(ctx)
-	if !client.IsOwner() {
+
+	// Auth: Owner full access; Admin can change Member↔Viewer only (SRS v1.5)
+	isOwner := client.IsOwner()
+	isAdmin := !isOwner && store.RoleFromContext(ctx) == string(permissions.RoleAdmin)
+	if !isOwner && !isAdmin {
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrUnauthorized, i18n.T(locale, i18n.MsgPermissionDenied, "tenants.users.updateRole")))
 		return
 	}
@@ -577,10 +581,45 @@ func (m *TenantsMethods) handleUsersUpdateRole(ctx context.Context, client *gate
 		return
 	}
 
+	// Admin restrictions: new role must be Member/Viewer, target must be Member/Viewer
+	if isAdmin {
+		if params.Role != store.TenantRoleMember && params.Role != store.TenantRoleViewer {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrUnauthorized, i18n.T(locale, i18n.MsgRoleNotPermitted, params.Role)))
+			return
+		}
+	}
+
 	tid, err := uuid.Parse(params.TenantID)
 	if err != nil {
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidID, "tenant_id")))
 		return
+	}
+
+	// Admin: verify target is Member/Viewer
+	if isAdmin {
+		tu, tErr := m.tenantStore.GetTenantUserByUser(ctx, tid, params.UserID)
+		if tErr != nil || tu == nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgNotFound, "user", params.UserID)))
+			return
+		}
+		if tu.IsOwner {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrUnauthorized, i18n.T(locale, i18n.MsgTargetRoleForbidden)))
+			return
+		}
+		// Check if target has admin-level role
+		if m.roleStore != nil {
+			if roles, rErr := m.roleStore.ListUserRoles(ctx, tid, params.UserID); rErr == nil {
+				for _, r := range roles {
+					perms, _ := m.roleStore.GetRolePermissions(ctx, r.ID)
+					for _, p := range perms {
+						if p == "system.manage_settings" {
+							client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrUnauthorized, i18n.T(locale, i18n.MsgTargetRoleForbidden)))
+							return
+						}
+					}
+				}
+			}
+		}
 	}
 
 	// Unassign all current RBAC roles for the user in this tenant.
