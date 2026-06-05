@@ -126,7 +126,8 @@ function UserMenu() {
   const { t } = useTranslation("topbar");
   const { t: tt } = useTranslation("tenants");
   const logout = useAuthStore((s) => s.logout);
-  const userId = useAuthStore((s) => s.userId);
+  const displayName = useAuthStore((s) => s.displayName);
+  const userEmail = useAuthStore((s) => s.userEmail);
   const { currentTenant, currentTenantName, tenants, isOwner, isMultiTenant, currentTenantId, currentTenantSlug } = useTenants();
   const [open, setOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -134,6 +135,7 @@ function UserMenu() {
   const navigate = useNavigate();
 
   const tenantLabel = currentTenant?.name || currentTenantName || "";
+  const displayLabel = displayName || userEmail || "—";
 
   const handleSwitchTenant = (_tenantId: string, slug: string) => {
     // Always set TENANT_ID so WS and HTTP both resolve the correct tenant.
@@ -151,11 +153,11 @@ function UserMenu() {
       <Popover.Trigger asChild>
         <button
           className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-          title={userId || t("logout")}
+          title={displayLabel}
         >
           <User className="h-4 w-4 shrink-0" />
           <span className="max-w-32 truncate hidden sm:inline">
-            {userId}{tenantLabel ? ` (${tenantLabel})` : ""}
+            {displayLabel}{tenantLabel ? ` (${tenantLabel})` : ""}
           </span>
           <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
         </button>

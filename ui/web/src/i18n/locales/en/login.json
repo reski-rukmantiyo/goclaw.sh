@@ -7,9 +7,9 @@
   "noAccess": "No Access",
   "noAccessDescription": "You don't have access to any tenant. Contact your administrator.",
   "tabs": {
-    "token": "Token",
+    "token": "By Token",
     "pairing": "Pairing",
-    "email": "Email"
+    "email": "By Email"
   },
   "email": {
     "email": "Email",
@@ -43,7 +43,7 @@
     "userId": "User ID",
     "userIdPlaceholder": "your-user-id",
     "userIdHint": "Use \"system\" for full system access",
-    "gatewayToken": "Gateway Token",
+    "gatewayToken": "Gateway Auth Token",
     "tokenPlaceholder": "Bearer token",
     "connect": "Connect",
     "connecting": "Connecting...",

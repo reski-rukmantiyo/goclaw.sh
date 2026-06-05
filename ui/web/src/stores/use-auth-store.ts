@@ -24,8 +24,11 @@ interface AuthState {
   availableTenants: TenantMembership[];
   tenantSelected: boolean; // true after user picks a tenant (or auto-selected)
   isGatewayToken: boolean; // true when logged in via Gateway Auth Token
+  displayName: string; // user-facing name for topbar
+  userEmail: string; // fallback for topbar when displayName is empty
 
   setCredentials: (token: string, userId: string) => void;
+  setUserProfile: (displayName: string, email: string) => void;
   setPairing: (senderID: string, userId: string) => void;
   setConnected: (connected: boolean, serverInfo?: { name?: string; version?: string }) => void;
   setRole: (role: UserRole) => void;
@@ -38,7 +41,7 @@ interface AuthState {
   logout: () => void;
 }
 
-function getPersistedAuth(): { token: string; userId: string; senderID: string } | null {
+function getPersistedAuth(): { token: string; userId: string; senderID: string; displayName: string } | null {
   try {
     const raw = localStorage.getItem("goclaw:auth");
     if (!raw) return null;
@@ -47,6 +50,7 @@ function getPersistedAuth(): { token: string; userId: string; senderID: string }
       token: parsed.state?.token ?? "",
       userId: parsed.state?.userId ?? "",
       senderID: parsed.state?.senderID ?? "",
+      displayName: parsed.state?.displayName ?? "",
     };
   } catch {
     return null;
@@ -74,9 +78,15 @@ export const useAuthStore = create<AuthState>()(
       availableTenants: [],
       tenantSelected: !!localStorage.getItem(LOCAL_STORAGE_KEYS.TENANT_ID),
       isGatewayToken: false,
+      displayName: persisted?.displayName ?? "",
+      userEmail: "",
 
       setCredentials: (token, userId) => {
         set({ token, userId });
+      },
+
+      setUserProfile: (displayName, email) => {
+        set({ displayName, userEmail: email });
       },
 
       setPairing: (senderID, userId) => {
@@ -122,7 +132,7 @@ export const useAuthStore = create<AuthState>()(
         clearSetupSkippedState();
         set({
           token: "", userId: "", senderID: "", connected: false, role: "", serverInfo: null,
-          tenantId: "", tenantName: "", tenantSlug: "", isOwner: false,
+          tenantId: "", tenantName: "", tenantSlug: "", isOwner: false, displayName: "", userEmail: "",
           isMasterScope: false, edition: "standard", permissions: [],
           availableTenants: [], tenantSelected: false, isGatewayToken: false,
         });
@@ -136,6 +146,7 @@ export const useAuthStore = create<AuthState>()(
         userId: state.userId,
         senderID: state.senderID,
         isGatewayToken: state.isGatewayToken,
+        displayName: state.displayName,
       }),
     }
   )

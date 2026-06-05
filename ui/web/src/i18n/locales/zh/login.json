@@ -22,8 +22,8 @@
   "subtitle": "登录网关控制面板",
   "tabs": {
     "pairing": "配对",
-    "token": "令牌",
-    "email": "邮箱"
+    "token": "按令牌",
+    "email": "按邮箱"
   },
   "email": {
     "email": "邮箱",
@@ -59,7 +59,7 @@
     "errorCannotConnect": "无法连接到 Gateway。请检查服务器是否在运行。",
     "errorInvalidCredentials": "凭据无效。请检查 Token 和 User ID。",
     "errorServer": "服务器返回 {{status}}，请重试。",
-    "gatewayToken": "Gateway Token",
+    "gatewayToken": "Gateway Auth Token",
     "tokenPlaceholder": "Bearer token",
     "userId": "用户 ID",
     "userIdPlaceholder": "您的用户 ID",
