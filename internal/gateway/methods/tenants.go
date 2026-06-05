@@ -375,21 +375,30 @@ func (m *TenantsMethods) handleUsersList(ctx context.Context, client *gateway.Cl
 		users = []store.TenantUserData{}
 	}
 
-	// Enrich with email and resolved role.
+	// Enrich with user details and resolved role.
 	type tenantUserEntry struct {
-		ID          string  `json:"id"`
-		TenantID    string  `json:"tenant_id"`
-		UserID      string  `json:"user_id"`
-		DisplayName *string `json:"display_name,omitempty"`
-		Email       string  `json:"email"`
-		Role        string  `json:"role"`
-		IsOwner     bool    `json:"is_owner"`
-		CreatedAt   string  `json:"created_at"`
-		UpdatedAt   string  `json:"updated_at"`
+		ID           string     `json:"id"`
+		TenantID     string     `json:"tenant_id"`
+		UserID       string     `json:"user_id"`
+		DisplayName  *string    `json:"display_name,omitempty"`
+		Email        string     `json:"email"`
+		Role         string     `json:"role"`
+		IsOwner      bool       `json:"is_owner"`
+		Status       string     `json:"status"`
+		AuthProvider string     `json:"auth_provider"`
+		LastLoginAt  *time.Time `json:"last_login_at"`
+		Phone        *string    `json:"phone"`
+		CreatedAt    string     `json:"created_at"`
+		UpdatedAt    string     `json:"updated_at"`
 	}
 
-	// Batch-resolve emails via UserStore.GetByIDs.
+	// Batch-resolve user details via UserStore.GetByIDs.
 	emailMap := make(map[string]string, len(users))
+	nameMap := make(map[string]string, len(users))
+	phoneMap := make(map[string]*string, len(users))
+	statusMap := make(map[string]string, len(users))
+	authProviderMap := make(map[string]string, len(users))
+	lastLoginMap := make(map[string]*time.Time, len(users))
 	if m.userStore != nil {
 		userUUIDs := make([]uuid.UUID, 0, len(users))
 		for _, u := range users {
@@ -399,7 +408,13 @@ func (m *TenantsMethods) handleUsersList(ctx context.Context, client *gateway.Cl
 		}
 		if userDatas, bErr := m.userStore.GetByIDs(ctx, userUUIDs); bErr == nil {
 			for _, ud := range userDatas {
-				emailMap[ud.ID.String()] = ud.Email
+				key := ud.ID.String()
+				emailMap[key] = ud.Email
+				nameMap[key] = ud.DisplayName
+				phoneMap[key] = ud.Phone
+				statusMap[key] = ud.Status
+				authProviderMap[key] = ud.AuthProvider
+				lastLoginMap[key] = ud.LastLoginAt
 			}
 		} else {
 			slog.Warn("tenants.users.list: batch user lookup failed", "error", bErr)
@@ -415,15 +430,19 @@ func (m *TenantsMethods) handleUsersList(ctx context.Context, client *gateway.Cl
 			role = m.resolveRoleFromPermissions(ctx, tid, u.UserID)
 		}
 		entries[i] = tenantUserEntry{
-			ID:          u.ID.String(),
-			TenantID:    u.TenantID.String(),
-			UserID:      u.UserID,
-			DisplayName: u.DisplayName,
-			Email:       emailMap[u.UserID],
-			Role:        role,
-			IsOwner:     u.IsOwner,
-			CreatedAt:   u.CreatedAt.Format(time.RFC3339),
-			UpdatedAt:   u.UpdatedAt.Format(time.RFC3339),
+			ID:           u.ID.String(),
+			TenantID:     u.TenantID.String(),
+			UserID:       u.UserID,
+			DisplayName:  u.DisplayName,
+			Email:        emailMap[u.UserID],
+			Role:         role,
+			IsOwner:      u.IsOwner,
+			Status:       statusMap[u.UserID],
+			AuthProvider: authProviderMap[u.UserID],
+			LastLoginAt:  lastLoginMap[u.UserID],
+			Phone:        phoneMap[u.UserID],
+			CreatedAt:    u.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:    u.UpdatedAt.Format(time.RFC3339),
 		}
 	}
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"users": entries}))
