@@ -288,7 +288,7 @@ func init() {
 		MsgAuthRefreshTokenInvalid: "invalid or expired refresh token",
 		MsgAuthPasswordMismatch:    "current password is incorrect",
 		MsgAuthPasswordTooShort:    "password must be at least %d characters",
-		MsgAuthPasswordComplexity:  "password must contain at least one uppercase letter and one symbol",
+		MsgAuthPasswordComplexity:  "password must be at least 8 characters with at least 1 uppercase letter, 1 number, and 1 symbol",
 		MsgUserHasGroups:           "user is a member of %d group(s), remove from groups first",
 		MsgUserDeleteBlockedTenants: "user is enrolled in %d tenant(s), unenroll first",
 		MsgAuthOIDCFailed:          "OIDC authentication failed: %s",
@@ -299,5 +299,13 @@ func init() {
 		MsgRoleUnassigned:             "role unassigned",
 		MsgRoleDeleteBlocked:          "cannot delete role: assigned to %d user(s) or group(s)",
 		MsgGroupDeleteBlockedChildren: "cannot delete group: has %d child group(s)",
+
+		// Tenant User CRUD
+		MsgSelfDeleteBlocked:    "Cannot delete your own account",
+		MsgLastOwnerBlocked:     "Cannot remove the last owner of a tenant",
+		MsgTargetRoleForbidden:  "Insufficient permissions for target user's role",
+		MsgFieldNotUpdatable:    "Field %s is not updatable",
+		MsgTenantNotActive:      "Tenant is not active",
+		MsgRoleNotPermitted:     "Role %s is not permitted for this operation",
 	})
 }

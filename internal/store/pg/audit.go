@@ -110,6 +110,45 @@ func (s *PGAuditStore) List(ctx context.Context, tenantID uuid.UUID, params stor
 		idx++
 	}
 
+	// Role-scoped filtering: exclude entries from actors with specified effective roles.
+	// Used for Member audit access (SRS §6.7.14) — excludes Owner/Admin entries.
+	if len(params.ExcludeActorRoles) > 0 {
+		// Build a subquery that finds user IDs who are either:
+		// 1. An owner in tenant_users, OR
+		// 2. Have a role assignment to a system role named in the exclude list
+		excludeConds := make([]string, 0, 2)
+		hasOwner := false
+		var roleNames []string
+		for _, r := range params.ExcludeActorRoles {
+			if r == "owner" {
+				hasOwner = true
+			} else {
+				roleNames = append(roleNames, r)
+			}
+		}
+		if hasOwner {
+			excludeConds = append(excludeConds, fmt.Sprintf(
+				"SELECT user_id FROM tenant_users WHERE tenant_id = $%d AND is_owner = true", idx))
+			// idx already points to tenantID arg, no increment needed — reuses same param
+		}
+		if len(roleNames) > 0 {
+			placeholders := make([]string, len(roleNames))
+			for i, rn := range roleNames {
+				args = append(args, rn)
+				placeholders[i] = fmt.Sprintf("$%d", idx)
+				idx++
+			}
+			excludeConds = append(excludeConds, fmt.Sprintf(
+				"SELECT ur.user_id FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE r.tenant_id = $1 AND r.is_system = true AND r.name IN (%s)",
+				strings.Join(placeholders, ", ")))
+		}
+		if len(excludeConds) > 0 {
+			conditions = append(conditions, fmt.Sprintf(
+				"(actor_id IS NULL OR actor_id NOT IN (%s))",
+				strings.Join(excludeConds, " UNION ")))
+		}
+	}
+
 	limit := params.Limit
 	if limit <= 0 {
 		limit = 50

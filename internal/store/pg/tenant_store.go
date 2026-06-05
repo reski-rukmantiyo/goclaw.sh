@@ -310,6 +310,36 @@ func (s *PGTenantStore) ListUserTenants(ctx context.Context, userID string) ([]s
 	return result, nil
 }
 
+func (s *PGTenantStore) CountOwners(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM tenant_users WHERE tenant_id = $1 AND is_owner = true`, tenantID,
+	).Scan(&count)
+	return count, err
+}
+
+func (s *PGTenantStore) GetTenantUserByUser(ctx context.Context, tenantID uuid.UUID, userID string) (*store.TenantUserData, error) {
+	var d store.TenantUserData
+	err := pkgSqlxDB.GetContext(ctx, &d,
+		`SELECT id, tenant_id, user_id, display_name, is_owner, metadata, created_at, updated_at
+		 FROM tenant_users WHERE tenant_id = $1 AND user_id = $2`, tenantID, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
+func (s *PGTenantStore) UpdateOwnerFlag(ctx context.Context, tenantID uuid.UUID, userID string, isOwner bool) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE tenant_users SET is_owner = $3, updated_at = NOW() WHERE tenant_id = $1 AND user_id = $2`,
+		tenantID, userID, isOwner,
+	)
+	return err
+}
+
 func (s *PGTenantStore) ResolveUserTenant(ctx context.Context, userID string) (uuid.UUID, error) {
 	var tenantID uuid.UUID
 	// Prefer non-Master tenants — Master is a shared system tenant that

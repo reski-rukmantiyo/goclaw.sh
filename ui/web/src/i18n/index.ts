@@ -46,6 +46,7 @@ import enHooks from "./locales/en/hooks.json";
 import enWorkstations from "./locales/en/workstations.json";
 import enUsersAdmin from "./locales/en/users-admin.json";
 import enGroupsAdmin from "./locales/en/groups-admin.json";
+import enRoleManagement from "./locales/en/role-management.json";
 import enAudit from "./locales/en/audit.json";
 
 // --- VI namespaces ---
@@ -93,6 +94,7 @@ import viHooks from "./locales/vi/hooks.json";
 import viWorkstations from "./locales/vi/workstations.json";
 import viUsersAdmin from "./locales/vi/users-admin.json";
 import viGroupsAdmin from "./locales/vi/groups-admin.json";
+import viRoleManagement from "./locales/vi/role-management.json";
 import viAudit from "./locales/vi/audit.json";
 
 // --- ZH namespaces ---
@@ -140,6 +142,7 @@ import zhHooks from "./locales/zh/hooks.json";
 import zhWorkstations from "./locales/zh/workstations.json";
 import zhUsersAdmin from "./locales/zh/users-admin.json";
 import zhGroupsAdmin from "./locales/zh/groups-admin.json";
+import zhRoleManagement from "./locales/zh/role-management.json";
 import zhAudit from "./locales/zh/audit.json";
 
 const STORAGE_KEY = "goclaw:language";
@@ -166,6 +169,7 @@ const ns = [
   "workstations",
   "users-admin",
   "groups-admin",
+  "roleManagement",
   "audit",
 ] as const;
 
@@ -194,6 +198,7 @@ i18n.use(initReactI18next).init({
       workstations: enWorkstations,
       "users-admin": enUsersAdmin,
       "groups-admin": enGroupsAdmin,
+      roleManagement: enRoleManagement,
       audit: enAudit,
     },
     vi: {
@@ -219,6 +224,7 @@ i18n.use(initReactI18next).init({
       workstations: viWorkstations,
       "users-admin": viUsersAdmin,
       "groups-admin": viGroupsAdmin,
+      roleManagement: viRoleManagement,
       audit: viAudit,
     },
     zh: {
@@ -244,6 +250,7 @@ i18n.use(initReactI18next).init({
       workstations: zhWorkstations,
       "users-admin": zhUsersAdmin,
       "groups-admin": zhGroupsAdmin,
+      roleManagement: zhRoleManagement,
       audit: zhAudit,
     },
   },

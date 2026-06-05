@@ -186,6 +186,7 @@ Beyond role checks, specific handlers enforce scope guards:
 | `requireMasterScope` | `store.IsMasterScope(ctx)` | Owner OR nil/master tenant passes |
 | `requireTenantAdmin` | Owner bypass OR tenant admin via RBAC | Owner or admin within the tenant passes |
 | `requireAuthAction(action)` | RBAC permission check | User must have the specific permission string |
+| `checkTenantUserAuth` | Target-role-aware check | Owner/Gateway → full access; Admin → Member/Viewer targets only for read/update/delete, denied for create/role change |
 
 **When to use which guard:**
 
@@ -372,9 +373,40 @@ const isMember = role === "member" || isAdmin;
 | Mine (non-owner) | ✓ | ✓ | ✓* | ✓* |
 
 *\*For non-owners, `tenants.mine` omits the Master tenant from results. Only real tenant memberships are returned, affecting the tenant selector UI.*
-| Create / Update / Delete | ✓ | ✗ | ✗ | ✗ |
-| Users list | ✓ | ✓ | ✓ | ✓ |
-| Users add / remove / updateRole | ✓ | ✗ | ✗ | ✗ |
+
+| Create / Update / Delete tenant | ✓ | ✗ | ✗ | ✗ |
+
+#### Tenant User Management (HTTP API)
+
+Tenant user CRUD uses **target-role-aware authorization** — admin access depends on the target user's role, not just the caller's role. See [SRS: Tenant-Scoped User CRUD](srs/tenant-user-crud.md) for full specification.
+
+| Action | Owner | Admin | Member | Viewer |
+|--------|:-----:|:-----:|:------:|:------:|
+| Users list | ✓ | ⚠ | ✗ | ✗ |
+| Users list (filtered) | — | ✓† | — | — |
+| Get single user | ✓ | ⚠ | ✗ | ✗ |
+| Create user (any role) | ✓ | ✗ | ✗ | ✗ |
+| Create user (Member/Viewer) | ✓ | ✓ | ✗ | ✗ |
+| Enroll existing user | ✓ | ✗ | ✗ | ✗ |
+| Update user profile (any) | ✓ | ✗ | ✗ | ✗ |
+| Update Member/Viewer profile | ✓ | ✓ | ✗ | ✗ |
+| Change any user role | ✓ | ✗ | ✗ | ✗ |
+| Remove user (any) | ✓ | ✗ | ✗ | ✗ |
+| Remove Member/Viewer | ✓ | ✓ | ✗ | ✗ |
+| Remove self | ✗ | ✗ | ✗ | ✗ |
+
+⚠ = allowed but filtered (owner/admin users hidden from response). † = admin sees filtered list without owner/admin users.
+
+**Guards:**
+- Self-deletion: caller ID matches target → 422
+- Last-owner: removing sole owner of tenant → 409
+- Admin creating Owner/Admin → 403
+- Admin reading/updating/deleting Owner/Admin → 403
+- Admin changing any role → 403
+
+**Sidebar note:** The Tenants sidebar item is owner-only (`isOwner` guard). Admin users can access the HTTP API directly but do not see the Tenants page in the UI.
+
+**Code:** `internal/http/tenants.go` — `checkTenantUserAuth()` for target-role-aware authorization, `isCallerOwnerOrGateway()` and `isCallerAdmin()` for caller level detection.
 
 ### 7.7 API Keys
 
@@ -437,6 +469,7 @@ const isMember = role === "member" || isAdmin;
 | `requireAuthAction(action)` | `internal/http/auth_rbac.go:31` | Authenticated + RBAC permission check |
 | `requireMasterScope(w, r)` | `internal/http/tenant_auth_helpers.go:75` | `store.IsMasterScope(ctx)` |
 | `requireTenantAdmin(w, r, ts)` | `internal/http/tenant_auth_helpers.go:23` | Owner bypass OR `PermSystemManageSettings` |
+| `checkTenantUserAuth(w, r, tenantID, targetUserID, op)` | `internal/http/tenants.go:641` | Owner/Gateway → full; Admin → Member/Viewer targets only (by operation); otherwise deny |
 
 ### 8.2 WebSocket Guards
 
@@ -481,7 +514,18 @@ The sidebar uses `isAdmin` (admin OR owner) for most System section items. Three
 
 The sidebar is intentionally stricter than backend for these items — even if an admin could technically call some backend endpoints, the UI hides them.
 
-### 9.7 Packages Page — Sidebar vs Route Guard Mismatch
+### 9.7 Tenant User Management — Dual Auth Model
+
+Tenant user CRUD has a dual authorization model:
+
+- **Sidebar/UI:** The Tenants sidebar item and the tenant detail page are owner-only (`isOwner` guard + `RequireCrossTenant` route guard). Admin users do not see these pages in the UI.
+- **HTTP API:** The REST endpoints (`/v1/tenants/{id}/users/*`) are accessible to admin+ callers with target-role-aware authorization. Admin can create Member/Viewer users, update their profiles, and remove them, but cannot see or manage Owner/Admin users.
+
+This means the API supports admin-level user management for Member/Viewer targets, but the current UI exposes this only to owners. Future UI updates may add a tenant user management page accessible to admins.
+
+**Code:** `internal/http/tenants.go:641` (`checkTenantUserAuth`), `ui/web/src/components/layout/sidebar.tsx:165` (`isOwner` gate for Tenants sidebar item).
+
+### 9.8 Packages Page — Sidebar vs Route Guard Mismatch
 
 The Packages page has a dual-access pattern:
 
@@ -492,7 +536,7 @@ The Packages page has a dual-access pattern:
 
 Members never see the Packages sidebar item but can reach the Packages page via the CLI Credentials redirect. The `PackagesPage` component gates the CLI Credentials tab with `hasMinRole(role, "member")`, and the tab trigger is hidden for viewers.
 
-### 9.8 Owner IDs Configuration
+### 9.9 Owner IDs Configuration
 
 The `gateway.owner_ids` config field (in `config.json` or via `GOCLAW_OWNER_IDS` env var) controls which user IDs are recognized as global owners. When unset/empty, the system falls back to recognizing only the literal user ID `"system"` as owner. **All deployments must set `owner_ids`** — otherwise no user gets owner privileges, locking out the tenant admin UI and config page.
 
@@ -570,4 +614,4 @@ Effective permissions are cached with a 5-minute TTL (`internal/permissions/reso
 
 ---
 
-*Related docs: [09-security.md](09-security.md) for threat model, [23-multi-tenant-architecture.md](23-multi-tenant-architecture.md) for tenant isolation, [26-users-roles-and-membership.md](26-users-roles-and-membership.md) for data model.*
+*Related docs: [09-security.md](09-security.md) for threat model, [23-multi-tenant-architecture.md](23-multi-tenant-architecture.md) for tenant isolation, [26-users-roles-and-membership.md](26-users-roles-and-membership.md) for data model, [srs/tenant-user-crud.md](srs/tenant-user-crud.md) for tenant user CRUD specification.*

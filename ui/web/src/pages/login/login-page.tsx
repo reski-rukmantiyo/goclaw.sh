@@ -7,20 +7,18 @@ import { route } from "@/lib/routes";
 import { LoginLayout } from "./login-layout";
 import { LoginTabs, type LoginMode } from "./login-tabs";
 import { TokenForm } from "./token-form";
-import { PairingForm } from "./pairing-form";
 import { EmailLoginForm } from "./email-login-form";
 import { ProviderButtons } from "./provider-buttons";
-import { RegisterForm } from "./register-form";
 
 export function LoginPage() {
   const { t } = useTranslation("login");
-  const [mode, setMode] = useState<LoginMode>("token");
+  const [mode, setMode] = useState<LoginMode>("email");
 
   const token = useAuthStore((s) => s.token);
   const userId = useAuthStore((s) => s.userId);
-  const senderID = useAuthStore((s) => s.senderID);
   const setCredentials = useAuthStore((s) => s.setCredentials);
-  const setPairing = useAuthStore((s) => s.setPairing);
+  const setUserProfile = useAuthStore((s) => s.setUserProfile);
+  const setIsGatewayToken = useAuthStore((s) => s.setIsGatewayToken);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -29,27 +27,25 @@ export function LoginPage() {
     ROUTES.OVERVIEW;
 
   useEffect(() => {
-    if ((token || senderID) && userId) {
+    if (token && userId) {
       const slug = localStorage.getItem(LOCAL_STORAGE_KEYS.TENANT_ID) || "master";
       navigate(route(slug, ROUTES.OVERVIEW), { replace: true });
     }
-  }, [token, userId, senderID, navigate]);
+  }, [token, userId, navigate]);
 
   function handleTokenLogin(userId: string, token: string) {
     setCredentials(token, userId);
+    setIsGatewayToken(true);
     navigate(from, { replace: true });
   }
 
-  function handlePairingApproved(senderID: string, userId: string) {
-    setPairing(senderID, userId);
-    setTimeout(() => navigate(from, { replace: true }), 500);
-  }
-
-  function handleEmailLogin(accessToken: string, userId: string, tenantSlug: string) {
+  function handleEmailLogin(accessToken: string, userId: string, tenantSlug: string, displayName: string, email: string) {
     if (tenantSlug) {
       localStorage.setItem(LOCAL_STORAGE_KEYS.TENANT_ID, tenantSlug);
     }
     setCredentials(accessToken, userId);
+    setIsGatewayToken(false);
+    setUserProfile(displayName, email);
     navigate(from, { replace: true });
   }
 
@@ -58,10 +54,6 @@ export function LoginPage() {
       <LoginTabs mode={mode} onModeChange={setMode} />
       {mode === "token" ? (
         <TokenForm onSubmit={handleTokenLogin} />
-      ) : mode === "pairing" ? (
-        <PairingForm onApproved={handlePairingApproved} />
-      ) : mode === "register" ? (
-        <RegisterForm onSuccess={handleEmailLogin} />
       ) : (
         <div className="space-y-4">
           <EmailLoginForm onSuccess={handleEmailLogin} />

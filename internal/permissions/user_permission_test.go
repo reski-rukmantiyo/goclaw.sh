@@ -94,8 +94,6 @@ func TestUserPermission_AllConstantsInAllPermissions(t *testing.T) {
 		{"PermUserGet", PermUserGet},
 		{"PermUserUpdate", PermUserUpdate},
 		{"PermUserDelete", PermUserDelete},
-		{"PermUserEnroll", PermUserEnroll},
-		{"PermUserUnenroll", PermUserUnenroll},
 		{"PermUserAssignRole", PermUserAssignRole},
 	}
 

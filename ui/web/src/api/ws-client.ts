@@ -21,7 +21,6 @@ export class WsClient {
   private reconnectAttempts = 0;
   private authenticated = false;
   private intentionalClose = false;
-  private pairingInProgress = false;
   private connectGeneration = 0;
 
   /** Server-assigned role from connect response. */
@@ -44,13 +43,10 @@ export class WsClient {
 
   onAuthFailure: (() => void) | null = null;
 
-  onPairingRequired: ((code: string, senderID: string) => void) | null = null;
-
   constructor(
     private url: string,
     private getToken: () => string,
     private getUserId: () => string,
-    private getSenderID: () => string,
     private onStateChange: (state: ConnectionState) => void,
   ) {}
 
@@ -95,7 +91,6 @@ export class WsClient {
 
   disconnect(): void {
     this.intentionalClose = true;
-    this.pairingInProgress = false;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -207,8 +202,6 @@ export class WsClient {
       const res = await this.call<{
         role?: string;
         status?: string;
-        pairing_code?: string;
-        sender_id?: string;
         tenant_id?: string;
         tenant_name?: string;
         tenant_slug?: string;
@@ -219,24 +212,12 @@ export class WsClient {
       }>("connect", {
         token: this.getToken(),
         user_id: this.getUserId(),
-        sender_id: this.getSenderID(),
         locale: localStorage.getItem("goclaw:language") || "en",
         tenant_hint: localStorage.getItem("goclaw:tenant_hint") || "",
         tenant_id: localStorage.getItem("goclaw:tenant_id") || "",
         protocolVersion: PROTOCOL_VERSION,
       });
       if (this.connectGeneration !== generation) return;
-
-      // Browser pairing: server requires approval
-      if (res?.status === "pending_pairing" && res.pairing_code && res.sender_id) {
-        if (!this.pairingInProgress) {
-          this.pairingInProgress = true;
-          this.onPairingRequired?.(res.pairing_code, res.sender_id);
-        }
-        // Keep connection alive for polling browser.pairing.status
-        return;
-      }
-      this.pairingInProgress = false;
 
       this.authenticated = true;
       this.role = (res?.role as "owner" | "admin" | "member" | "viewer") ?? "";

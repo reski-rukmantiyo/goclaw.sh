@@ -288,7 +288,7 @@ func init() {
 		MsgAuthRefreshTokenInvalid: "刷新令牌无效或已过期",
 		MsgAuthPasswordMismatch:    "当前密码不正确",
 		MsgAuthPasswordTooShort:    "密码至少需要 %d 个字符",
-		MsgAuthPasswordComplexity:  "密码必须包含至少一个大写字母和一个特殊字符",
+		MsgAuthPasswordComplexity:  "密码必须至少8个字符，包含至少1个大写字母、1个数字和1个特殊字符",
 		MsgUserHasGroups:           "用户是 %d 个组的成员，请先从组中移除",
 		MsgUserDeleteBlockedTenants: "用户已注册 %d 个租户，请先取消注册",
 		MsgAuthOIDCFailed:          "OIDC 认证失败：%s",
@@ -299,5 +299,13 @@ func init() {
 		MsgRoleUnassigned:             "已取消分配角色",
 		MsgRoleDeleteBlocked:          "无法删除角色：已分配给 %d 个用户或组",
 		MsgGroupDeleteBlockedChildren: "无法删除组：包含 %d 个子组",
+
+		// Tenant User CRUD
+		MsgSelfDeleteBlocked:    "无法删除自己的账户",
+		MsgLastOwnerBlocked:     "无法移除租户的最后一位所有者",
+		MsgTargetRoleForbidden:  "权限不足，无法操作目标用户的角色",
+		MsgFieldNotUpdatable:    "字段 %s 不可更新",
+		MsgTenantNotActive:      "租户未激活",
+		MsgRoleNotPermitted:     "角色 %s 不允许执行此操作",
 	})
 }

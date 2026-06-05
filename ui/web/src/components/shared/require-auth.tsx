@@ -5,7 +5,6 @@ import { ROUTES } from "@/lib/constants";
 export function RequireAuth({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
   const userId = useAuthStore((s) => s.userId);
-  const senderID = useAuthStore((s) => s.senderID);
   const connected = useAuthStore((s) => s.connected);
   const tenantSelected = useAuthStore((s) => s.tenantSelected);
   const availableTenants = useAuthStore((s) => s.availableTenants);
@@ -13,7 +12,7 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation();
 
   // Not authenticated
-  if ((!token && !senderID) || !userId) {
+  if (!token || !userId) {
     return <Navigate to={ROUTES.LOGIN} state={{ from: location }} replace />;
   }
 

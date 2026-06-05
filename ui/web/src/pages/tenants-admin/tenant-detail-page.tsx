@@ -1,7 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, lazy, Suspense } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Plus, RefreshCw, Users, Trash2, Calendar, Hash, Shield, Pencil } from "lucide-react";
+import { ArrowLeft, Trash2, Calendar, Hash, Shield, Pencil, Users, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,39 +14,22 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
-import { EmptyState } from "@/components/shared/empty-state";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
-import { UserPickerCombobox } from "@/components/shared/user-picker-combobox";
-import { useContactResolver } from "@/hooks/use-contact-resolver";
-import { formatUserLabel } from "@/lib/format-user-label";
-import { useDeferredLoading } from "@/hooks/use-deferred-loading";
-import { useMinLoading } from "@/hooks/use-min-loading";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useTenantDetail } from "./hooks/use-tenant-detail";
 import { ROUTES, route } from "@/lib/constants";
 import { useTenants } from "@/hooks/use-tenants";
 
-const TENANT_ROLES = ["owner", "admin", "member", "viewer"] as const;
-
-const ROLE_KEYS: Record<string, string> = {
-  owner: "roleOwner", admin: "roleAdmin",
-  member: "roleMember", viewer: "roleViewer",
-};
-
-const ROLE_COLORS: Record<string, string> = {
-  owner: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  admin: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  member: "bg-muted text-muted-foreground",
-  viewer: "bg-muted text-muted-foreground",
-};
+const TenantUsersTab = lazy(() =>
+  import("./tabs/tenant-users-tab").then((m) => ({ default: m.TenantUsersTab })),
+);
+const TenantRolesTab = lazy(() =>
+  import("./tabs/tenant-roles-tab").then((m) => ({ default: m.TenantRolesTab })),
+);
+const TenantGroupsTab = lazy(() =>
+  import("./tabs/tenant-groups-tab").then((m) => ({ default: m.TenantGroupsTab })),
+);
 
 export function TenantDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
@@ -54,70 +37,24 @@ export function TenantDetailPage() {
   const { t } = useTranslation("tenants");
   const { t: tc } = useTranslation("common");
 
-  const { currentTenantSlug } = useTenants();
+  const { isOwner, currentTenantSlug } = useTenants();
 
-  const { tenant, tenantLoading, users, usersLoading, usersRefreshing, refreshUsers, addUser, removeUser, updateUserRole, updateTenantName, deleteTenant } =
-    useTenantDetail(id);
+  const {
+    tenant, tenantLoading,
+    updateTenantName, deleteTenant,
+  } = useTenantDetail(id);
 
-  const spinning = useMinLoading(usersRefreshing);
-  const showSkeleton = useDeferredLoading(usersLoading && users.length === 0);
-
-  // Resolve user IDs to display names via contacts
-  const userIds = useMemo(() => users.map((u) => u.user_id), [users]);
-  const { resolve } = useContactResolver(userIds);
-
-  const [addOpen, setAddOpen] = useState(false);
-  const [userId, setUserId] = useState("");
-  const [role, setRole] = useState("member");
-  const [adding, setAdding] = useState(false);
-  const [removeTarget, setRemoveTarget] = useState<string | null>(null);
-  const [removing, setRemoving] = useState(false);
-  const [savingRole, setSavingRole] = useState(false);
-
-  // Edit name
+  // --- Edit tenant name state ---
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
-  // Delete tenant
+  // --- Delete tenant state ---
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [deleteSaving, setDeleteSaving] = useState(false);
 
-  const handleAdd = async () => {
-    if (!userId.trim()) return;
-    setAdding(true);
-    try {
-      await addUser(userId.trim(), role);
-      setAddOpen(false);
-      setUserId("");
-      setRole("member");
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const handleRemove = async () => {
-    if (!removeTarget) return;
-    setRemoving(true);
-    try {
-      await removeUser(removeTarget);
-      setRemoveTarget(null);
-    } finally {
-      setRemoving(false);
-    }
-  };
-
-  const handleRoleChange = async (userId: string, newRole: string) => {
-    setSavingRole(true);
-    try {
-      await updateUserRole(userId, newRole);
-    } finally {
-      setSavingRole(false);
-    }
-  };
-
-  const handleEditSave = async () => {
+  const handleTenantNameSave = async () => {
     if (!editName.trim() || editName.trim() === tenant?.name) {
       setEditOpen(false);
       return;
@@ -131,7 +68,7 @@ export function TenantDetailPage() {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDeleteTenant = async () => {
     if (deleteConfirmName.trim() !== tenant?.name) return;
     setDeleteSaving(true);
     try {
@@ -155,7 +92,7 @@ export function TenantDetailPage() {
         description=""
         actions={
           <div className="flex items-center gap-2">
-            {tenant && (
+            {tenant && isOwner && (
               <Button
                 variant="outline"
                 size="sm"
@@ -165,7 +102,7 @@ export function TenantDetailPage() {
                 <Pencil className="h-3.5 w-3.5" /> {t("editName")}
               </Button>
             )}
-            {tenant && (
+            {tenant && isOwner && (
               <Button
                 variant="destructive"
                 size="sm"
@@ -195,112 +132,35 @@ export function TenantDetailPage() {
         </div>
       )}
 
-      {/* User Management */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-semibold flex items-center gap-2">
-            <Users className="h-4 w-4 text-muted-foreground" />
-            {t("userManagement")}
-            {users.length > 0 && (
-              <span className="text-xs font-normal text-muted-foreground">({users.length})</span>
-            )}
-          </h2>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => setAddOpen(true)} className="gap-1">
-              <Plus className="h-3.5 w-3.5" /> {t("addUser")}
-            </Button>
-            <Button variant="outline" size="sm" onClick={refreshUsers} disabled={spinning} className="gap-1">
-              <RefreshCw className={spinning ? "animate-spin h-3.5 w-3.5" : "h-3.5 w-3.5"} />
-            </Button>
-          </div>
-        </div>
-
-        {showSkeleton ? (
-          <TableSkeleton rows={4} />
-        ) : users.length === 0 ? (
-          <EmptyState icon={Users} title={t("noUsers")} description="" />
-        ) : (
-          <div className="grid gap-2">
-            {users.map((u) => (
-              <div key={u.user_id} className="flex items-center justify-between rounded-lg border px-4 py-3 hover:bg-muted/30 transition-colors">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium uppercase">
-                    {(u.display_name || u.email || u.user_id).charAt(0)}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{u.display_name || u.email || formatUserLabel(u.user_id, resolve)}</p>
-                    <p className="text-xs text-muted-foreground truncate">{u.email || u.user_id}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {u.is_owner || u.role === "owner" ? (
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ROLE_COLORS.owner}`}>
-                      {t("roleOwner")}
-                    </span>
-                  ) : (
-                    <Select value={u.role} onValueChange={(r) => handleRoleChange(u.user_id, r)} disabled={savingRole}>
-                      <SelectTrigger className="h-7 w-[100px] text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(["admin", "member", "viewer"] as const).map((r) => (
-                          <SelectItem key={r} value={r}>{t(ROLE_KEYS[r] ?? r)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => setRemoveTarget(u.user_id)}
-                    title={t("removeUser")}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
+      {/* Tenant UI — Users / Roles / Groups tabs */}
+      <Tabs defaultValue="users">
+        <TabsList>
+          <TabsTrigger value="users" className="gap-1">
+            <Users className="h-4 w-4" /> {t("tabs.users")}
+          </TabsTrigger>
+          <TabsTrigger value="roles" className="gap-1">
+            <ShieldCheck className="h-4 w-4" /> {t("tabs.roles")}
+          </TabsTrigger>
+          {/* Groups tab hidden — functionality not yet ready for general use */}
+        </TabsList>
+        <TabsContent value="users">
+          <Suspense fallback={<TableSkeleton rows={4} />}>
+            <TenantUsersTab tenantId={id} isOwner={isOwner} />
+          </Suspense>
+        </TabsContent>
+        <TabsContent value="roles">
+          <Suspense fallback={<TableSkeleton rows={4} />}>
+            <TenantRolesTab />
+          </Suspense>
+        </TabsContent>
+        {false && (
+          <TabsContent value="groups">
+            <Suspense fallback={<TableSkeleton rows={4} />}>
+              <TenantGroupsTab />
+            </Suspense>
+          </TabsContent>
         )}
-      </div>
-
-      {/* Add User Dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-sm:inset-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("addUserTitle")}</DialogTitle>
-            <DialogDescription>{t("description")}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>{t("userId")}</Label>
-              <UserPickerCombobox
-                value={userId}
-                onChange={setUserId}
-                placeholder="user-id"
-                source="tenant_user"
-                allowCustom={true}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t("selectRole")}</Label>
-              <Select value={role} onValueChange={setRole}>
-                <SelectTrigger className="text-base md:text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {TENANT_ROLES.map((r) => (
-                    <SelectItem key={r} value={r}>{t(ROLE_KEYS[r] ?? r)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddOpen(false)} disabled={adding}>{tc("cancel")}</Button>
-            <Button onClick={handleAdd} disabled={adding || !userId.trim()}>{t("addUser")}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      </Tabs>
 
       {/* Edit Name Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
@@ -316,28 +176,18 @@ export function TenantDetailPage() {
                 onChange={(e) => setEditName(e.target.value)}
                 placeholder={t("name")}
                 className="text-base md:text-sm"
-                onKeyDown={(e) => { if (e.key === "Enter") handleEditSave(); }}
+                onKeyDown={(e) => { if (e.key === "Enter") handleTenantNameSave(); }}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)} disabled={editSaving}>{tc("cancel")}</Button>
-            <Button onClick={handleEditSave} disabled={editSaving || !editName.trim()}>{tc("save")}</Button>
+            <Button onClick={handleTenantNameSave} disabled={editSaving || !editName.trim()}>{tc("save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog
-        open={!!removeTarget}
-        onOpenChange={(o) => { if (!o) setRemoveTarget(null); }}
-        title={t("removeUser")}
-        description={t("confirmRemoveUser")}
-        confirmLabel={t("removeUser")}
-        variant="destructive"
-        onConfirm={handleRemove}
-        loading={removing}
-      />
-
+      {/* Delete Tenant Dialog */}
       <Dialog open={deleteOpen} onOpenChange={(o) => { if (!o) { setDeleteOpen(false); setDeleteConfirmName(""); } }}>
         <DialogContent className="max-sm:inset-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-md">
           <DialogHeader>
@@ -362,7 +212,7 @@ export function TenantDetailPage() {
             </Button>
             <Button
               variant="destructive"
-              onClick={handleDelete}
+              onClick={handleDeleteTenant}
               disabled={deleteSaving || deleteConfirmName.trim() !== tenant?.name}
             >
               {t("deleteTenant")}

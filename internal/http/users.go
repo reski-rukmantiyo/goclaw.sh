@@ -231,12 +231,12 @@ func (h *UsersHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, "password is required"))
 		return
 	}
-	lengthOK, hasUpper, hasSymbol := auth.ValidatePasswordComplexity(input.Password)
+	lengthOK, hasUpper, hasDigit, hasSymbol := auth.ValidatePasswordComplexity(input.Password)
 	if !lengthOK {
 		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgAuthPasswordTooShort, auth.MinPasswordLength))
 		return
 	}
-	if !hasUpper || !hasSymbol {
+	if !hasUpper || !hasDigit || !hasSymbol {
 		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgAuthPasswordComplexity))
 		return
 	}

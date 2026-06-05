@@ -18,6 +18,23 @@
   "type": "Type",
   "system": "System",
   "custom": "Custom",
+  "addRole": "Add Role",
+  "cancel": "Cancel",
+  "save": "Save",
+  "delete": "Delete",
+  "deleteConfirm": "Are you sure you want to delete this role?",
+  "deleteRole": "Delete Role",
+  "edit": "Edit",
+  "editPermissions": "Edit Permissions",
+  "systemRole": "System",
+  "customRole": "Custom",
+  "columns": {
+    "name": "Name",
+    "description": "Description",
+    "permissions": "Permissions",
+    "type": "Type",
+    "actions": "Actions"
+  },
   "savePermissions": "Save Permissions",
   "savingPermissions": "Saving...",
   "toast": {

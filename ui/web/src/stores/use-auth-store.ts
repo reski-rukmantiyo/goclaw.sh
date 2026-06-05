@@ -10,7 +10,6 @@ export type Edition = "standard" | "lite";
 interface AuthState {
   token: string;
   userId: string;
-  senderID: string; // browser pairing: persistent device identity
   connected: boolean;
   role: UserRole; // server-assigned role from connect response
   serverInfo: { name?: string; version?: string } | null;
@@ -23,9 +22,12 @@ interface AuthState {
   permissions: string[]; // effective permissions from /v1/users/me/permissions
   availableTenants: TenantMembership[];
   tenantSelected: boolean; // true after user picks a tenant (or auto-selected)
+  isGatewayToken: boolean; // true when logged in via Gateway Auth Token
+  displayName: string; // user-facing name for topbar
+  userEmail: string; // fallback for topbar when displayName is empty
 
   setCredentials: (token: string, userId: string) => void;
-  setPairing: (senderID: string, userId: string) => void;
+  setUserProfile: (displayName: string, email: string) => void;
   setConnected: (connected: boolean, serverInfo?: { name?: string; version?: string }) => void;
   setRole: (role: UserRole) => void;
   setTenant: (id: string, name: string, slug: string, isOwner: boolean) => void;
@@ -33,10 +35,11 @@ interface AuthState {
   setPermissions: (permissions: string[]) => void;
   setAvailableTenants: (tenants: TenantMembership[]) => void;
   setTenantSelected: (selected: boolean) => void;
+  setIsGatewayToken: (value: boolean) => void;
   logout: () => void;
 }
 
-function getPersistedAuth(): { token: string; userId: string; senderID: string } | null {
+function getPersistedAuth(): { token: string; userId: string; displayName: string } | null {
   try {
     const raw = localStorage.getItem("goclaw:auth");
     if (!raw) return null;
@@ -44,7 +47,7 @@ function getPersistedAuth(): { token: string; userId: string; senderID: string }
     return {
       token: parsed.state?.token ?? "",
       userId: parsed.state?.userId ?? "",
-      senderID: parsed.state?.senderID ?? "",
+      displayName: parsed.state?.displayName ?? "",
     };
   } catch {
     return null;
@@ -58,7 +61,6 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       token: persisted?.token ?? "",
       userId: persisted?.userId ?? "",
-      senderID: persisted?.senderID ?? "",
       connected: false,
       role: "" as UserRole,
       serverInfo: null,
@@ -71,13 +73,16 @@ export const useAuthStore = create<AuthState>()(
       permissions: [],
       availableTenants: [],
       tenantSelected: !!localStorage.getItem(LOCAL_STORAGE_KEYS.TENANT_ID),
+      isGatewayToken: false,
+      displayName: persisted?.displayName ?? "",
+      userEmail: "",
 
       setCredentials: (token, userId) => {
         set({ token, userId });
       },
 
-      setPairing: (senderID, userId) => {
-        set({ senderID, userId });
+      setUserProfile: (displayName, email) => {
+        set({ displayName, userEmail: email });
       },
 
       setConnected: (connected, serverInfo) => {
@@ -108,16 +113,20 @@ export const useAuthStore = create<AuthState>()(
         set({ tenantSelected: selected });
       },
 
+      setIsGatewayToken: (value) => {
+        set({ isGatewayToken: value });
+      },
+
       logout: () => {
         // Remove tenant scope keys that are still managed outside persist
         localStorage.removeItem("goclaw:tenant_id");
         localStorage.removeItem("goclaw:tenant_hint");
         clearSetupSkippedState();
         set({
-          token: "", userId: "", senderID: "", connected: false, role: "", serverInfo: null,
-          tenantId: "", tenantName: "", tenantSlug: "", isOwner: false,
+          token: "", userId: "", connected: false, role: "", serverInfo: null,
+          tenantId: "", tenantName: "", tenantSlug: "", isOwner: false, displayName: "", userEmail: "",
           isMasterScope: false, edition: "standard", permissions: [],
-          availableTenants: [], tenantSelected: false,
+          availableTenants: [], tenantSelected: false, isGatewayToken: false,
         });
       },
     }),
@@ -127,7 +136,8 @@ export const useAuthStore = create<AuthState>()(
         // Only persist credentials — not transient runtime state
         token: state.token,
         userId: state.userId,
-        senderID: state.senderID,
+        isGatewayToken: state.isGatewayToken,
+        displayName: state.displayName,
       }),
     }
   )

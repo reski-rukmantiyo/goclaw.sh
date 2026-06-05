@@ -340,6 +340,41 @@ func (s *SQLiteTenantStore) ResolveUserTenant(ctx context.Context, userID string
 	return tenantID, nil
 }
 
+func (s *SQLiteTenantStore) CountOwners(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM tenant_users WHERE tenant_id = ? AND is_owner = 1`, tenantID.String(),
+	).Scan(&count)
+	return count, err
+}
+
+func (s *SQLiteTenantStore) GetTenantUserByUser(ctx context.Context, tenantID uuid.UUID, userID string) (*store.TenantUserData, error) {
+	var r tenantUserRow
+	err := pkgSqlxDB.GetContext(ctx, &r,
+		`SELECT `+tenantUserSelectCols+` FROM tenant_users WHERE tenant_id = ? AND user_id = ?`,
+		tenantID.String(), userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	d := r.toTenantUserData()
+	return &d, nil
+}
+
+func (s *SQLiteTenantStore) UpdateOwnerFlag(ctx context.Context, tenantID uuid.UUID, userID string, isOwner bool) error {
+	isOwnerInt := 0
+	if isOwner {
+		isOwnerInt = 1
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE tenant_users SET is_owner = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE tenant_id = ? AND user_id = ?`,
+		isOwnerInt, tenantID.String(), userID,
+	)
+	return err
+}
+
 // ============================================================
 // Conversion helpers
 // ============================================================

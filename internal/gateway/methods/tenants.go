@@ -127,61 +127,6 @@ func (m *TenantsMethods) resolveRoleFromPermissions(ctx context.Context, tenantI
 
 // seedSystemRoles creates the default system roles (Admin, Member, Viewer)
 // for a newly created tenant. Mirrors migration 000083 seed data.
-func (m *TenantsMethods) seedSystemRoles(ctx context.Context, tenantID uuid.UUID) {
-	if m.roleStore == nil {
-		return
-	}
-
-	type sysRole struct {
-		name        string
-		description string
-		permissions []string
-	}
-	roles := []sysRole{
-		{
-			name:        "Admin",
-			description: "Full tenant administration",
-			permissions: permissions.AdminSeedPermissions,
-		},
-		{
-			name:        "Member",
-			description: "Regular member",
-			permissions: []string{
-				"group.list", "group.get", "group.view_hierarchy",
-				"artifact.upload_personal", "artifact.submit_review",
-				"agent.create_personal", "artifact.view_group",
-				"artifact.view_tenant", "artifact.delete_own",
-			},
-		},
-		{
-			name:        "Viewer",
-			description: "Read-only access",
-			permissions: []string{
-				"group.list", "group.get",
-				"artifact.view_group", "artifact.view_tenant",
-			},
-		},
-	}
-
-	for _, r := range roles {
-		rd := &store.RoleData{
-			ID:          store.GenNewID(),
-			TenantID:    tenantID,
-			Name:        r.name,
-			Description: &r.description,
-			IsSystem:    true,
-			Permissions: r.permissions,
-		}
-		if err := m.roleStore.CreateRole(ctx, rd); err != nil {
-			slog.Warn("tenants.seed_roles.create_failed", "tenant_id", tenantID, "role", r.name, "error", err)
-			continue
-		}
-		if err := m.roleStore.SetRolePermissions(ctx, rd.ID, r.permissions); err != nil {
-			slog.Warn("tenants.seed_roles.perms_failed", "tenant_id", tenantID, "role", r.name, "error", err)
-		}
-	}
-}
-
 func (m *TenantsMethods) handleList(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
 	locale := store.LocaleFromContext(ctx)
 	if !slices.Contains(m.ownerIDs, client.UserID()) {
@@ -286,7 +231,7 @@ func (m *TenantsMethods) handleCreate(ctx context.Context, client *gateway.Clien
 	}
 
 	// Seed default system roles for the new tenant.
-	m.seedSystemRoles(ctx, tenant.ID)
+	permissions.SeedSystemRoles(ctx, m.roleStore, tenant.ID)
 
 	// Provision tenant database if infrastructure available
 	if m.tenantDBConnStore != nil && m.masterDB != nil {
@@ -430,21 +375,30 @@ func (m *TenantsMethods) handleUsersList(ctx context.Context, client *gateway.Cl
 		users = []store.TenantUserData{}
 	}
 
-	// Enrich with email and resolved role.
+	// Enrich with user details and resolved role.
 	type tenantUserEntry struct {
-		ID          string  `json:"id"`
-		TenantID    string  `json:"tenant_id"`
-		UserID      string  `json:"user_id"`
-		DisplayName *string `json:"display_name,omitempty"`
-		Email       string  `json:"email"`
-		Role        string  `json:"role"`
-		IsOwner     bool    `json:"is_owner"`
-		CreatedAt   string  `json:"created_at"`
-		UpdatedAt   string  `json:"updated_at"`
+		ID           string     `json:"id"`
+		TenantID     string     `json:"tenant_id"`
+		UserID       string     `json:"user_id"`
+		DisplayName  *string    `json:"display_name,omitempty"`
+		Email        string     `json:"email"`
+		Role         string     `json:"role"`
+		IsOwner      bool       `json:"is_owner"`
+		Status       string     `json:"status"`
+		AuthProvider string     `json:"auth_provider"`
+		LastLoginAt  *time.Time `json:"last_login_at"`
+		Phone        *string    `json:"phone"`
+		CreatedAt    string     `json:"created_at"`
+		UpdatedAt    string     `json:"updated_at"`
 	}
 
-	// Batch-resolve emails via UserStore.GetByIDs.
+	// Batch-resolve user details via UserStore.GetByIDs.
 	emailMap := make(map[string]string, len(users))
+	nameMap := make(map[string]string, len(users))
+	phoneMap := make(map[string]*string, len(users))
+	statusMap := make(map[string]string, len(users))
+	authProviderMap := make(map[string]string, len(users))
+	lastLoginMap := make(map[string]*time.Time, len(users))
 	if m.userStore != nil {
 		userUUIDs := make([]uuid.UUID, 0, len(users))
 		for _, u := range users {
@@ -454,7 +408,13 @@ func (m *TenantsMethods) handleUsersList(ctx context.Context, client *gateway.Cl
 		}
 		if userDatas, bErr := m.userStore.GetByIDs(ctx, userUUIDs); bErr == nil {
 			for _, ud := range userDatas {
-				emailMap[ud.ID.String()] = ud.Email
+				key := ud.ID.String()
+				emailMap[key] = ud.Email
+				nameMap[key] = ud.DisplayName
+				phoneMap[key] = ud.Phone
+				statusMap[key] = ud.Status
+				authProviderMap[key] = ud.AuthProvider
+				lastLoginMap[key] = ud.LastLoginAt
 			}
 		} else {
 			slog.Warn("tenants.users.list: batch user lookup failed", "error", bErr)
@@ -470,15 +430,19 @@ func (m *TenantsMethods) handleUsersList(ctx context.Context, client *gateway.Cl
 			role = m.resolveRoleFromPermissions(ctx, tid, u.UserID)
 		}
 		entries[i] = tenantUserEntry{
-			ID:          u.ID.String(),
-			TenantID:    u.TenantID.String(),
-			UserID:      u.UserID,
-			DisplayName: u.DisplayName,
-			Email:       emailMap[u.UserID],
-			Role:        role,
-			IsOwner:     u.IsOwner,
-			CreatedAt:   u.CreatedAt.Format(time.RFC3339),
-			UpdatedAt:   u.UpdatedAt.Format(time.RFC3339),
+			ID:           u.ID.String(),
+			TenantID:     u.TenantID.String(),
+			UserID:       u.UserID,
+			DisplayName:  u.DisplayName,
+			Email:        emailMap[u.UserID],
+			Role:         role,
+			IsOwner:      u.IsOwner,
+			Status:       statusMap[u.UserID],
+			AuthProvider: authProviderMap[u.UserID],
+			LastLoginAt:  lastLoginMap[u.UserID],
+			Phone:        phoneMap[u.UserID],
+			CreatedAt:    u.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:    u.UpdatedAt.Format(time.RFC3339),
 		}
 	}
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{"users": entries}))
@@ -602,7 +566,11 @@ func (m *TenantsMethods) handleUsersRemove(ctx context.Context, client *gateway.
 
 func (m *TenantsMethods) handleUsersUpdateRole(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
 	locale := store.LocaleFromContext(ctx)
-	if !client.IsOwner() {
+
+	// Auth: Owner full access; Admin can change Member↔Viewer only (SRS v1.5)
+	isOwner := client.IsOwner()
+	isAdmin := !isOwner && store.RoleFromContext(ctx) == string(permissions.RoleAdmin)
+	if !isOwner && !isAdmin {
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrUnauthorized, i18n.T(locale, i18n.MsgPermissionDenied, "tenants.users.updateRole")))
 		return
 	}
@@ -632,10 +600,45 @@ func (m *TenantsMethods) handleUsersUpdateRole(ctx context.Context, client *gate
 		return
 	}
 
+	// Admin restrictions: new role must be Member/Viewer, target must be Member/Viewer
+	if isAdmin {
+		if params.Role != store.TenantRoleMember && params.Role != store.TenantRoleViewer {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrUnauthorized, i18n.T(locale, i18n.MsgRoleNotPermitted, params.Role)))
+			return
+		}
+	}
+
 	tid, err := uuid.Parse(params.TenantID)
 	if err != nil {
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidID, "tenant_id")))
 		return
+	}
+
+	// Admin: verify target is Member/Viewer
+	if isAdmin {
+		tu, tErr := m.tenantStore.GetTenantUserByUser(ctx, tid, params.UserID)
+		if tErr != nil || tu == nil {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgNotFound, "user", params.UserID)))
+			return
+		}
+		if tu.IsOwner {
+			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrUnauthorized, i18n.T(locale, i18n.MsgTargetRoleForbidden)))
+			return
+		}
+		// Check if target has admin-level role
+		if m.roleStore != nil {
+			if roles, rErr := m.roleStore.ListUserRoles(ctx, tid, params.UserID); rErr == nil {
+				for _, r := range roles {
+					perms, _ := m.roleStore.GetRolePermissions(ctx, r.ID)
+					for _, p := range perms {
+						if p == "system.manage_settings" {
+							client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrUnauthorized, i18n.T(locale, i18n.MsgTargetRoleForbidden)))
+							return
+						}
+					}
+				}
+			}
+		}
 	}
 
 	// Unassign all current RBAC roles for the user in this tenant.
@@ -669,6 +672,13 @@ func (m *TenantsMethods) handleUsersUpdateRole(ctx context.Context, client *gate
 	}
 
 	m.emitCacheInvalidate(bus.CacheKindTenantUsers, params.UserID)
+
+	// Notify affected user's WS sessions to force reconnect with updated role
+	m.msgBus.Broadcast(bus.Event{
+		Name:    protocol.EventTenantAccessRevoked,
+		Payload: map[string]string{"user_id": params.UserID, "tenant_id": tid.String()},
+	})
+
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]string{"ok": "true"}))
 }
 

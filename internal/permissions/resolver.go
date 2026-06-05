@@ -115,5 +115,49 @@ func (r *Resolver) resolve(ctx context.Context, userID string, tenantID uuid.UUI
 		}
 	}
 
+	// 2. Group-based role permissions (SRS §6.6.3: union of group roles + ancestor group roles)
+	if r.groups != nil && r.roles != nil {
+		// 2a. Get user's direct group memberships
+		userUUID, err := uuid.Parse(userID)
+		if err != nil {
+			return result, nil // non-fatal: non-UUID userID, return direct perms only
+		}
+		userGroups, err := r.groups.GetUserGroups(ctx, userUUID)
+		if err != nil {
+			return result, nil // non-fatal: return direct perms only
+		}
+
+		// 2b. Collect all group IDs: direct + ancestors, deduplicated
+		allGroupIDs := make(map[uuid.UUID]bool)
+		for _, g := range userGroups {
+			allGroupIDs[g.ID] = true
+			// Recurse into ancestor groups
+			ancestors, err := r.groups.GetAncestorGroupIDs(ctx, g.ID)
+			if err != nil {
+				continue // non-fatal
+			}
+			for _, aid := range ancestors {
+				allGroupIDs[aid] = true
+			}
+		}
+
+		// 2c. For each group, get assigned roles and their permissions
+		for gid := range allGroupIDs {
+			groupRoles, err := r.roles.ListGroupRoles(ctx, gid)
+			if err != nil {
+				continue // non-fatal
+			}
+			for _, role := range groupRoles {
+				perms, err := r.roles.GetRolePermissions(ctx, role.ID)
+				if err != nil {
+					continue
+				}
+				for _, p := range perms {
+					result[p] = true
+				}
+			}
+		}
+	}
+
 	return result, nil
 }

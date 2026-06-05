@@ -239,12 +239,12 @@ func (h *AuthHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate password complexity
-	lengthOK, hasUpper, hasSymbol := auth.ValidatePasswordComplexity(req.Password)
+	lengthOK, hasUpper, hasDigit, hasSymbol := auth.ValidatePasswordComplexity(req.Password)
 	if !lengthOK {
 		writeError(w, http.StatusBadRequest, "invalid_request", i18n.T(locale, i18n.MsgAuthPasswordTooShort, auth.MinPasswordLength))
 		return
 	}
-	if !hasUpper || !hasSymbol {
+	if !hasUpper || !hasDigit || !hasSymbol {
 		writeError(w, http.StatusBadRequest, "invalid_request", i18n.T(locale, i18n.MsgAuthPasswordComplexity))
 		return
 	}
@@ -475,8 +475,8 @@ func (h *AuthHandler) handlePasswordChange(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "password_too_short", i18n.T(locale, i18n.MsgAuthPasswordTooShort, auth.MinPasswordLength))
 		return
 	}
-	_, hasUpper, hasSymbol := auth.ValidatePasswordComplexity(req.NewPassword)
-	if !hasUpper || !hasSymbol {
+	_, hasUpper, hasDigit, hasSymbol := auth.ValidatePasswordComplexity(req.NewPassword)
+	if !hasUpper || !hasDigit || !hasSymbol {
 		writeError(w, http.StatusBadRequest, "password_complexity", i18n.T(locale, i18n.MsgAuthPasswordComplexity))
 		return
 	}

@@ -43,7 +43,7 @@ import { ConnectionStatus } from "./connection-status";
 import { ROUTES, route } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { usePendingPairingsCount } from "@/hooks/use-pending-pairings-count";
-import { useAuthStore } from "@/stores/use-auth-store";
+import { useRole } from "@/hooks/use-role";
 import { useTenants } from "@/hooks/use-tenants";
 
 interface SidebarProps {
@@ -54,10 +54,8 @@ interface SidebarProps {
 export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
   const { t } = useTranslation("sidebar");
   const { pendingCount } = usePendingPairingsCount();
-  const role = useAuthStore((s) => s.role);
   const { isOwner, currentTenantSlug } = useTenants();
-  const isAdmin = role === "admin" || role === "owner";
-  const isMember = role === "member" || isAdmin;
+  const { isAdmin, isMember, isGatewayToken } = useRole();
 
   return (
     <aside
@@ -156,22 +154,34 @@ export function Sidebar({ collapsed, onNavItemClick }: SidebarProps) {
         </SidebarGroup>
         )}
 
-        {isAdmin && (
+        {isMember && (
         <SidebarGroup label={t("groups.system")} collapsed={collapsed}>
-          <SidebarItem to={route(currentTenantSlug, ROUTES.USER_MGMT)} icon={Users} label={t("nav.userMgmt")} collapsed={collapsed} />
-          <SidebarItem to={route(currentTenantSlug, ROUTES.GROUPS)} icon={FolderTree} label={t("nav.groups")} collapsed={collapsed} />
-          <SidebarItem to={route(currentTenantSlug, ROUTES.ROLE_MGMT)} icon={ShieldCheck} label={t("nav.roles")} collapsed={collapsed} />
           <SidebarItem to={route(currentTenantSlug, ROUTES.AUDIT_LOG)} icon={FileText} label={t("nav.auditLog")} collapsed={collapsed} />
+          {isAdmin && !isGatewayToken && (
+            <>
+              <SidebarItem to={route(currentTenantSlug, ROUTES.USER_MGMT)} icon={Users} label={t("nav.userMgmt")} collapsed={collapsed} />
+              <SidebarItem to={route(currentTenantSlug, ROUTES.GROUPS)} icon={FolderTree} label={t("nav.groups")} collapsed={collapsed} />
+              <SidebarItem to={route(currentTenantSlug, ROUTES.ROLE_MGMT)} icon={ShieldCheck} label={t("nav.roles")} collapsed={collapsed} />
+            </>
+          )}
           {isOwner && (
             <SidebarItem to={route(currentTenantSlug, ROUTES.TENANTS)} icon={Building2} label={t("nav.tenants")} collapsed={collapsed} />
           )}
-          <SidebarItem to={route(currentTenantSlug, ROUTES.PROVIDERS)} icon={Cpu} label={t("nav.providers")} collapsed={collapsed} />
-          <SidebarItem to={route(currentTenantSlug, ROUTES.PACKAGES)} icon={Blocks} label={t("nav.packages")} collapsed={collapsed} />
+          {isAdmin && (
+            <>
+              <SidebarItem to={route(currentTenantSlug, ROUTES.PROVIDERS)} icon={Cpu} label={t("nav.providers")} collapsed={collapsed} />
+              <SidebarItem to={route(currentTenantSlug, ROUTES.PACKAGES)} icon={Blocks} label={t("nav.packages")} collapsed={collapsed} />
+            </>
+          )}
           {isOwner && (
             <SidebarItem to={route(currentTenantSlug, ROUTES.CONFIG)} icon={Settings} label={t("nav.config")} collapsed={collapsed} />
           )}
-          <SidebarItem to={route(currentTenantSlug, ROUTES.AUTHENTICATION)} icon={ShieldCheck} label={t("nav.authentication")} collapsed={collapsed} />
-          <SidebarItem to={route(currentTenantSlug, ROUTES.IMPORT_EXPORT)} icon={ArrowLeftRight} label={t("nav.importExport")} collapsed={collapsed} />
+          {isAdmin && (
+            <>
+              <SidebarItem to={route(currentTenantSlug, ROUTES.AUTHENTICATION)} icon={ShieldCheck} label={t("nav.authentication")} collapsed={collapsed} />
+              <SidebarItem to={route(currentTenantSlug, ROUTES.IMPORT_EXPORT)} icon={ArrowLeftRight} label={t("nav.importExport")} collapsed={collapsed} />
+            </>
+          )}
           {isOwner && (
             <SidebarItem to={route(currentTenantSlug, ROUTES.BACKUP_RESTORE)} icon={DatabaseBackup} label={t("nav.backupRestore")} collapsed={collapsed} />
           )}
