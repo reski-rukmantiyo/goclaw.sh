@@ -56,6 +56,7 @@ func (h *TenantsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/tenants/{id}/users/{userId}", admin(h.handleUsersGet))
 	mux.HandleFunc("PUT /v1/tenants/{id}/users/{userId}", admin(h.handleUsersUpdate))
 	mux.HandleFunc("PUT /v1/tenants/{id}/users/{userId}/role", admin(h.handleUsersUpdateRole))
+	mux.HandleFunc("PUT /v1/tenants/{id}/users/{userId}/password", admin(h.handleUsersPasswordChange))
 	mux.HandleFunc("DELETE /v1/tenants/{id}/users/{userId}", admin(h.handleUsersRemove))
 }
 
@@ -351,8 +352,8 @@ func (h *TenantsHandler) handleUsersAdd(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgRequired, "password")})
 		return
 	}
-	lengthOK, hasUpper, hasSymbol := auth.ValidatePasswordComplexity(input.Password)
-	if !lengthOK || !hasUpper || !hasSymbol {
+	lengthOK, hasUpper, hasDigit, hasSymbol := auth.ValidatePasswordComplexity(input.Password)
+	if !lengthOK || !hasUpper || !hasDigit || !hasSymbol {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgAuthPasswordComplexity)})
 		return
 	}
@@ -862,6 +863,93 @@ func (h *TenantsHandler) handleUsersUpdateRole(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, map[string]string{"status": "role_updated"})
 }
 
+// handleUsersPasswordChange allows an admin/owner to set a new password for a tenant user.
+func (h *TenantsHandler) handleUsersPasswordChange(w http.ResponseWriter, r *http.Request) {
+	locale := extractLocale(r)
+	ctx := r.Context()
+
+	tenantID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgInvalidID, "tenant")})
+		return
+	}
+
+	userID := r.PathValue("userId")
+	if userID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgRequired, "userId")})
+		return
+	}
+
+	normalized, err := base.NormalizeUserID(ctx, h.masterDB, userID)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgInvalidID, "user")})
+		return
+	}
+
+	targetRole := h.checkTenantUserAuth(w, r, tenantID, normalized, "update")
+	if targetRole == "" {
+		return
+	}
+
+	var input struct {
+		Password *string `json:"password"`
+		Email    *string `json:"email"`
+		Role     *string `json:"role"`
+	}
+	if !bindJSON(w, r, locale, &input) {
+		return
+	}
+
+	if input.Email != nil || input.Role != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": i18n.T(locale, i18n.MsgFieldNotUpdatable, "email, role")})
+		return
+	}
+
+	if input.Password == nil || *input.Password == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgRequired, "password")})
+		return
+	}
+
+	lengthOK, hasUpper, hasDigit, hasSymbol := auth.ValidatePasswordComplexity(*input.Password)
+	if !lengthOK || !hasUpper || !hasDigit || !hasSymbol {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": i18n.T(locale, i18n.MsgAuthPasswordComplexity)})
+		return
+	}
+
+	userUUID, parseErr := uuid.Parse(normalized)
+	if parseErr != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgInvalidID, "user")})
+		return
+	}
+	user, err := h.userStore.GetByID(ctx, userUUID)
+	if err != nil {
+		slog.Error("tenants.users.password_change get_user failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgInternalError, err.Error())})
+		return
+	}
+	if user == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": i18n.T(locale, i18n.MsgNotFound, "user", normalized)})
+		return
+	}
+
+	hash, hashErr := auth.HashPassword(*input.Password)
+	if hashErr != nil {
+		slog.Error("tenants.users.password_change hash failed", "error", hashErr)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgInternalError, hashErr.Error())})
+		return
+	}
+
+	user.PasswordHash = &hash
+	if err := h.userStore.Update(ctx, user); err != nil {
+		slog.Error("tenants.users.password_change update failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": i18n.T(locale, i18n.MsgFailedToUpdate, "user password", err.Error())})
+		return
+	}
+
+	emitAudit(h.msgBus, r, "tenant.user.password_changed", "tenant_user", normalized)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "password_changed"})
+}
+
 // enrichTenantUser builds a response object from a TenantUserData with resolved role and email.
 func (h *TenantsHandler) enrichTenantUser(ctx context.Context, tu *store.TenantUserData, role string) map[string]any {
 	resp := map[string]any{
@@ -881,6 +969,8 @@ func (h *TenantsHandler) enrichTenantUser(ctx context.Context, tu *store.TenantU
 				resp["display_name"] = u.DisplayName
 				resp["phone"] = u.Phone
 				resp["status"] = u.Status
+				resp["auth_provider"] = u.AuthProvider
+				resp["last_login_at"] = u.LastLoginAt
 			}
 		}
 	}
@@ -902,6 +992,8 @@ func (h *TenantsHandler) enrichTenantUsers(ctx context.Context, users []store.Te
 	nameMap := make(map[string]string)
 	phoneMap := make(map[string]*string)
 	statusMap := make(map[string]string)
+	authProviderMap := make(map[string]string)
+	lastLoginMap := make(map[string]*time.Time)
 	if h.userStore != nil && len(userUUIDs) > 0 {
 		if userData, err := h.userStore.GetByIDs(ctx, userUUIDs); err == nil {
 			for _, u := range userData {
@@ -909,6 +1001,8 @@ func (h *TenantsHandler) enrichTenantUsers(ctx context.Context, users []store.Te
 				nameMap[u.ID.String()] = u.DisplayName
 				phoneMap[u.ID.String()] = u.Phone
 				statusMap[u.ID.String()] = u.Status
+				authProviderMap[u.ID.String()] = u.AuthProvider
+				lastLoginMap[u.ID.String()] = u.LastLoginAt
 			}
 		}
 	}
@@ -921,17 +1015,19 @@ func (h *TenantsHandler) enrichTenantUsers(ctx context.Context, users []store.Te
 		}
 
 		result = append(result, map[string]any{
-			"id":           tu.ID,
-			"tenant_id":    tu.TenantID,
-			"user_id":      tu.UserID,
-			"display_name": nameMap[tu.UserID],
-			"email":        emailMap[tu.UserID],
-			"is_owner":     tu.IsOwner,
-			"role":         role,
-			"phone":        phoneMap[tu.UserID],
-			"status":       statusMap[tu.UserID],
-			"created_at":   tu.CreatedAt,
-			"updated_at":   tu.UpdatedAt,
+			"id":            tu.ID,
+			"tenant_id":     tu.TenantID,
+			"user_id":       tu.UserID,
+			"display_name":  nameMap[tu.UserID],
+			"email":         emailMap[tu.UserID],
+			"is_owner":      tu.IsOwner,
+			"role":          role,
+			"phone":         phoneMap[tu.UserID],
+			"status":        statusMap[tu.UserID],
+			"auth_provider": authProviderMap[tu.UserID],
+			"last_login_at": lastLoginMap[tu.UserID],
+			"created_at":    tu.CreatedAt,
+			"updated_at":    tu.UpdatedAt,
 		})
 	}
 

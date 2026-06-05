@@ -288,7 +288,7 @@ func init() {
 		MsgAuthRefreshTokenInvalid: "refresh token không hợp lệ hoặc đã hết hạn",
 		MsgAuthPasswordMismatch:    "mật khẩu hiện tại không chính xác",
 		MsgAuthPasswordTooShort:    "mật khẩu phải có ít nhất %d ký tự",
-		MsgAuthPasswordComplexity:  "mật khẩu phải chứa ít nhất một chữ hoa và một ký tự đặc biệt",
+		MsgAuthPasswordComplexity:  "mật khẩu phải có ít nhất 8 ký tự, bao gồm ít nhất 1 chữ hoa, 1 số và 1 ký tự đặc biệt",
 		MsgUserHasGroups:           "người dùng là thành viên của %d nhóm, vui lòng xóa khỏi nhóm trước",
 		MsgUserDeleteBlockedTenants: "người dùng đã đăng ký %d tenant, vui lòng hủy đăng ký trước",
 		MsgAuthOIDCFailed:          "xác thực OIDC thất bại: %s",

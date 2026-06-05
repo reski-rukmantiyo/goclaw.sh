@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, RefreshCw, Users, Trash2, Pencil, X, Check } from "lucide-react";
+import { Plus, RefreshCw, Users, Pencil, Trash2, KeyRound, ArrowRightLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,14 +12,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { EmptyState } from "@/components/shared/empty-state";
-import { TableSkeleton } from "@/components/shared/loading-skeleton";
-import { useContactResolver } from "@/hooks/use-contact-resolver";
-import { formatUserLabel } from "@/lib/format-user-label";
-import { useDeferredLoading } from "@/hooks/use-deferred-loading";
-import { useMinLoading } from "@/hooks/use-min-loading";
-import { useTenantDetail } from "../hooks/use-tenant-detail";
 import {
   Select,
   SelectContent,
@@ -27,21 +19,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ConfirmDeleteDialog } from "@/components/shared/confirm-delete-dialog";
+import { EmptyState } from "@/components/shared/empty-state";
+import { TableSkeleton } from "@/components/shared/loading-skeleton";
+import { useDeferredLoading } from "@/hooks/use-deferred-loading";
+import { useMinLoading } from "@/hooks/use-min-loading";
+import { useTenantDetail } from "../hooks/use-tenant-detail";
+import { formatLastLogin } from "@/lib/format";
+import { formatAuthProvider, formatUserStatus } from "@/lib/format-user";
+import { useAuthStore } from "@/stores/use-auth-store";
+import { useRole } from "@/hooks/use-role";
 
-const ALL_ROLES = ["owner", "admin", "member", "viewer"] as const;
+const ALL_ROLES = ["admin", "member", "viewer"] as const;
 const ADMIN_CREATE_ROLES = ["member", "viewer"] as const;
 const ADMIN_ROLE_CHANGE_ROLES = ["member", "viewer"] as const;
 
-const ROLE_KEYS: Record<string, string> = {
-  owner: "roleOwner", admin: "roleAdmin",
-  member: "roleMember", viewer: "roleViewer",
-};
-
-const ROLE_COLORS: Record<string, string> = {
-  owner: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  admin: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  member: "bg-muted text-muted-foreground",
-  viewer: "bg-muted text-muted-foreground",
+const ROLE_LABELS: Record<string, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  member: "Member",
+  viewer: "Viewer",
 };
 
 interface TenantUsersTabProps {
@@ -52,22 +49,25 @@ interface TenantUsersTabProps {
 export function TenantUsersTab({ tenantId, isOwner }: TenantUsersTabProps) {
   const { t } = useTranslation("tenants");
 
-  const createRoles = isOwner ? ALL_ROLES : ADMIN_CREATE_ROLES;
-  const roleChangeRoles = isOwner ? ALL_ROLES : ADMIN_ROLE_CHANGE_ROLES;
+  const currentUserId = useAuthStore((s) => s.userId);
+  const { isGatewayToken } = useRole();
+  // isOwner prop is from Tenant Detail context; also treat Gateway Token as owner
+  const callerIsOwner = isOwner || isGatewayToken;
+  const callerIsAdmin = !callerIsOwner; // if not owner/gateway, must be admin (route guard ensures this)
+
+  const createRoles = callerIsOwner ? ALL_ROLES : ADMIN_CREATE_ROLES;
+  const roleChangeRoles = callerIsOwner ? ALL_ROLES : ADMIN_ROLE_CHANGE_ROLES;
 
   const {
     users, usersLoading, usersRefreshing, refreshUsers,
-    createUser, updateUser, removeUser, updateUserRole,
-    isCreating, isUpdating, isRemoving, isSavingRole,
+    createUser, updateUser, removeUser, updateUserRole, changePassword,
+    isCreating, isUpdating, isRemoving, isSavingRole, isChangingPassword,
   } = useTenantDetail(tenantId);
 
   const spinning = useMinLoading(usersRefreshing);
   const showSkeleton = useDeferredLoading(usersLoading && users.length === 0);
 
-  const userIds = useMemo(() => users.map((u) => u.user_id), [users]);
-  const { resolve } = useContactResolver(userIds);
-
-  // --- Create user dialog state ---
+  // --- Create dialog state ---
   const [addOpen, setAddOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -81,14 +81,38 @@ export function TenantUsersTab({ tenantId, isOwner }: TenantUsersTabProps) {
     }
   }, [addOpen]);
 
-  // --- Remove user state ---
-  const [removeTarget, setRemoveTarget] = useState<string | null>(null);
-
-  // --- Inline edit state ---
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  // --- Edit dialog state ---
+  const [editTarget, setEditTarget] = useState<{ user_id: string; display_name?: string | null; phone?: string | null } | null>(null);
   const [editDisplayName, setEditDisplayName] = useState("");
   const [editPhone, setEditPhone] = useState("");
 
+  useEffect(() => {
+    if (editTarget) {
+      setEditDisplayName(editTarget.display_name ?? "");
+      setEditPhone(editTarget.phone ?? "");
+    }
+  }, [editTarget]);
+
+  // --- Change Role dialog state ---
+  const [roleTarget, setRoleTarget] = useState<{ user_id: string; role: string; display_name?: string | null } | null>(null);
+  const [newRole, setNewRole] = useState("");
+
+  useEffect(() => {
+    if (roleTarget) setNewRole(roleTarget.role);
+  }, [roleTarget]);
+
+  // --- Change Password dialog state ---
+  const [passwordTarget, setPasswordTarget] = useState<{ user_id: string; display_name?: string | null } | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+
+  useEffect(() => {
+    if (!passwordTarget) setNewPassword("");
+  }, [passwordTarget]);
+
+  // --- Delete dialog state ---
+  const [deleteTarget, setDeleteTarget] = useState<{ user_id: string; display_name?: string | null; role: string; is_owner: boolean } | null>(null);
+
+  // --- Handlers ---
   const handleCreate = async () => {
     if (!email.trim() || !displayName.trim() || !password.trim()) return;
     try {
@@ -103,34 +127,62 @@ export function TenantUsersTab({ tenantId, isOwner }: TenantUsersTabProps) {
     } catch { /* handled by mutation */ }
   };
 
-  const handleRemove = async () => {
-    if (!removeTarget) return;
-    try { await removeUser(removeTarget); setRemoveTarget(null); } catch { /* handled */ }
-  };
-
-  const handleRoleChange = async (userId: string, newRole: string) => {
-    try { await updateUserRole({ userId, role: newRole }); } catch { /* handled */ }
-  };
-
-  const startEditing = (u: { user_id: string; display_name?: string | null; phone?: string | null }) => {
-    setEditingUserId(u.user_id);
-    setEditDisplayName(u.display_name ?? "");
-    setEditPhone(u.phone ?? "");
-  };
-
   const handleEditSave = async () => {
-    if (!editingUserId) return;
+    if (!editTarget) return;
     try {
       await updateUser({
-        userId: editingUserId,
+        userId: editTarget.user_id,
         input: {
           display_name: editDisplayName.trim() || undefined,
           phone: editPhone.trim() || undefined,
         },
       });
-      setEditingUserId(null);
+      setEditTarget(null);
     } catch { /* handled */ }
   };
+
+  const handleRoleChange = async () => {
+    if (!roleTarget || !newRole) return;
+    try {
+      await updateUserRole({ userId: roleTarget.user_id, role: newRole });
+      setRoleTarget(null);
+    } catch { /* handled */ }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try { await removeUser(deleteTarget.user_id); setDeleteTarget(null); } catch { /* handled */ }
+  };
+
+  // --- Action visibility per SRS v2.0 §6.8.5/6.8.6 ---
+  const canEdit = (u: { role: string; is_owner: boolean }) => {
+    if (callerIsOwner) return true;
+    if (callerIsAdmin && (u.role === "owner" || u.role === "admin" || u.is_owner)) return false;
+    return true;
+  };
+
+  const canChangeRole = (u: { role: string; is_owner: boolean }) => {
+    if (u.is_owner || u.role === "owner") return false;
+    if (callerIsOwner) return true;
+    if (callerIsAdmin && u.role === "admin") return false;
+    return callerIsAdmin;
+  };
+
+  const canChangePassword = (u: { role: string; is_owner: boolean }) => {
+    if (callerIsOwner) return true;
+    if (callerIsAdmin && (u.role === "owner" || u.role === "admin" || u.is_owner)) return false;
+    return callerIsAdmin;
+  };
+
+  const canDelete = (u: { user_id: string; role: string; is_owner: boolean }) => {
+    if (u.user_id === currentUserId) return false;
+    if (callerIsOwner) return true;
+    if (callerIsAdmin && (u.role === "owner" || u.role === "admin" || u.is_owner)) return false;
+    return callerIsAdmin;
+  };
+
+  const ownerCount = useMemo(() => users.filter((u) => u.is_owner || u.role === "owner").length, [users]);
+  const isLastOwner = (u: { role: string; is_owner: boolean }) => (u.is_owner || u.role === "owner") && ownerCount <= 1;
 
   return (
     <div className="space-y-4">
@@ -155,67 +207,75 @@ export function TenantUsersTab({ tenantId, isOwner }: TenantUsersTabProps) {
       ) : users.length === 0 ? (
         <EmptyState icon={Users} title={t("noUsers")} description="" />
       ) : (
-        <div className="grid gap-2">
-          {users.map((u) => (
-            <div key={u.user_id} className="flex items-center justify-between rounded-lg border px-4 py-3 hover:bg-muted/30 transition-colors">
-              {editingUserId === u.user_id ? (
-                <div className="flex-1 flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs shrink-0 w-20">{t("displayName")}</Label>
-                    <Input value={editDisplayName} onChange={(e) => setEditDisplayName(e.target.value)} className="h-7 text-sm" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs shrink-0 w-20">{t("phone")}</Label>
-                    <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} className="h-7 text-sm" placeholder="+1 234 567 890" />
-                  </div>
-                  <div className="flex items-center gap-1 ml-20">
-                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={handleEditSave} disabled={isUpdating}>
-                      <Check className="h-3.5 w-3.5 text-green-600" />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditingUserId(null)} disabled={isUpdating}>
-                      <X className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium uppercase">
-                    {(u.display_name || u.email || u.user_id).charAt(0)}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{u.display_name || u.email || formatUserLabel(u.user_id, resolve)}</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {u.phone ? `${u.phone} · ` : ""}{u.email || u.user_id}
-                    </p>
-                  </div>
-                </div>
-              )}
-              {!editingUserId || editingUserId !== u.user_id ? (
-                <div className="flex items-center gap-2 shrink-0">
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={() => startEditing(u)} title={t("editName")}>
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                  {u.is_owner || u.role === "owner" ? (
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ROLE_COLORS.owner}`}>
-                      {t("roleOwner")}
-                    </span>
-                  ) : (
-                    <Select value={u.role} onValueChange={(r) => handleRoleChange(u.user_id, r)} disabled={isSavingRole}>
-                      <SelectTrigger className="h-7 w-[100px] text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {roleChangeRoles.map((r) => (
-                          <SelectItem key={r} value={r}>{t(ROLE_KEYS[r] ?? r)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => setRemoveTarget(u.user_id)} title={t("removeUser")}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-          ))}
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full min-w-[600px] text-base md:text-sm">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="px-4 py-3 text-left font-medium">{t("displayName")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("email")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("role")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("provider", { defaultValue: "Provider" })}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("status")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("lastLogin", { defaultValue: "Last Login" })}</th>
+                <th className="px-4 py-3 text-right font-medium">{t("actions", { defaultValue: "Actions" })}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.user_id} className="border-b last:border-0 hover:bg-muted/30">
+                  <td className="px-4 py-3 font-medium">
+                    {u.display_name || u.email || u.user_id}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {u.email || u.user_id}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-sm">{ROLE_LABELS[u.role] ?? u.role}</span>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {formatAuthProvider(u.auth_provider)}
+                  </td>
+                  <td className="px-4 py-3">
+                    {formatUserStatus(u.status)}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {formatLastLogin(u.last_login_at) || t("never", { defaultValue: "Never" })}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      {canEdit(u) && (
+                        <Button variant="ghost" size="sm" onClick={() => setEditTarget(u)} title={t("editName")}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {canChangeRole(u) && (
+                        <Button variant="ghost" size="sm" onClick={() => setRoleTarget(u)} title={t("updateRole")}>
+                          <ArrowRightLeft className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {canChangePassword(u) && (
+                        <Button variant="ghost" size="sm" onClick={() => setPasswordTarget(u)} title={t("changePassword", { defaultValue: "Change Password" })}>
+                          <KeyRound className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {canDelete(u) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => !isLastOwner(u) && setDeleteTarget(u)}
+                          disabled={isLastOwner(u)}
+                          title={isLastOwner(u) ? t("lastOwnerBlocked") : t("removeUser")}
+                          className={isLastOwner(u) ? "" : "text-destructive hover:text-destructive"}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -264,17 +324,104 @@ export function TenantUsersTab({ tenantId, isOwner }: TenantUsersTabProps) {
         </DialogContent>
       </Dialog>
 
+      {/* Edit User Dialog */}
+      <Dialog open={!!editTarget} onOpenChange={(v) => !v && setEditTarget(null)}>
+        <DialogContent className="max-sm:inset-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("editName")}</DialogTitle>
+            <DialogDescription className="sr-only">{t("editName")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="tu-edit-display-name">{t("displayName")}</Label>
+              <Input id="tu-edit-display-name" value={editDisplayName} onChange={(e) => setEditDisplayName(e.target.value)} className="text-base md:text-sm" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="tu-edit-phone">{t("phone")}</Label>
+              <Input id="tu-edit-phone" type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="+1 234 567 890" className="text-base md:text-sm" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditTarget(null)} disabled={isUpdating}>{t("cancel", { defaultValue: "Cancel" })}</Button>
+            <Button onClick={handleEditSave} disabled={isUpdating}>{isUpdating ? "..." : t("save", { defaultValue: "Save" })}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Role Dialog */}
+      <Dialog open={!!roleTarget} onOpenChange={(v) => !v && setRoleTarget(null)}>
+        <DialogContent className="max-sm:inset-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("updateRole")}</DialogTitle>
+            <DialogDescription>{t("changeRoleDescription", { name: roleTarget?.display_name ?? "" })}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>{t("selectRole")}</Label>
+              <Select value={newRole} onValueChange={setNewRole}>
+                <SelectTrigger className="text-base md:text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {roleChangeRoles.map((r) => (
+                    <SelectItem key={r} value={r}>{t(ROLE_KEYS[r] ?? r)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRoleTarget(null)} disabled={isSavingRole}>{t("cancel", { defaultValue: "Cancel" })}</Button>
+            <Button onClick={handleRoleChange} disabled={isSavingRole || !newRole || newRole === roleTarget?.role}>
+              {isSavingRole ? "..." : t("save", { defaultValue: "Save" })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Password Dialog */}
+      <Dialog open={!!passwordTarget} onOpenChange={(v) => !v && setPasswordTarget(null)}>
+        <DialogContent className="max-sm:inset-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("changePassword", { defaultValue: "Change Password" })}</DialogTitle>
+            <DialogDescription>{t("changePasswordDescription", { name: passwordTarget?.display_name ?? "" })}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="tu-new-password">{t("password")}</Label>
+              <Input id="tu-new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="text-base md:text-sm" />
+              <p className="text-xs text-muted-foreground mt-1">{t("passwordHint")}</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPasswordTarget(null)} disabled={false}>{t("cancel", { defaultValue: "Cancel" })}</Button>
+            <Button onClick={async () => {
+              if (!passwordTarget || !newPassword.trim()) return;
+              try {
+                await changePassword({ userId: passwordTarget.user_id, password: newPassword.trim() });
+                setPasswordTarget(null);
+              } catch { /* handled by mutation */ }
+            }} disabled={isChangingPassword || !newPassword.trim()}>
+              {t("save", { defaultValue: "Save" })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Remove User Confirm */}
-      <ConfirmDialog
-        open={!!removeTarget}
-        onOpenChange={(o) => { if (!o) setRemoveTarget(null); }}
+      <ConfirmDeleteDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
         title={t("removeUser")}
         description={t("confirmRemoveUser")}
+        confirmValue={deleteTarget?.display_name ?? ""}
         confirmLabel={t("removeUser")}
-        variant="destructive"
-        onConfirm={handleRemove}
+        onConfirm={handleDelete}
         loading={isRemoving}
       />
     </div>
   );
 }
+
+const ROLE_KEYS: Record<string, string> = {
+  owner: "roleOwner", admin: "roleAdmin",
+  member: "roleMember", viewer: "roleViewer",
+};

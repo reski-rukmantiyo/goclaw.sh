@@ -1,54 +1,68 @@
 {
-  "title": "User Management",
+  "title": "Users",
   "description": "Manage users and their access",
   "addUser": "Add User",
   "password": "Password",
   "passwordPlaceholder": "Min. 8 characters",
-  "passwordHint": "Must contain uppercase letter and symbol",
-  "isAdmin": "Tenant Admin",
+  "passwordHint": "Must be at least 8 characters with 1 uppercase letter, 1 number, and 1 symbol",
   "searchPlaceholder": "Search users...",
-  "filterStatus": "Filter status",
   "emptyTitle": "No users found",
   "emptyDescription": "Add a user to get started",
   "never": "Never",
+  "selectRole": "Select Role",
+  "lastOwnerTooltip": "Cannot delete the last owner of a tenant",
   "columns": {
     "displayName": "Display Name",
     "email": "Email",
+    "role": "Role",
     "provider": "Provider",
     "status": "Status",
-    "role": "Tenant Admin",
     "lastLogin": "Last Login",
+    "phone": "Phone",
     "actions": "Actions"
   },
   "status": {
-    "all": "All Status",
     "active": "Active",
-    "suspended": "Suspended",
-    "deactivated": "Deactivated"
+    "inactive": "Inactive"
   },
   "role": {
+    "owner": "Owner",
     "admin": "Admin",
-    "member": "Member"
+    "member": "Member",
+    "viewer": "Viewer"
   },
   "actions": {
-    "suspend": "Suspend",
-    "reactivate": "Reactivate",
-    "deactivate": "Deactivate",
-    "makeAdmin": "Grant Tenant Admin",
-    "removeAdmin": "Revoke Tenant Admin"
+    "edit": "Edit",
+    "changeRole": "Change Role",
+    "changePassword": "Change Password",
+    "delete": "Delete"
   },
-  "deactivate": {
-    "title": "Deactivate User",
-    "description": "Are you sure you want to deactivate {{name}}? This cannot be undone after 30 days."
+  "editUser": {
+    "title": "Edit User"
+  },
+  "changeRole": {
+    "title": "Change Role",
+    "description": "Change role for {{name}}"
+  },
+  "changePassword": {
+    "title": "Change Password",
+    "description": "Set a new password for {{name}}",
+    "newPassword": "New Password"
+  },
+  "delete": {
+    "title": "Delete User",
+    "description": "Are you sure you want to delete {{name}}? This action cannot be undone."
   },
   "toast": {
-    "statusChanged": "User status updated",
-    "failedStatusChange": "Failed to change status",
-    "deactivated": "User deactivated",
-    "failedDeactivate": "Failed to deactivate user",
     "created": "User created",
     "failedCreate": "Failed to create user",
-    "adminToggled": "Admin status updated",
-    "failedAdminToggle": "Failed to toggle admin status"
+    "userUpdated": "User updated",
+    "updateUserFailed": "Failed to update user",
+    "userDeleted": "User deleted",
+    "failedDeleteUser": "Failed to delete user",
+    "roleChanged": "Role changed",
+    "failedRoleChange": "Failed to change role",
+    "passwordChanged": "Password changed",
+    "failedPasswordChange": "Failed to change password"
   }
 }

@@ -105,3 +105,20 @@ export function computeDurationMs(startTime?: string, endTime?: string): number 
   if (isNaN(start) || isNaN(end)) return null;
   return end - start;
 }
+
+/**
+ * Format last login timestamp per SRS v2.0 §6.8.4:
+ * - null/undefined → returns "" (caller uses "Never" from i18n)
+ * - Within 60 minutes → relative ("18m ago")
+ * - Over 60 minutes → absolute "YYYY-MM-DD HH:mm"
+ */
+export function formatLastLogin(date: string | null | undefined): string {
+  if (!date) return "";
+  const d = new Date(date);
+  const now = Date.now();
+  const diffMs = now - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}

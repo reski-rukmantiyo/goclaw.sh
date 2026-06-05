@@ -109,6 +109,18 @@ export function useTenantDetail(tenantId: string) {
     },
   });
 
+  const changePasswordMutation = useMutation({
+    mutationFn: async ({ userId, password }: { userId: string; password: string }) => {
+      return http.put(`/v1/tenants/${tenantId}/users/${userId}/password`, { password });
+    },
+    onSuccess: () => {
+      toast.success(i18next.t("tenants:passwordChanged", { defaultValue: "Password changed" }));
+    },
+    onError: (err: Error) => {
+      toast.error(i18next.t("tenants:passwordChangeFailed", { defaultValue: "Failed to change password" }), err.message);
+    },
+  });
+
   // --- WS-based tenant ops ---
 
   const updateTenantName = useCallback(
@@ -151,11 +163,13 @@ export function useTenantDetail(tenantId: string) {
     updateUser: updateUserMutation.mutateAsync,
     removeUser: removeUserMutation.mutateAsync,
     updateUserRole: updateUserRoleMutation.mutateAsync,
+    changePassword: changePasswordMutation.mutateAsync,
     // Pending flags
     isCreating: createUserMutation.isPending,
     isUpdating: updateUserMutation.isPending,
     isRemoving: removeUserMutation.isPending,
     isSavingRole: updateUserRoleMutation.isPending,
+    isChangingPassword: changePasswordMutation.isPending,
     // WS mutations
     updateTenantName,
     deleteTenant,

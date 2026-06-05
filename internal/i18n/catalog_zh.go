@@ -288,7 +288,7 @@ func init() {
 		MsgAuthRefreshTokenInvalid: "刷新令牌无效或已过期",
 		MsgAuthPasswordMismatch:    "当前密码不正确",
 		MsgAuthPasswordTooShort:    "密码至少需要 %d 个字符",
-		MsgAuthPasswordComplexity:  "密码必须包含至少一个大写字母和一个特殊字符",
+		MsgAuthPasswordComplexity:  "密码必须至少8个字符，包含至少1个大写字母、1个数字和1个特殊字符",
 		MsgUserHasGroups:           "用户是 %d 个组的成员，请先从组中移除",
 		MsgUserDeleteBlockedTenants: "用户已注册 %d 个租户，请先取消注册",
 		MsgAuthOIDCFailed:          "OIDC 认证失败：%s",

@@ -288,7 +288,7 @@ func init() {
 		MsgAuthRefreshTokenInvalid: "invalid or expired refresh token",
 		MsgAuthPasswordMismatch:    "current password is incorrect",
 		MsgAuthPasswordTooShort:    "password must be at least %d characters",
-		MsgAuthPasswordComplexity:  "password must contain at least one uppercase letter and one symbol",
+		MsgAuthPasswordComplexity:  "password must be at least 8 characters with at least 1 uppercase letter, 1 number, and 1 symbol",
 		MsgUserHasGroups:           "user is a member of %d group(s), remove from groups first",
 		MsgUserDeleteBlockedTenants: "user is enrolled in %d tenant(s), unenroll first",
 		MsgAuthOIDCFailed:          "OIDC authentication failed: %s",

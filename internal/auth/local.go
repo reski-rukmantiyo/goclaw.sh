@@ -13,12 +13,15 @@ const (
 	MinPasswordLength = 8
 )
 
-// ValidatePasswordComplexity checks minimum length, uppercase letter, and symbol.
-func ValidatePasswordComplexity(password string) (lengthOK, hasUpper, hasSymbol bool) {
+// ValidatePasswordComplexity checks minimum length, uppercase letter, digit, and symbol.
+func ValidatePasswordComplexity(password string) (lengthOK, hasUpper, hasDigit, hasSymbol bool) {
 	lengthOK = len(password) >= MinPasswordLength
 	for _, r := range password {
 		if unicode.IsUpper(r) {
 			hasUpper = true
+		}
+		if unicode.IsDigit(r) {
+			hasDigit = true
 		}
 		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
 			hasSymbol = true

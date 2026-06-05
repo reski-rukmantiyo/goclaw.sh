@@ -4,70 +4,47 @@ import i18next from "i18next";
 import { useHttp } from "@/hooks/use-ws";
 import { queryKeys } from "@/lib/query-keys";
 import { toast } from "@/stores/use-toast-store";
-import type { User, PaginatedResult } from "@/types/user-mgmt";
+import { useAuthStore } from "@/stores/use-auth-store";
+import type { TenantUserData } from "@/types/tenant";
 
-interface UserListParams {
-  search?: string;
-  status?: string;
-  limit?: number;
-  offset?: number;
+interface CreateUserInput {
+  email: string;
+  display_name: string;
+  phone?: string;
+  password: string;
+  role: string;
 }
 
-export function useUsersAdmin(params: UserListParams = {}) {
+interface UpdateUserInput {
+  display_name?: string;
+  phone?: string;
+}
+
+export function useUsersAdmin() {
   const http = useHttp();
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((s) => s.tenantId);
 
-  const queryParams: Record<string, string> = {};
-  if (params.search) queryParams.search = params.search;
-  if (params.status && params.status !== "all") queryParams.status = params.status;
-  queryParams.limit = String(params.limit ?? 50);
-  queryParams.offset = String(params.offset ?? 0);
+  const queryKey = queryKeys.tenants.users(tenantId);
 
-  const queryKey = queryKeys.users.search(queryParams);
-
-  const { data, isLoading: loading } = useQuery({
+  const { data: users = [], isLoading: loading, isFetching: refreshing } = useQuery({
     queryKey,
-    queryFn: () => http.get<PaginatedResult<User>>("/v1/users", queryParams),
+    queryFn: async () => {
+      const res = await http.get<{ users: TenantUserData[] }>(`/v1/tenants/${tenantId}/users`);
+      return res?.users ?? [];
+    },
+    enabled: !!tenantId,
     staleTime: 30_000,
   });
 
-  const users = data?.items ?? [];
-  const total = data?.total ?? 0;
-
   const invalidate = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: queryKeys.users.all }),
-    [queryClient],
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.tenants.users(tenantId) }),
+    [queryClient, tenantId],
   );
 
-  const changeStatus = useMutation({
-    mutationFn: async ({ userId, status }: { userId: string; status: string }) => {
-      await http.patch(`/v1/users/${userId}/status`, { status });
-    },
-    onSuccess: () => {
-      invalidate();
-      toast.success(i18next.t("users-admin:toast.statusChanged"));
-    },
-    onError: (err: Error) => {
-      toast.error(i18next.t("users-admin:toast.failedStatusChange"), err.message);
-    },
-  });
-
-  const deactivateUser = useMutation({
-    mutationFn: async (userId: string) => {
-      await http.delete(`/v1/users/${userId}`);
-    },
-    onSuccess: () => {
-      invalidate();
-      toast.success(i18next.t("users-admin:toast.deactivated"));
-    },
-    onError: (err: Error) => {
-      toast.error(i18next.t("users-admin:toast.failedDeactivate"), err.message);
-    },
-  });
-
   const createUser = useMutation({
-    mutationFn: async (input: { email: string; display_name: string; password: string; role?: string }) => {
-      return http.post<User>("/v1/users", input);
+    mutationFn: async (input: CreateUserInput) => {
+      return http.post(`/v1/tenants/${tenantId}/users`, input);
     },
     onSuccess: () => {
       invalidate();
@@ -78,46 +55,72 @@ export function useUsersAdmin(params: UserListParams = {}) {
     },
   });
 
-  const assignRole = useMutation({
-    mutationFn: async ({ userId, roleId }: { userId: string; roleId: string }) => {
-      await http.post(`/v1/users/${userId}/roles`, { role_id: roleId });
+  const updateUser = useMutation({
+    mutationFn: async ({ userId, input }: { userId: string; input: UpdateUserInput }) => {
+      return http.put(`/v1/tenants/${tenantId}/users/${userId}`, input);
     },
     onSuccess: () => {
       invalidate();
-      toast.success(i18next.t("users-admin:toast.roleAssigned"));
+      toast.success(i18next.t("users-admin:toast.userUpdated"));
     },
     onError: (err: Error) => {
-      toast.error(i18next.t("users-admin:toast.failedRoleAssign"), err.message);
+      toast.error(i18next.t("users-admin:toast.updateUserFailed"), err.message);
     },
   });
 
-  const unassignRole = useMutation({
-    mutationFn: async ({ userId, roleId }: { userId: string; roleId: string }) => {
-      await http.delete(`/v1/users/${userId}/roles/${roleId}`);
+  const removeUser = useMutation({
+    mutationFn: async (userId: string) => {
+      return http.delete(`/v1/tenants/${tenantId}/users/${userId}`);
     },
     onSuccess: () => {
       invalidate();
-      toast.success(i18next.t("users-admin:toast.roleUnassigned"));
+      toast.success(i18next.t("users-admin:toast.userDeleted"));
     },
     onError: (err: Error) => {
-      toast.error(i18next.t("users-admin:toast.failedRoleUnassign"), err.message);
+      toast.error(i18next.t("users-admin:toast.failedDeleteUser"), err.message);
+    },
+  });
+
+  const changeRole = useMutation({
+    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
+      return http.put(`/v1/tenants/${tenantId}/users/${userId}/role`, { role });
+    },
+    onSuccess: () => {
+      invalidate();
+      toast.success(i18next.t("users-admin:toast.roleChanged"));
+    },
+    onError: (err: Error) => {
+      toast.error(i18next.t("users-admin:toast.failedRoleChange"), err.message);
+    },
+  });
+
+  const changePassword = useMutation({
+    mutationFn: async ({ userId, password }: { userId: string; password: string }) => {
+      return http.put(`/v1/tenants/${tenantId}/users/${userId}/password`, { password });
+    },
+    onSuccess: () => {
+      toast.success(i18next.t("users-admin:toast.passwordChanged"));
+    },
+    onError: (err: Error) => {
+      toast.error(i18next.t("users-admin:toast.failedPasswordChange"), err.message);
     },
   });
 
   return {
     users,
-    total,
+    total: users.length,
     loading,
+    refreshing,
     refresh: invalidate,
-    changeStatus: changeStatus.mutateAsync,
-    deactivateUser: deactivateUser.mutateAsync,
     createUser: createUser.mutateAsync,
-    assignRole: assignRole.mutateAsync,
-    unassignRole: unassignRole.mutateAsync,
-    isStatusChanging: changeStatus.isPending,
-    isDeactivating: deactivateUser.isPending,
+    updateUser: updateUser.mutateAsync,
+    removeUser: removeUser.mutateAsync,
+    changeRole: changeRole.mutateAsync,
+    changePassword: changePassword.mutateAsync,
     isCreating: createUser.isPending,
-    isAssigningRole: assignRole.isPending,
-    isUnassigningRole: unassignRole.isPending,
+    isUpdating: updateUser.isPending,
+    isRemoving: removeUser.isPending,
+    isSavingRole: changeRole.isPending,
+    isChangingPassword: changePassword.isPending,
   };
 }

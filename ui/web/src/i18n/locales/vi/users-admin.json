@@ -1,54 +1,68 @@
 {
-  "title": "Quản lý người dùng",
+  "title": "Người dùng",
   "description": "Quản lý người dùng và quyền truy cập",
   "addUser": "Thêm người dùng",
   "password": "Mật khẩu",
   "passwordPlaceholder": "Tối thiểu 8 ký tự",
-  "passwordHint": "Phải chứa chữ hoa và ký tự đặc biệt",
-  "isAdmin": "Quản trị viên",
+  "passwordHint": "Ít nhất 8 ký tự, bao gồm 1 chữ hoa, 1 số và 1 ký tự đặc biệt",
   "searchPlaceholder": "Tìm kiếm người dùng...",
-  "filterStatus": "Lọc trạng thái",
   "emptyTitle": "Không tìm thấy người dùng",
   "emptyDescription": "Thêm người dùng để bắt đầu",
   "never": "Chưa đăng nhập",
+  "selectRole": "Chọn vai trò",
+  "lastOwnerTooltip": "Không thể xóa chủ sở hữu cuối cùng của tổ chức",
   "columns": {
     "displayName": "Tên hiển thị",
     "email": "Email",
+    "role": "Vai trò",
     "provider": "Nhà cung cấp",
     "status": "Trạng thái",
-    "role": "Quản trị viên",
     "lastLogin": "Đăng nhập cuối",
+    "phone": "Số điện thoại",
     "actions": "Thao tác"
   },
   "status": {
-    "all": "Tất cả",
     "active": "Hoạt động",
-    "suspended": "Tạm khóa",
-    "deactivated": "Đã vô hiệu"
+    "inactive": "Không hoạt động"
   },
   "role": {
-    "admin": "Quản trị",
-    "member": "Thành viên"
+    "owner": "Chủ sở hữu",
+    "admin": "Quản trị viên",
+    "member": "Thành viên",
+    "viewer": "Người xem"
   },
   "actions": {
-    "suspend": "Tạm khóa",
-    "reactivate": "Kích hoạt lại",
-    "deactivate": "Vô hiệu hóa",
-    "makeAdmin": "Cấp quyền quản trị",
-    "removeAdmin": "Thu hồi quyền quản trị"
+    "edit": "Sửa",
+    "changeRole": "Đổi vai trò",
+    "changePassword": "Đổi mật khẩu",
+    "delete": "Xóa"
   },
-  "deactivate": {
-    "title": "Vô hiệu hóa người dùng",
-    "description": "Bạn có chắc muốn vô hiệu hóa {{name}}? Không thể hoàn tác sau 30 ngày."
+  "editUser": {
+    "title": "Sửa người dùng"
+  },
+  "changeRole": {
+    "title": "Đổi vai trò",
+    "description": "Đổi vai trò cho {{name}}"
+  },
+  "changePassword": {
+    "title": "Đổi mật khẩu",
+    "description": "Đặt mật khẩu mới cho {{name}}",
+    "newPassword": "Mật khẩu mới"
+  },
+  "delete": {
+    "title": "Xóa người dùng",
+    "description": "Bạn có chắc muốn xóa {{name}}? Hành động này không thể hoàn tác."
   },
   "toast": {
-    "statusChanged": "Đã cập nhật trạng thái",
-    "failedStatusChange": "Không thể thay đổi trạng thái",
-    "deactivated": "Đã vô hiệu hóa người dùng",
-    "failedDeactivate": "Không thể vô hiệu hóa",
     "created": "Đã tạo người dùng",
     "failedCreate": "Không thể tạo người dùng",
-    "adminToggled": "Đã cập nhật quyền quản trị",
-    "failedAdminToggle": "Không thể thay đổi quyền quản trị"
+    "userUpdated": "Đã cập nhật người dùng",
+    "updateUserFailed": "Không thể cập nhật người dùng",
+    "userDeleted": "Đã xóa người dùng",
+    "failedDeleteUser": "Không thể xóa người dùng",
+    "roleChanged": "Đã đổi vai trò",
+    "failedRoleChange": "Không thể đổi vai trò",
+    "passwordChanged": "Đã đổi mật khẩu",
+    "failedPasswordChange": "Không thể đổi mật khẩu"
   }
 }

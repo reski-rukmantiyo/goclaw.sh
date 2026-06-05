@@ -26,6 +26,8 @@ export interface TenantUserData {
   role: string
   is_owner: boolean
   status?: string
+  auth_provider?: string
+  last_login_at?: string | null
   metadata?: Record<string, unknown>
   created_at: string
   updated_at: string
