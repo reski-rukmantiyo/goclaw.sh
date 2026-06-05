@@ -18,6 +18,23 @@
   "type": "Loại",
   "system": "Hệ thống",
   "custom": "Tùy chỉnh",
+  "addRole": "Thêm vai trò",
+  "cancel": "Hủy",
+  "save": "Lưu",
+  "delete": "Xóa",
+  "deleteConfirm": "Bạn có chắc muốn xóa vai trò này?",
+  "deleteRole": "Xóa vai trò",
+  "edit": "Sửa",
+  "editPermissions": "Sửa quyền",
+  "systemRole": "Hệ thống",
+  "customRole": "Tùy chỉnh",
+  "columns": {
+    "name": "Tên",
+    "description": "Mô tả",
+    "permissions": "Quyền",
+    "type": "Loại",
+    "actions": "Hành động"
+  },
   "savePermissions": "Lưu quyền hạn",
   "savingPermissions": "Đang lưu...",
   "toast": {

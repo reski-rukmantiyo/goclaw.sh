@@ -110,8 +110,6 @@ export const Methods = {
   PAIRING_LIST: "device.pair.list",
   PAIRING_REVOKE: "device.pair.revoke",
 
-  BROWSER_PAIRING_STATUS: "browser.pairing.status",
-
   APPROVALS_LIST: "exec.approval.list",
   APPROVALS_APPROVE: "exec.approval.approve",
   APPROVALS_DENY: "exec.approval.deny",

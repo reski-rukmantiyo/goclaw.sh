@@ -188,9 +188,6 @@ export function TenantUsersTab({ tenantId, isOwner }: TenantUsersTabProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold flex items-center gap-2">
-          {users.length > 0 && (
-            <span className="text-xs font-normal text-muted-foreground">({users.length})</span>
-          )}
         </h3>
         <div className="flex gap-2">
           <Button size="sm" onClick={() => setAddOpen(true)} className="gap-1">

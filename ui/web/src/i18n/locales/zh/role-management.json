@@ -18,6 +18,23 @@
   "type": "类型",
   "system": "系统",
   "custom": "自定义",
+  "addRole": "添加角色",
+  "cancel": "取消",
+  "save": "保存",
+  "delete": "删除",
+  "deleteConfirm": "确定要删除此角色？",
+  "deleteRole": "删除角色",
+  "edit": "编辑",
+  "editPermissions": "编辑权限",
+  "systemRole": "系统",
+  "customRole": "自定义",
+  "columns": {
+    "name": "名称",
+    "description": "描述",
+    "permissions": "权限",
+    "type": "类型",
+    "actions": "操作"
+  },
   "savePermissions": "保存权限",
   "savingPermissions": "保存中...",
   "toast": {

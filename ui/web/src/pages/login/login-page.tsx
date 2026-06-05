@@ -16,7 +16,6 @@ export function LoginPage() {
 
   const token = useAuthStore((s) => s.token);
   const userId = useAuthStore((s) => s.userId);
-  const senderID = useAuthStore((s) => s.senderID);
   const setCredentials = useAuthStore((s) => s.setCredentials);
   const setUserProfile = useAuthStore((s) => s.setUserProfile);
   const setIsGatewayToken = useAuthStore((s) => s.setIsGatewayToken);
@@ -28,11 +27,11 @@ export function LoginPage() {
     ROUTES.OVERVIEW;
 
   useEffect(() => {
-    if ((token || senderID) && userId) {
+    if (token && userId) {
       const slug = localStorage.getItem(LOCAL_STORAGE_KEYS.TENANT_ID) || "master";
       navigate(route(slug, ROUTES.OVERVIEW), { replace: true });
     }
-  }, [token, userId, senderID, navigate]);
+  }, [token, userId, navigate]);
 
   function handleTokenLogin(userId: string, token: string) {
     setCredentials(token, userId);

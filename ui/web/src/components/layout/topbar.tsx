@@ -140,7 +140,7 @@ function UserMenu() {
   const handleSwitchTenant = (_tenantId: string, slug: string) => {
     // Always set TENANT_ID so WS and HTTP both resolve the correct tenant.
     localStorage.setItem(LOCAL_STORAGE_KEYS.TENANT_ID, slug);
-    // Non-owner: also set TENANT_HINT for browser pairing backward compat (Path 3a).
+    // Non-owner: also set TENANT_HINT for tenant scoping.
     if (!isOwner) {
       localStorage.setItem(LOCAL_STORAGE_KEYS.TENANT_HINT, slug);
     }

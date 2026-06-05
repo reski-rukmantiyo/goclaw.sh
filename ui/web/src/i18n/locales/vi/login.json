@@ -5,23 +5,8 @@
   "allTenantsDescription": "Xem dữ liệu từ tất cả tổ chức",
   "noAccess": "Không có quyền",
   "noAccessDescription": "Bạn không có quyền truy cập tổ chức nào. Liên hệ quản trị viên.",
-  "pairing": {
-    "approved": "Truy cập đã được phê duyệt! Đang chuyển hướng...",
-    "askAdmin": "Yêu cầu quản trị viên phê duyệt mã này:",
-    "cancel": "Hủy",
-    "connecting": "Đang kết nối...",
-    "errorCannotConnect": "Không thể kết nối đến gateway.",
-    "errorConnectionLost": "Mất kết nối. Vui lòng thử lại.",
-    "noTokenNeeded": "Không cần token. Mã ghép nối sẽ được tạo để quản trị viên phê duyệt.",
-    "orRun": "Hoặc chạy:",
-    "requestAccess": "Yêu cầu truy cập",
-    "userId": "User ID",
-    "userIdPlaceholder": "your-user-id",
-    "waitingForApproval": "Đang chờ phê duyệt..."
-  },
   "subtitle": "Đăng nhập vào bảng điều khiển gateway",
   "tabs": {
-    "pairing": "Ghép nối",
     "token": "Theo Token",
     "email": "Theo Email"
   },

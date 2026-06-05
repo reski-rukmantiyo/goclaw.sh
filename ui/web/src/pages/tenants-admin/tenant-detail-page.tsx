@@ -1,7 +1,7 @@
 import { useState, lazy, Suspense } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Trash2, Calendar, Hash, Shield, Pencil, Users, ShieldCheck, FolderTree } from "lucide-react";
+import { ArrowLeft, Trash2, Calendar, Hash, Shield, Pencil, Users, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -141,9 +141,7 @@ export function TenantDetailPage() {
           <TabsTrigger value="roles" className="gap-1">
             <ShieldCheck className="h-4 w-4" /> {t("tabs.roles")}
           </TabsTrigger>
-          <TabsTrigger value="groups" className="gap-1">
-            <FolderTree className="h-4 w-4" /> {t("tabs.groups")}
-          </TabsTrigger>
+          {/* Groups tab hidden — functionality not yet ready for general use */}
         </TabsList>
         <TabsContent value="users">
           <Suspense fallback={<TableSkeleton rows={4} />}>
@@ -155,11 +153,13 @@ export function TenantDetailPage() {
             <TenantRolesTab />
           </Suspense>
         </TabsContent>
-        <TabsContent value="groups">
-          <Suspense fallback={<TableSkeleton rows={4} />}>
-            <TenantGroupsTab />
-          </Suspense>
-        </TabsContent>
+        {false && (
+          <TabsContent value="groups">
+            <Suspense fallback={<TableSkeleton rows={4} />}>
+              <TenantGroupsTab />
+            </Suspense>
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Edit Name Dialog */}

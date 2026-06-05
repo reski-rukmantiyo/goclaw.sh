@@ -10,7 +10,6 @@ export type Edition = "standard" | "lite";
 interface AuthState {
   token: string;
   userId: string;
-  senderID: string; // browser pairing: persistent device identity
   connected: boolean;
   role: UserRole; // server-assigned role from connect response
   serverInfo: { name?: string; version?: string } | null;
@@ -29,7 +28,6 @@ interface AuthState {
 
   setCredentials: (token: string, userId: string) => void;
   setUserProfile: (displayName: string, email: string) => void;
-  setPairing: (senderID: string, userId: string) => void;
   setConnected: (connected: boolean, serverInfo?: { name?: string; version?: string }) => void;
   setRole: (role: UserRole) => void;
   setTenant: (id: string, name: string, slug: string, isOwner: boolean) => void;
@@ -41,7 +39,7 @@ interface AuthState {
   logout: () => void;
 }
 
-function getPersistedAuth(): { token: string; userId: string; senderID: string; displayName: string } | null {
+function getPersistedAuth(): { token: string; userId: string; displayName: string } | null {
   try {
     const raw = localStorage.getItem("goclaw:auth");
     if (!raw) return null;
@@ -49,7 +47,6 @@ function getPersistedAuth(): { token: string; userId: string; senderID: string; 
     return {
       token: parsed.state?.token ?? "",
       userId: parsed.state?.userId ?? "",
-      senderID: parsed.state?.senderID ?? "",
       displayName: parsed.state?.displayName ?? "",
     };
   } catch {
@@ -64,7 +61,6 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       token: persisted?.token ?? "",
       userId: persisted?.userId ?? "",
-      senderID: persisted?.senderID ?? "",
       connected: false,
       role: "" as UserRole,
       serverInfo: null,
@@ -87,10 +83,6 @@ export const useAuthStore = create<AuthState>()(
 
       setUserProfile: (displayName, email) => {
         set({ displayName, userEmail: email });
-      },
-
-      setPairing: (senderID, userId) => {
-        set({ senderID, userId });
       },
 
       setConnected: (connected, serverInfo) => {
@@ -131,7 +123,7 @@ export const useAuthStore = create<AuthState>()(
         localStorage.removeItem("goclaw:tenant_hint");
         clearSetupSkippedState();
         set({
-          token: "", userId: "", senderID: "", connected: false, role: "", serverInfo: null,
+          token: "", userId: "", connected: false, role: "", serverInfo: null,
           tenantId: "", tenantName: "", tenantSlug: "", isOwner: false, displayName: "", userEmail: "",
           isMasterScope: false, edition: "standard", permissions: [],
           availableTenants: [], tenantSelected: false, isGatewayToken: false,
@@ -144,7 +136,6 @@ export const useAuthStore = create<AuthState>()(
         // Only persist credentials — not transient runtime state
         token: state.token,
         userId: state.userId,
-        senderID: state.senderID,
         isGatewayToken: state.isGatewayToken,
         displayName: state.displayName,
       }),

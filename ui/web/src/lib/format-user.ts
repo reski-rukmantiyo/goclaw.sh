@@ -14,7 +14,7 @@ const PROVIDER_DISPLAY: Record<string, string> = {
  * Returns "—" for unknown/missing providers.
  */
 export function formatAuthProvider(provider: string | undefined): string {
-  if (!provider) return "—";
+  if (!provider) return "local";
   return PROVIDER_DISPLAY[provider] ?? "—";
 }
 

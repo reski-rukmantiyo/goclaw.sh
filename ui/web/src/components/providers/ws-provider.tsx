@@ -26,7 +26,6 @@ const WS_URL = import.meta.env.VITE_WS_URL || "/ws";
 export function WsProvider({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
   const userId = useAuthStore((s) => s.userId);
-  const senderID = useAuthStore((s) => s.senderID);
 
   const wsRef = useRef<WsClient | null>(null);
 
@@ -36,7 +35,6 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
       WS_URL,
       () => useAuthStore.getState().token,
       () => useAuthStore.getState().userId,
-      () => useAuthStore.getState().senderID,
       (state: ConnectionState) => {
         const store = useAuthStore.getState();
         const isConnected = state === "connected";
@@ -70,14 +68,14 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
                 return;
               } else if (!client.isOwner && tenants.length === 1) {
                 // Non-owner with single tenant — auto-select
-                 
+
                 localStorage.setItem(LOCAL_STORAGE_KEYS.TENANT_ID, tenants[0]!.slug);
                 store.setTenantSelected(true);
               } else if (!client.isOwner && tenants.length === 0) {
                 // No tenants — leave tenantSelected=false (blocked)
               } else if (client.isOwner && !savedScope && tenants.length > 0) {
                 // Owner without scope — auto-select first tenant
-                 
+
                 localStorage.setItem(LOCAL_STORAGE_KEYS.TENANT_ID, tenants[0]!.slug);
                 window.location.reload();
                 return;
@@ -104,10 +102,7 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
       },
     );
     wsRef.current.onAuthFailure = () => {
-      // Don't logout if authenticated via browser pairing (no token)
-      const state = useAuthStore.getState();
-      if (state.senderID && !state.token) return;
-      state.logout();
+      useAuthStore.getState().logout();
     };
   }
   const ws = wsRef.current;
@@ -117,25 +112,21 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
       "",
       () => useAuthStore.getState().token,
       () => useAuthStore.getState().userId,
-      () => useAuthStore.getState().senderID,
     );
     client.onAuthFailure = () => {
-      // Don't logout if authenticated via browser pairing (no token)
-      const state = useAuthStore.getState();
-      if (state.senderID && !state.token) return;
-      state.logout();
+      useAuthStore.getState().logout();
     };
     return client;
   }, []);
 
-  // Auto-connect when credentials are available (token or sender_id), disconnect when not.
+  // Auto-connect when credentials are available, disconnect when not.
   useEffect(() => {
-    if ((token || senderID) && userId) {
+    if (token && userId) {
       ws.connect();
     } else {
       ws.disconnect();
     }
-  }, [token, userId, senderID, ws]);
+  }, [token, userId, ws]);
 
   const value = useMemo(() => ({ ws, http }), [ws, http]);
 
