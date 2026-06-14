@@ -1,8 +1,8 @@
 # Bug: WhatsApp group "Mini - AMC DELL IOH" routed to wrong agent + wrong KG graph-id
 
-**Status:** Investigation complete. Root cause(s) identified. Solution **chosen (§5)**, **not yet implemented**. Awaiting approval to build.
+**Status:** Investigation complete. Root cause(s) identified. RC1 + RC2 **code implemented + unit-verified** (§6.5 build/vet/test green); **awaiting live verification (§7) + data remediation (§5.3)** on the real master tenant. See §11 for implementation notes/deviations.
 **Date:** 2026-06-14
-**Doc version:** 1.3 (see Revision history, §10)
+**Doc version:** 1.4 (see Revision history, §10)
 **Scope:** `internal/channels/whatsapp/` listen-only message ingestion → Knowledge Graph scoping
 **Tenant:** Master (`0193a5b0-7000-7000-8000-000000000001`)
 
@@ -312,10 +312,15 @@ verification steps in §7 describe *how* to exercise them.
 
 ### 6.5 Build, test & safety
 
-- [ ] `go build ./...` passes.
-- [ ] `go build -tags sqliteonly ./...` passes (whatsapp code is shared with desktop).
-- [ ] `go vet ./internal/channels/whatsapp/... ./internal/channels/...` is clean.
-- [ ] No per-message DB lookup introduced on the hot path (agent_key → UUID resolved via cache, not a
+- [x] `go build ./...` passes.
+- [x] `go build -tags sqliteonly ./...` passes (whatsapp code is shared with desktop).
+- [x] `go vet ./internal/channels/whatsapp/... ./internal/channels/... ./cmd/...` is clean.
+- [x] RC1 regression unit test added: `internal/channels/whatsapp/group_agent_test.go` (5 cases:
+      runtime-override-no-reload, no-override-fallback, cache-hit-after-nil-store, refresh-rebuild,
+      unresolvable-key). `go test -race ./internal/channels/whatsapp/ -run TestResolveGroupAgentUUID`
+      green. (Package also has 2 pre-existing, unrelated `TestMimeToExt` failures in
+      `media_utils_test.go` — not touched by this change.)
+- [x] No per-message DB lookup introduced on the hot path (agent_key → UUID resolved via cache, not a
       fresh query per inbound message).
 - [ ] Any SQL remediation (Option C) is run **only after** the code fix is live and verified, against
       a **backup**, and with the target agent explicitly confirmed.
@@ -391,3 +396,63 @@ would be different and must be re-traced. Based on current code this is not expe
 | 1.1     | 2026-06-14 | —      | Added §6 Acceptance Criteria (Definition of Done) checklist (6 groups: target routing, RC1 generalization, RC2 propagation, regressions, build/safety, docs). Renumbered Verification/Open questions/Key files → §7/§8/§9. |
 | 1.2     | 2026-06-14 | —      | Rewrote §5 from options → **chosen approach**: RC1 = Option A var1 (unify to live `c.config.Groups` + agent_key→UUID cache); RC2 = Option B code (60 s config resync); remediation = Option C (re-key, sequenced). Rejected alternatives listed w/ rationale. Added §5.4 build order. Updated top Status. |
 | 1.3     | 2026-06-14 | —      | Added doc versioning: `Doc version` header field + this Revision history (§10). |
+| 1.4     | 2026-06-14 | —      | **Implemented** RC1 + RC2 (code-only, unit-verified). See §11 for deviations from the §5 design assumptions + the files touched. Marked §6.5 build/vet/test boxes done. Live verification (§7) + remediation (§5.3) still pending. |
+
+---
+
+## 11. Implementation notes (v1.4) — what was built + deviations from §5
+
+Both fixes implemented and unit-verified locally (PG build + SQLite build + vet clean; see §6.5).
+Live verification (§7) is deferred to a run against the real master tenant (local `goclaw-pg` is a
+seed DB with no master-tenant data; the ingesting gateway is not running).
+
+### 11.1 RC1 — files + deviation from the §5.1 assumption
+
+The §5.1 plan assumed the channel already held an `agentStore` reference ("wire the existing
+agentStore reference held by `ResolveGroupAgentOverrides`"). **That assumption was wrong**:
+`agentStore` was only a method *parameter* of `ResolveGroupAgentOverrides`, never stored on the
+struct. New wiring was required.
+
+Changes:
+- `internal/channels/whatsapp/whatsapp.go` — replaced the chatID→UUID `groupAgentUUIDs` snapshot
+  with: `agentStore store.AgentStore`, `tenantDBMgr store.TenantDBManager`, and an `agent_key→UUID`
+  `agentKeyCache` guarded by `agentKeyMu sync.RWMutex`. New `resolveGroupAgentUUID(chatID)` reads the
+  **live** `c.config.Groups` (under `c.mu`), resolves key→UUID via cache (miss → on-demand
+  `GetByKey`/`GetByID`, cached), returns `""` when no override (caller falls back to channel default).
+  `RefreshGroupAgentCache` rebuilds the cache from live config (called on reload + CacheKindAgent).
+  `SetAgentStore` / `SetTenantDBManager` / `tenantScopedCtx()` added.
+- `internal/channels/whatsapp/inbound.go` — listen-only branch calls `resolveGroupAgentUUID`;
+  dropped the now-meaningless `group_agent_uuids_nil` log field.
+- `internal/channels/instance_loader.go` — `loadInstance` wires `SetTenantDBManager` **before**
+  `ResolveGroupAgentOverrides` (order matters: the warm-up resolves via `tenantScopedCtx`, which
+  needs `tenantDBMgr`).
+- `cmd/gateway_channels_setup.go` — subscribes `TopicCacheAgent`; on `CacheKindAgent` it iterates
+  loaded channels and calls `RefreshGroupAgentCache` on any implementing channel.
+- `internal/channels/whatsapp/group_agent_test.go` (new) — 5 regression cases incl. the core
+  stale-map repro (runtime override resolves without reload).
+
+**Multi-tenant correctness (verified during impl):** `PGAgentStore.GetByKey` selects its DB via
+`TenantDBFromContext`, which is only populated by `store.ResolveTenantDB`. So `resolveGroupAgentUUID`
+builds the ctx as `WithTenantID(tenantID)` **+** `ResolveTenantDB(tenantDBMgr)` — otherwise
+non-master tenants would silently resolve against the master DB, miss the agent, and fall back to the
+channel default (a regression for them). `tenantDBMgr` is nil only on code paths that never had group
+override resolution anyway (config-based channels without an InstanceLoader); `resolveGroupAgentUUID`
+returns `""` there, matching prior behavior.
+
+### 11.2 RC2 — files
+
+- `internal/channels/instance_loader.go` — `loadedUpdatedAt map[string]time.Time` recorded in
+  `loadInstance`, reset in `Reload`/`Stop`. `ResyncIfStale(ctx)` snapshots under `l.mu`, releases,
+  then re-lists from DB and calls `Reload` if any `updated_at` moved or the enabled set changed.
+  `StartConfigResync(ctx, interval)` spawns the ticker goroutine (exits on ctx cancel).
+- `cmd/gateway.go` — `instanceLoader.StartConfigResync(ctx, 60*time.Second)` after `StartAll`
+  (`ctx` is the gateway root ctx, cancelled on shutdown → no goroutine leak; `instanceLoader.Stop` is
+  not called anywhere, which is pre-existing and harmless for the goroutine).
+
+### 11.3 Still pending (per chosen verify/remediation plan)
+
+- Live §7 repro + §6.1/§6.3 acceptance on the real master tenant (Felix UUID
+  `019d6771-abce-7ad1-8e4d-8ee0a211c3cc` is asserted in §6.1 but **unverified locally** — resolve
+  from live DB at verification time).
+- §5.3 data remediation (re-key `listen_raw_messages` / `raw_message_chunks` / KG entities for the
+  §2.4 groups), only after the code fix is live-verified + a backup is taken.
