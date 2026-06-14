@@ -49,7 +49,8 @@ type InstanceLoader struct {
 	msgBus            *bus.MessageBus
 	pairingSvc        store.PairingStore
 	mu                sync.Mutex
-	loaded            map[string]struct{} // channel names managed by this loader
+	loaded            map[string]struct{}   // channel names managed by this loader
+	loadedUpdatedAt   map[string]time.Time  // last-loaded updated_at per channel name (config-resync)
 }
 
 // MediaStore is the interface for persisting media files (subset of media.Store).
@@ -71,8 +72,9 @@ func NewInstanceLoader(
 		factories:  make(map[string]ChannelFactory),
 		manager:    mgr,
 		msgBus:     msgBus,
-		pairingSvc: pairingSvc,
-		loaded:     make(map[string]struct{}),
+		pairingSvc:     pairingSvc,
+		loaded:         make(map[string]struct{}),
+		loadedUpdatedAt: make(map[string]time.Time),
 	}
 }
 
@@ -163,6 +165,7 @@ func (l *InstanceLoader) Reload(ctx context.Context) {
 		l.manager.UnregisterChannel(name)
 	}
 	l.loaded = make(map[string]struct{})
+	l.loadedUpdatedAt = make(map[string]time.Time)
 
 	// Brief pause to let external APIs (e.g., Telegram getUpdates) release polling locks.
 	time.Sleep(500 * time.Millisecond)
@@ -206,6 +209,74 @@ func (l *InstanceLoader) Stop(ctx context.Context) {
 		l.manager.UnregisterChannel(name)
 	}
 	l.loaded = make(map[string]struct{})
+	l.loadedUpdatedAt = make(map[string]time.Time)
+}
+
+// ResyncIfStale checks whether any loaded channel instance's updated_at has changed in the DB
+// since it was loaded, and triggers a Reload if so. This makes direct DB edits to
+// channel_instances.config (which bypass channels.instances.update and thus never publish a
+// CacheKindChannelInstances invalidation) eventually-consistent without a manual restart.
+func (l *InstanceLoader) ResyncIfStale(ctx context.Context) {
+	// Snapshot loaded names + their last-loaded updated_at under the lock, then release
+	// before the DB read and the (lock-acquiring) Reload.
+	l.mu.Lock()
+	if len(l.loaded) == 0 {
+		l.mu.Unlock()
+		return
+	}
+	loaded := make(map[string]time.Time, len(l.loaded))
+	for name := range l.loaded {
+		loaded[name] = l.loadedUpdatedAt[name]
+	}
+	l.mu.Unlock()
+
+	instances, err := l.store.ListAllEnabled(ctx)
+	if err != nil {
+		slog.Warn("channel resync: failed to list enabled instances", "error", err)
+		return
+	}
+
+	// Reload if any tracked instance's updated_at moved, or if the enabled set itself changed
+	// (an instance enabled/disabled directly in the DB).
+	stale := false
+	seen := make(map[string]struct{}, len(instances))
+	for _, inst := range instances {
+		seen[inst.Name] = struct{}{}
+		if prev, ok := loaded[inst.Name]; ok && !inst.UpdatedAt.Equal(prev) {
+			stale = true
+			slog.Info("channel resync: instance config changed, reloading",
+				"name", inst.Name, "prev_updated_at", prev, "db_updated_at", inst.UpdatedAt)
+			break
+		}
+	}
+	if !stale && len(seen) != len(loaded) {
+		stale = true
+		slog.Info("channel resync: enabled instance set changed, reloading",
+			"loaded", len(loaded), "db_enabled", len(seen))
+	}
+	if stale {
+		l.Reload(ctx)
+	}
+}
+
+// StartConfigResync launches a background goroutine that periodically calls ResyncIfStale.
+// Call once after LoadAll. The loop exits when ctx is cancelled (e.g. gateway shutdown).
+func (l *InstanceLoader) StartConfigResync(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				l.ResyncIfStale(context.Background())
+			}
+		}
+	}()
 }
 
 // coerceStringBools converts string "true"/"false" values to JSON booleans
@@ -264,6 +335,7 @@ func (l *InstanceLoader) LoadedNames() map[string]struct{} {
 // If false, the caller is responsible for starting (used by LoadAll, where StartAll handles it).
 func (l *InstanceLoader) loadInstance(ctx context.Context, inst store.ChannelInstanceData, autoStart bool) error {
 	l.loaded[inst.Name] = struct{}{}
+	l.loadedUpdatedAt[inst.Name] = inst.UpdatedAt
 
 	factory, ok := l.factories[inst.ChannelType]
 	if !ok {
@@ -427,6 +499,11 @@ func (l *InstanceLoader) loadInstance(ctx context.Context, inst store.ChannelIns
 		}
 	}
 
+	// Wire tenant DB manager BEFORE resolving overrides so the warm-up lookup routes to the
+	// correct per-tenant database (non-master tenants keep their agents in a dedicated DB).
+	if tbm, ok := ch.(interface{ SetTenantDBManager(store.TenantDBManager) }); ok {
+		tbm.SetTenantDBManager(l.tenantDBManager)
+	}
 	// Resolve per-group agent override UUIDs (e.g., WhatsApp groups with agent_id config).
 	// Resolve tenant DB first so agent lookups are scoped to the correct database.
 	if resolver, ok := ch.(interface {

@@ -232,12 +232,11 @@ func (c *Channel) handleIncomingMessage(evt *events.Message) {
 			// Persist media files to durable storage before storing the raw message.
 			var persistedRefs []store.RawMediaRef
 			var failedPaths []string
-			effectiveAgentUUID := c.groupAgentUUID(chatID)
+			effectiveAgentUUID := c.resolveGroupAgentUUID(chatID)
 			graphID := c.resolveGraphID(chatID, peerKind)
 			slog.Info("whatsapp listen-only agent resolution",
 				"chat_id", chatID,
 				"effective_agent_uuid", effectiveAgentUUID,
-				"group_agent_uuids_nil", c.groupAgentUUIDs == nil,
 				"channel_default_uuid", c.agentUUID,
 				"fallback_to_default", effectiveAgentUUID == "")
 			if len(mediaList) > 0 && c.listenBuf != nil {

@@ -76,9 +76,15 @@ type Channel struct {
 	// Nil when media_caption_delay_ms is -1 (disabled).
 	captionBuf *MediaCaptionBuffer
 
-	// groupAgentUUIDs maps chatID → agent UUID for groups with agent_id overrides.
-	// Used by listen buffer to store raw messages with the correct agent scope.
-	groupAgentUUIDs map[string]string
+	// agentKeyCache maps agent_key → agent UUID for group agent_id overrides.
+	// Used by the listen-only path to store raw messages under the correct agent scope.
+	// Reads the LIVE c.config.Groups, so runtime-added overrides (applyJoinRules) are
+	// honored immediately. Refreshed on channel load/reload and on CacheKindAgent events.
+	// Guarded by agentKeyMu.
+	agentStore    store.AgentStore
+	tenantDBMgr   store.TenantDBManager
+	agentKeyMu    sync.RWMutex
+	agentKeyCache map[string]string
 }
 
 // SetAgentUUID stores the agent UUID for KG scoping. Called by InstanceLoader.
@@ -750,41 +756,144 @@ func (c *Channel) SetMediaStore(ms channels.MediaStore) {
 	c.listenBuf.SetMediaStore(ms)
 }
 
+// SetAgentStore wires the agent store used to resolve per-group agent_key overrides to
+// UUIDs. Called by InstanceLoader after the channel is constructed.
+func (c *Channel) SetAgentStore(s store.AgentStore) {
+	c.agentKeyMu.Lock()
+	c.agentStore = s
+	if c.agentKeyCache == nil {
+		c.agentKeyCache = make(map[string]string)
+	}
+	c.agentKeyMu.Unlock()
+}
+
+// SetTenantDBManager wires the tenant DB manager used to resolve the correct per-tenant
+// database when looking up override agents. Required for non-master tenants whose agents
+// live in a dedicated tenant database. Called by InstanceLoader.
+func (c *Channel) SetTenantDBManager(mgr store.TenantDBManager) {
+	c.tenantDBMgr = mgr
+}
+
+// tenantScopedCtx returns a context carrying this channel's tenant_id with the tenant DB pool
+// resolved, mirroring the ctx InstanceLoader builds (WithTenantID + ResolveTenantDB). Agent
+// store lookups route to the correct per-tenant database this way.
+func (c *Channel) tenantScopedCtx() context.Context {
+	ctx := context.Background()
+	if tid := c.TenantID(); tid != uuid.Nil {
+		ctx = store.WithTenantID(ctx, tid)
+	}
+	return store.ResolveTenantDB(ctx, c.tenantDBMgr)
+}
+
 // ResolveGroupAgentOverrides resolves group override agent_keys to UUIDs using the agent store.
 // Called by InstanceLoader after the channel is created and the primary agent is resolved.
+// It stores the agent store reference and warms the agent_key → UUID cache from the
+// currently-configured groups. Runtime group mutations (e.g. applyJoinRules) do NOT need
+// to call this — resolveGroupAgentUUID reads the live config and resolves on demand.
 func (c *Channel) ResolveGroupAgentOverrides(ctx context.Context, agentStore store.AgentStore) {
-	if c.config.Groups == nil || agentStore == nil {
-		c.groupAgentUUIDs = make(map[string]string)
+	c.agentKeyMu.Lock()
+	c.agentStore = agentStore
+	c.agentKeyCache = make(map[string]string)
+	c.agentKeyMu.Unlock()
+	c.RefreshGroupAgentCache(ctx)
+}
+
+// RefreshGroupAgentCache rebuilds the agent_key → UUID cache from the live group config.
+// Called on agent create/update (CacheKindAgent) and on channel reload so renamed/recreated
+// agents resolve correctly without a gateway restart.
+func (c *Channel) RefreshGroupAgentCache(_ context.Context) {
+	c.agentKeyMu.RLock()
+	as := c.agentStore
+	c.agentKeyMu.RUnlock()
+	if as == nil {
 		return
 	}
-	resolved := make(map[string]string, len(c.config.Groups))
-	for chatID, grp := range c.config.Groups {
+	c.mu.Lock()
+	groups := c.config.Groups
+	c.mu.Unlock()
+	if groups == nil {
+		return
+	}
+	ctx := c.tenantScopedCtx()
+	resolved := make(map[string]string)
+	for _, grp := range groups {
 		if grp == nil || grp.AgentID == "" || grp.AgentID == "__default__" {
 			continue
 		}
-		ag, err := agentStore.GetByKey(ctx, grp.AgentID)
+		ag, err := as.GetByKey(ctx, grp.AgentID)
 		if err != nil {
 			// Fallback: config may contain a UUID instead of agent_key (e.g. UI WS fallback).
 			if id, parseErr := uuid.Parse(grp.AgentID); parseErr == nil {
-				ag, err = agentStore.GetByID(ctx, id)
+				ag, err = as.GetByID(ctx, id)
 			}
 		}
 		if err != nil {
 			slog.Warn("whatsapp: failed to resolve group override agent",
-				"chat_id", chatID, "agent_key", grp.AgentID, "error", err)
+				"agent_key", grp.AgentID, "error", err)
 			continue
 		}
-		resolved[chatID] = ag.ID.String()
-		slog.Info("whatsapp: group agent override resolved",
-			"chat_id", chatID, "agent_key", grp.AgentID, "agent_uuid", ag.ID.String())
+		resolved[grp.AgentID] = ag.ID.String()
 	}
-	c.groupAgentUUIDs = resolved
+	c.agentKeyMu.Lock()
+	c.agentKeyCache = resolved
+	c.agentKeyMu.Unlock()
+	slog.Info("whatsapp: group agent cache refreshed",
+		"resolved", len(resolved), "channel", c.Name())
 }
 
-// groupAgentUUID returns the agent UUID for a group override, or empty string if none.
-func (c *Channel) groupAgentUUID(chatID string) string {
-	if c.groupAgentUUIDs == nil {
+// resolveGroupAgentUUID returns the agent UUID for a group override, or empty string if the
+// group has no override (the caller then falls back to the channel default agent — correct).
+//
+// This reads the LIVE c.config.Groups, so groups added/changed at runtime (e.g. by
+// applyJoinRules) are honored on the very next inbound message, without a full channel
+// reload. The agent_key → UUID mapping is cached; a cache miss resolves on demand through
+// the agent store and stores the result, so no DB lookup happens per message after warmup.
+func (c *Channel) resolveGroupAgentUUID(chatID string) string {
+	// Read the override agent_key from the live group config.
+	agentKey := ""
+	c.mu.Lock()
+	if c.config.Groups != nil {
+		if grp, ok := c.config.Groups[chatID]; ok && grp != nil {
+			if grp.AgentID != "" && grp.AgentID != "__default__" {
+				agentKey = grp.AgentID
+			}
+		}
+	}
+	c.mu.Unlock()
+	if agentKey == "" {
 		return ""
 	}
-	return c.groupAgentUUIDs[chatID]
+
+	// Fast path: cache hit.
+	c.agentKeyMu.RLock()
+	uuidStr, ok := c.agentKeyCache[agentKey]
+	c.agentKeyMu.RUnlock()
+	if ok {
+		return uuidStr
+	}
+
+	// Slow path: resolve on demand + cache.
+	c.agentKeyMu.RLock()
+	as := c.agentStore
+	c.agentKeyMu.RUnlock()
+	if as == nil {
+		return ""
+	}
+	ctx := c.tenantScopedCtx()
+	ag, err := as.GetByKey(ctx, agentKey)
+	if err != nil {
+		if id, parseErr := uuid.Parse(agentKey); parseErr == nil {
+			ag, err = as.GetByID(ctx, id)
+		}
+	}
+	if err != nil {
+		slog.Warn("whatsapp: failed to resolve group override agent on demand",
+			"chat_id", chatID, "agent_key", agentKey, "error", err)
+		return ""
+	}
+	uuidStr = ag.ID.String()
+	c.agentKeyMu.Lock()
+	c.agentKeyCache[agentKey] = uuidStr
+	c.agentKeyMu.Unlock()
+	return uuidStr
 }
