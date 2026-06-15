@@ -2,7 +2,7 @@
 
 **Project**: GoClaw Gateway
 **Release**: 2026.3.0
-**Version**: 0.1-draft
+**Version**: 0.2-draft
 **Date**: 2026-06-16
 **Status**: Draft
 **Difficulty**: Low
@@ -15,6 +15,7 @@
 | Version | Date | Changes |
 |---------|------|---------|
 | 0.1-draft | 2026-06-16 | Initial draft. Root cause traced + verified against code (`internal/http/roles.go`, `internal/http/auth.go`, `internal/store/pg/roles.go`, WS `tenants.go`). Separates the two observed anomalies: roles 3-vs-4 (this bug) vs users 5-vs-2 (expected admin visibility filter, out of scope). |
+| 0.2-draft | 2026-06-16 | Corrected FR-00 after the admin-visibility policy change: the users 5-vs-2 anomaly is no longer "fully expected" — the admin-hidden-admins part is a defect owned by the new `006-bugfix-admin-peer-visibility.md` (which also updates `001` §5.4). Only the owner-hidden part remains expected. §1 and §2 cross-references updated. |
 
 ---
 
@@ -24,7 +25,7 @@ A master-scope / system owner viewing **tenant-17** sees **3 roles**, while a te
 
 **Verified root cause.** The roles list endpoint `GET /v1/roles` (`internal/http/roles.go:47`) carries **no tenant identifier in its path or query** (unlike `GET /v1/tenants/{id}/users` and the WS `tenants.users.list` method, which both take an explicit tenant). For a master-scope caller, the only tenant override is the optional `?tenant_id=` query param (`roles.go:62-69`), and the frontend never sends it (`ui/web/src/pages/role-management/hooks/use-roles.ts:28-37` sends only `search`/`limit`/`offset`). So the tenant is resolved from the ambient `X-GoClaw-Tenant-Id` header (`internal/http/auth.go:196-201` → `resolveScopedTenant` → `MasterTenantID` fallback), which reflects the **caller's active/home tenant**, not the tenant being viewed. A cross-tenant owner operating from the master-scoped tenants-admin console has an active tenant of **master**, so `ListRoles(ctx, MasterTenantID, …)` (`internal/store/pg/roles.go:104`) returns the **master tenant's** 3 seeded system roles instead of tenant-17's 4 roles. Tenant-17's custom role (persisted under `tenant_id = <tenant-17>`) is invisible to the owner.
 
-The sibling anomaly in the report — **users 5 (owner) vs 2 (admin)** — is **NOT a bug** and is out of scope (§2, §3 FR-00): the owner path is the WS `tenants.users.list` method (`tenants.go:345`) which takes an explicit `tenant_id` payload and applies no visibility filter (5 users); the admin path is `GET /v1/tenants/{id}/users` which applies the documented admin visibility filter that hides owner + admin users (001-feat-tenant-user-crud.md §5.4 / §4.3). That asymmetry is correct and expected.
+The sibling anomaly in the report — **users 5 (owner) vs 2 (admin)** — has **two parts** (see §3 FR-00): (a) the tenant **Owner** is hidden from admins — *expected*, unchanged; (b) peer **Admins** were also hidden from admins — an over-broad filter, now a **defect fixed in `006-bugfix-admin-peer-visibility.md`** (visibility-only; mutation auth unchanged). The owner path is the WS `tenants.users.list` method (`tenants.go:345`) which takes an explicit `tenant_id` payload and applies no visibility filter (5 users); the admin path is `GET /v1/tenants/{id}/users` which applies the admin visibility filter. After `006`, that filter hides the Owner only, so an admin sees peer admins + members/viewers and the 5-vs-2 gap narrows to just the hidden owner. The user-count work is owned by `006`, not this (roles) SRS.
 
 This SRS owns: making the roles list tenant-explicit so a cross-tenant owner sees the **viewed** tenant's roles. It composes with `004-feat-roles-page.md` (which fixed the list-response contract and system-role read-only policy) and `001-feat-tenant-user-crud.md` (whose `/v1/tenants/{id}/users` pattern this fix mirrors).
 
@@ -38,28 +39,32 @@ This SRS owns: making the roles list tenant-explicit so a cross-tenant owner see
 
 **Out of scope**:
 
-- The users 5-vs-2 asymmetry. It is the expected admin visibility filter (001 SRS §5.4). Documented in §3 FR-00 as a non-defect for traceability; no code change.
+- The users 5-vs-2 asymmetry. The Owner-hidden portion is the expected admin visibility filter; the admin-hidden portion is a defect owned by `006-bugfix-admin-peer-visibility.md` (not this roles SRS). See §3 FR-00.
 - The RBAC permission catalog and system-role read-only policy (owned by `004-feat-roles-page.md`).
 - Role create/update/delete/assign endpoints (`POST/PATCH/DELETE /v1/roles`, `*/roles` under users/groups). They resolve the role by `{id}` and already enforce tenant scope for non-master callers (`roles.go:154-160, 198-203, 253-258`). They are not the defect; this SRS may optionally tenant-scope them for symmetry, but the gating fix is the list.
 - Per-tenant database routing. `PGRoleStore` holds a single master pool and filters by `tenant_id` (`pg/roles.go:19,109`) — both callers already hit the same pool, so this is not a DB-routing bug.
 
 ## 3. Functional Requirements
 
-### FR-00: Users 5-vs-2 Asymmetry Is Expected (no change — documentation only)
+### FR-00: Users 5-vs-2 Asymmetry — Split Verdict (cross-reference only)
 
-The reported user-count difference (owner sees 5, admin sees 2 for tenant-17) is **correct, expected behavior**, not a defect.
+The reported user-count difference (owner sees 5, admin sees 2 for tenant-17) has **two parts** with different verdicts. This roles SRS does not change either; it records the split for traceability.
 
 | Caller | Path | Tenant source | Filter | tenant-17 count |
 |--------|------|---------------|--------|:---------------:|
 | System owner | WS `tenants.users.list` (`tenants.go:345`) | explicit `tenant_id` payload (`tenants.go:352-362`) | none (owner bypass) | 5 |
-| Tenant admin | HTTP `GET /v1/tenants/{id}/users` | explicit path `{id}` | admin visibility filter hides owner + admin users (001 SRS §5.4) | 2 |
+| Tenant admin (today) | HTTP `GET /v1/tenants/{id}/users` | explicit path `{id}` | hides owner + admin (`tenants.go:1013`) | 2 |
+| Tenant admin (after `006`) | HTTP `GET /v1/tenants/{id}/users` | explicit path `{id}` | hides **owner only** (`tenants.go:1013`, changed by `006`) | admins + members/viewers |
 
-Both paths pass the tenant **explicitly**, so both are correctly scoped to tenant-17. The count differs only because the owner sees the full roster and the admin sees a privilege-filtered subset. No code change.
+- **(a) Owner hidden from admin** — *expected*, unchanged here. The owner is higher privilege (`is_owner`, bypasses RBAC); hiding it is the filter's purpose.
+- **(b) Peer admins hidden from admin** — *defect*, fixed in `006-bugfix-admin-peer-visibility.md` (relaxes `enrichTenantUsers` + splits the `read` branch of `checkTenantUserAuth`; mutation auth unchanged). Owned by `006` and `001-feat-tenant-user-crud.md` §5.4.
+
+Both paths already pass the tenant **explicitly**, so both are correctly scoped to tenant-17 — neither path has the ambient-tenant bug that this SRS fixes for roles. No roles-side code change.
 
 Acceptance criteria:
 
-- [ ] No code change is made for the user-count asymmetry.
-- [ ] Confirm against the running system: the WS owner path returns all tenant-17 users; the HTTP admin path returns tenant-17 users minus owner/admin-level users.
+- [ ] No roles-side code change is made for the user-count asymmetry.
+- [ ] After `006` lands, confirm an admin's `GET /v1/tenants/{id}/users` for tenant-17 returns peer admins (and still omits the owner).
 
 ---
 

@@ -6,6 +6,8 @@
 
 Version 1.0 | 4 June 2026
 
+> **Revision (2026-06-16, v1.1):** The admin visibility filter was relaxed — a tenant **admin can now see peer admins** in the same tenant. Only the tenant **Owner** remains hidden from admins. This is a **visibility-only** change; mutation authorization (create/update/delete/role-change of admins or the owner by an admin) is unchanged. Canonical spec: `006-bugfix-admin-peer-visibility.md`. Affected sections below (§1.3, §3 FR-TU2/FR-TU3, §4.3, §4.4, §5.2, §5.3, §5.4, §9.1 AC-15) are updated to the new policy.
+
 ---
 
 ## Table of Contents
@@ -53,7 +55,7 @@ The module covers:
 |------|-----------|
 | Tenant | Top-level isolation boundary in GoClaw. Users belong to tenants via `tenant_users`. |
 | Owner | User with `is_owner = true` in `tenant_users`. Full access, bypasses RBAC. |
-| Admin | User with admin-level RBAC permissions. Can manage Member/Viewer users only. |
+| Admin | User with admin-level RBAC permissions. Can view peer Admins + Member/Viewer (Owner hidden); can manage (create/update/delete/role-change) Member/Viewer users only. |
 | Gateway Token | Platform-level bearer token. Grants owner-equivalent access across all tenants. |
 | Target-role-aware | Authorization that checks the target user's role, not just the caller's role. |
 
@@ -143,7 +145,7 @@ The system shall support two modes of adding a user to a tenant:
 1. Fetch all `tenant_users` rows for the tenant
 2. Enrich each user with: `email`, `display_name`, `phone`, `status` from `users` table
 3. Resolve effective role per user (owner → "owner", else derive from RBAC)
-4. If caller is Admin (not Owner): filter out Owner and Admin users from response
+4. If caller is Admin (not Owner): filter out **Owner users only** from response. Peer Admins are visible (read-only); an admin cannot manage them (FR-TU3/FR-TU5/FR-TU6). See `006-bugfix-admin-peer-visibility.md`.
 5. Return 200 with `{ "users": [...] }`
 
 ### FR-TU3: Get Single Tenant User
@@ -151,7 +153,7 @@ The system shall support two modes of adding a user to a tenant:
 **GET /v1/tenants/{id}/users/{userId}**
 
 1. Normalize target user ID
-2. Auth: check caller can read the target (admin → Member/Viewer only)
+2. Auth: check caller can read the target (admin → Owner denied; Admin/Member/Viewer allowed, Admin is read-only)
 3. Fetch `tenant_users` row and enrich with user data
 4. Return 200 with enriched user object
 
@@ -287,7 +289,7 @@ All endpoints require Bearer token authentication. Admin+ means minimum `RoleAdm
 | Caller | Response |
 |--------|----------|
 | Owner / Gateway Token | All users with all roles |
-| Admin | Filtered — Owner and Admin users excluded |
+| Admin | Filtered — Owner excluded; peer Admins visible (read-only) |
 
 ### 4.4 GET /v1/tenants/{id}/users/{userId} — Get User
 
@@ -297,9 +299,9 @@ All endpoints require Bearer token authentication. Admin+ means minimum `RoleAdm
 
 | Status | Condition |
 |--------|-----------|
-| 200 | Success |
+| 200 | Success (admin reading a peer Admin returns 200, read-only) |
 | 400 | Invalid tenant or user ID |
-| 403 | Admin reading Owner/Admin user |
+| 403 | Admin reading Owner user |
 | 404 | User not in tenant |
 
 ### 4.5 PUT /v1/tenants/{id}/users/{userId} — Update User
@@ -408,7 +410,7 @@ Gateway Token / Platform Owner
 | Delete Member/Viewer | ✅ | ✅ | ✅ | ❌ |
 | Delete self | ❌ | ❌ | ❌ | ❌ |
 
-⚠️ = allowed but filtered (owner/admin users hidden from response).
+⚠️ = allowed but filtered (owner users hidden from response; peer admins visible, read-only). See `006-bugfix-admin-peer-visibility.md`.
 
 ### 5.3 Authorization Flow
 
@@ -418,8 +420,9 @@ Gateway Token / Platform Owner
    a. Is caller Gateway Token or per-tenant Owner? → full access
    b. Is caller Admin (has system.manage_settings, NOT owner)?
       - create: allowed for Member/Viewer roles only
-      - read/update/delete: allowed for Member/Viewer targets only
-      - role change: denied
+      - read: allowed for Admin/Member/Viewer targets (Owner denied); Admin targets read-only
+      - update/delete: allowed for Member/Viewer targets only (Owner/Admin denied)
+      - role change: denied for Owner/Admin targets; Member↔Viewer allowed
    c. Otherwise → deny (403)
 3. Special guards:
    - Self-deletion: caller ID == target ID → 422
@@ -431,9 +434,8 @@ Gateway Token / Platform Owner
 When the caller is an Admin (not Owner), the list endpoint automatically filters out:
 
 - Users with `is_owner = true` (tenant owners)
-- Users with Admin-level RBAC permissions
 
-This prevents admin users from seeing or interacting with higher-privileged users.
+> **Policy change (2026-06-16, `006-bugfix-admin-peer-visibility.md`):** peer **Admins are no longer filtered** — an admin can now see other admins in the same tenant. Only the tenant **Owner** remains hidden, because it is the one role strictly above admin (`is_owner = true`, bypasses RBAC). This is **visibility-only**: an admin still cannot manage (create/update/delete/role-change) a peer admin or the owner. Visible peer-admin rows render with management actions disabled. The filter exists to hide *higher-privileged* users; a peer admin is not higher than the caller, so hiding it was over-broad.
 
 ---
 
@@ -578,7 +580,9 @@ User removal broadcasts `tenant_access_revoked` WebSocket event to force the aff
 | AC-12 | Role change to owner sets is_owner=true | Update role to owner → is_owner=true in DB |
 | AC-13 | Role change from owner unsets is_owner | Update owner to member → is_owner=false |
 | AC-14 | Update rejects email/role fields | PUT with email in body → 422 |
-| AC-15 | Admin list filters owners/admins | Admin lists users → no owner/admin in response |
+| AC-15 | Admin list filters owners only | Admin lists users → no owner; peer admins present (read-only) |
+| AC-15a | Admin can read peer admin detail | Admin GET `.../users/{adminId}` → 200 (read-only) |
+| AC-15b | Admin cannot read owner | Admin GET `.../users/{ownerId}` → 403 |
 | AC-16 | Gateway Token has full access | Gateway Token creates owner → 201 |
 
 ### 9.2 Frontend
