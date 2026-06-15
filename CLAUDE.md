@@ -6,6 +6,19 @@ PostgreSQL multi-tenant AI agent gateway with WebSocket RPC + HTTP API.
 
 Always respond in the same language as the user's prompt. If the user writes in Vietnamese, respond in Vietnamese. If in English, respond in English. Match the user's language naturally.
 
+## SRS Documentation (Read First)
+
+Before drawing ANY conclusion about a new feature or bugfix, read ALL files under `docs/srs/` first:
+`multi-auth-module-srs.md` (User/Group/RBAC module), `tenant-user-crud.md` (tenant user CRUD REST API), `bugfix/*` (active bug investigations), and `CLAUDE.md`/AGENTS.md (SRS template + structure rules).
+
+Why: `docs/srs/` holds canonical requirements. Conclusions made without reading it risk duplicating scope, contradicting an existing FR, or re-investigating a bug already documented + partially fixed.
+
+How to apply:
+- At the start of any feature/bugfix task, `ls` + read every `docs/srs/` file.
+- Cross-reference new work against existing SRS scope and FR traceability before proposing changes.
+- Check `bugfix/*` status header — a defect may already be code-fixed (live verification may still be pending).
+- Creating/updating an SRS doc: follow the full template in `docs/srs/CLAUDE.md` (required sections, acceptance-criteria checklists, canonical error codes).
+
 ## Tech Stack
 
 **Backend:** Go 1.26, Cobra CLI, gorilla/websocket, pgx/v5 (database/sql, no ORM), golang-migrate, go-rod/rod, telego (Telegram)

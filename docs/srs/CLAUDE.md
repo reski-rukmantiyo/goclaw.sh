@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for Codex when creating or updating SRS documentation in `docs/srs`.
+Guidance for CLAUDE when creating or updating SRS documentation in `docs/srs`.
 
 ## SRS Structure Requirements
 
