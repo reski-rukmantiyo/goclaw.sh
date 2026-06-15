@@ -15,6 +15,7 @@
 | Version | Date | Changes |
 |---------|------|---------|
 | 0.1-draft | 2026-06-16 | Initial draft. Policy change: relax the tenant-admin visibility filter so an admin can see peer admins in the same tenant. Owner remains hidden (higher privilege). Visibility-only change; mutation authorization unchanged. Updates the policy canonically owned by `001-feat-tenant-user-crud.md` §5.4. |
+| 0.2-draft | 2026-06-16 | **Implemented.** `enrichTenantUsers` hides Owner only; `checkTenantUserAuth` splits `read` (peer-admin allowed, Owner denied) from `update`/`delete` (Owner+Admin block unchanged); `update_role` + `handleUsersAdd` untouched (mutation auth unchanged). Frontend already gated peer-admin actions (`tenant-users-tab.tsx` `canEdit`/`canDelete`/`canChangeRole`/`canChangePassword`). `go build` (PG+SQLite) + `go vet` + `pnpm build` green; 2 handler unit tests pass (`internal/http/tenants_admin_visibility_test.go`). FR-01/03/04 boxes marked `[x]`; FR-02 (single-user read) left `[ ]` — code-complete + build-verified, pending a unit test (`checkTenantUserAuth` admin branch needs `pkgPermCache` wiring) and live confirmation. |
 
 ---
 
@@ -69,10 +70,10 @@ if isAdminCaller && role == store.TenantRoleOwner {
 
 Acceptance criteria:
 
-- [ ] A tenant admin's `GET /v1/tenants/{id}/users` response includes peer admin users (role = `admin`).
-- [ ] The tenant Owner (`is_owner = true`) is still absent from an admin's list response.
-- [ ] An owner's list response is unchanged (all users).
-- [ ] The admin caller's own row is still present (no self-removal).
+- [x] A tenant admin's `GET /v1/tenants/{id}/users` response includes peer admin users (role = `admin`). _(`TestEnrichTenantUsers_AdminCallerSeesPeerAdmins_OwnerHidden`)_
+- [x] The tenant Owner (`is_owner = true`) is still absent from an admin's list response. _(same test)_
+- [x] An owner's list response is unchanged (all users). _(`TestEnrichTenantUsers_OwnerCallerSeesAll`)_
+- [x] The admin caller's own row is still present (no self-removal). _(filter skips Owner-role only; the admin's own row is never removed)_
 
 ---
 
@@ -110,9 +111,9 @@ case "update", "delete":
 
 Acceptance criteria:
 
-- [ ] An admin `GET /v1/tenants/{id}/users/{adminUserId}` returns 200 with the peer admin's enriched record.
-- [ ] An admin `GET .../users/{ownerUserId}` returns 403 (`MsgTargetRoleForbidden`).
-- [ ] An admin `GET .../users/{memberOrViewerUserId}` returns 200 (unchanged).
+- [ ] An admin `GET /v1/tenants/{id}/users/{adminUserId}` returns 200 with the peer admin's enriched record. _(code-complete + build-verified; pending unit test — `checkTenantUserAuth` admin branch needs `pkgPermCache` wiring — and live confirmation)_
+- [ ] An admin `GET .../users/{ownerUserId}` returns 403 (`MsgTargetRoleForbidden`). _(same — pending test + live)_
+- [ ] An admin `GET .../users/{memberOrViewerUserId}` returns 200 (unchanged). _(same — pending test + live)_
 
 ---
 
@@ -130,9 +131,9 @@ Creating, updating, deleting, or role-changing an admin (or owner) by an admin c
 
 Acceptance criteria:
 
-- [ ] `update`, `delete`, and `update_role` branches in `checkTenantUserAuth` (`tenants.go:594-609`) still block an admin from Owner and Admin targets (403).
-- [ ] `handleUsersAdd` admin restriction (`tenants.go:339`) still rejects role=admin/owner for an admin caller (403).
-- [ ] No new mutation capability is granted to admins.
+- [x] `update`, `delete`, and `update_role` branches in `checkTenantUserAuth` (`tenants.go:594-609`) still block an admin from Owner and Admin targets (403). _(verified by inspection: `update`/`delete` retain the Owner+Admin block; `update_role` untouched)_
+- [x] `handleUsersAdd` admin restriction (`tenants.go:339`) still rejects role=admin/owner for an admin caller (403). _(untouched)_
+- [x] No new mutation capability is granted to admins. _(only `read` was relaxed)_
 
 ---
 
@@ -142,9 +143,9 @@ Because visibility is relaxed but mutation is not, an admin viewing a peer-admin
 
 Acceptance criteria:
 
-- [ ] For an admin caller, peer-admin user rows show profile data but disable/hide the edit (display_name/phone), delete, and role-change controls — the same disabled state already used for owner rows (which remain hidden, so this applies to the now-visible admin rows).
-- [ ] No UI control offered to an admin results in a 403 on normal use.
-- [ ] i18n: no new strings required; reuse existing "insufficient permission" / disabled affordances. Any added string goes into all 3 locales (en/vi/zh).
+- [x] For an admin caller, peer-admin user rows show profile data but disable/hide the edit (display_name/phone), delete, and role-change controls — the same disabled state already used for owner rows (which remain hidden, so this applies to the now-visible admin rows). _(pre-existing `canEdit`/`canDelete`/`canChangeRole`/`canChangePassword` in `tenant-users-tab.tsx` already return false for admin targets when `callerIsAdmin`)_
+- [x] No UI control offered to an admin results in a 403 on normal use. _(the `canX` gates suppress blocked-action buttons before render)_
+- [x] i18n: no new strings required; reuse existing "insufficient permission" / disabled affordances. Any added string goes into all 3 locales (en/vi/zh). _(N/A — no strings added)_
 
 ## 4. System Impact
 

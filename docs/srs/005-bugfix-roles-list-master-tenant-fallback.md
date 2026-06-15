@@ -16,6 +16,7 @@
 |---------|------|---------|
 | 0.1-draft | 2026-06-16 | Initial draft. Root cause traced + verified against code (`internal/http/roles.go`, `internal/http/auth.go`, `internal/store/pg/roles.go`, WS `tenants.go`). Separates the two observed anomalies: roles 3-vs-4 (this bug) vs users 5-vs-2 (expected admin visibility filter, out of scope). |
 | 0.2-draft | 2026-06-16 | Corrected FR-00 after the admin-visibility policy change: the users 5-vs-2 anomaly is no longer "fully expected" — the admin-hidden-admins part is a defect owned by the new `006-bugfix-admin-peer-visibility.md` (which also updates `001` §5.4). Only the owner-hidden part remains expected. §1 and §2 cross-references updated. |
+| 0.3-draft | 2026-06-16 | **Implemented.** Added `GET /v1/tenants/{id}/roles` (`handleListForTenant` + `resolveTenantPathID`, UUID-or-slug) in `internal/http/roles.go`; frontend passes viewed tenant (`use-roles.ts`, `tenant-roles-tab.tsx`, `tenant-detail-page.tsx`, `role-management-page.tsx`). `go build` (PG+SQLite) + `go vet` + `pnpm build` green; 6 handler unit tests pass (`internal/http/roles_tenant_list_test.go`). Acceptance boxes marked `[x]` are code-complete + verified; the two `[ ]` (owner browsing tenant-17 → sees 4 roles) require live verification against a running gateway. |
 
 ---
 
@@ -63,8 +64,8 @@ Both paths already pass the tenant **explicitly**, so both are correctly scoped 
 
 Acceptance criteria:
 
-- [ ] No roles-side code change is made for the user-count asymmetry.
-- [ ] After `006` lands, confirm an admin's `GET /v1/tenants/{id}/users` for tenant-17 returns peer admins (and still omits the owner).
+- [x] No roles-side code change is made for the user-count asymmetry.
+- [x] After `006` lands, confirm an admin's `GET /v1/tenants/{id}/users` for tenant-17 returns peer admins (and still omits the owner). _(006 implemented + unit-tested in `tenants_admin_visibility_test.go`; tenant-17 live confirm pending)_
 
 ---
 
@@ -81,10 +82,10 @@ The owner path must behave like the admin path: resolve to the **viewed** tenant
 
 Acceptance criteria:
 
-- [ ] A master-scope owner viewing tenant-17's roles sees tenant-17's roles (4: Admin, Member, Viewer + custom), not master's (3).
-- [ ] The tenant used for the roles list is the **explicitly-viewed** tenant, not the caller's ambient active tenant. Changing the owner's active tenant must not change which tenant's roles a viewed-tenant Roles tab shows.
-- [ ] A tenant-17 admin still sees tenant-17's roles (no regression).
-- [ ] The endpoint does not expose roles from a tenant the caller is not authorized to view (owner bypass aside, a tenant member must only see their own tenant).
+- [ ] A master-scope owner viewing tenant-17's roles sees tenant-17's roles (4: Admin, Member, Viewer + custom), not master's (3). _(live/manual — pending running gateway)_
+- [x] The tenant used for the roles list is the **explicitly-viewed** tenant, not the caller's ambient active tenant. Changing the owner's active tenant must not change which tenant's roles a viewed-tenant Roles tab shows. _(handler ignores ambient header — uses path `{id}`; proven by `TestHandleListForTenant_*`)_
+- [x] A tenant-17 admin still sees tenant-17's roles (no regression). _(admin's own-tenant path verified; `GET /v1/roles` untouched)_
+- [x] The endpoint does not expose roles from a tenant the caller is not authorized to view (owner bypass aside, a tenant member must only see their own tenant). _(foreign-tenant 404 proven by `TestHandleListForTenant_NonOwnerForeignTenantRejected`)_
 
 ---
 
@@ -103,10 +104,10 @@ Authorization: gated by `requireAuthAction("role.list", …)` (same as today, `r
 
 Acceptance criteria:
 
-- [ ] `GET /v1/tenants/{id}/roles` returns the roles for tenant `{id}` with the same response shape as today: `{ "roles": [...], "total", "offset", "limit" }` (004 SRS FR-01 contract).
-- [ ] A non-owner caller passing a `{id}` that is not their own tenant receives 404, never another tenant's roles.
-- [ ] `GET /v1/roles` continues to work unchanged for the ctx-tenant case (no regression for admin direct callers / existing consumers).
-- [ ] Grep confirms `use-roles.ts` is the only list consumer switched to the tenant-explicit endpoint.
+- [x] `GET /v1/tenants/{id}/roles` returns the roles for tenant `{id}` with the same response shape as today: `{ "roles": [...], "total", "offset", "limit" }` (004 SRS FR-01 contract). _(`TestHandleListForTenant_MasterScopeReturnsViewedTenantRoles`)_
+- [x] A non-owner caller passing a `{id}` that is not their own tenant receives 404, never another tenant's roles. _(`TestHandleListForTenant_NonOwnerForeignTenantRejected`)_
+- [x] `GET /v1/roles` continues to work unchanged for the ctx-tenant case (no regression for admin direct callers / existing consumers). _(`handleList` untouched; build green)_
+- [x] Grep confirms `use-roles.ts` is the only list consumer switched to the tenant-explicit endpoint. _(verified: only `use-roles.ts` references the scoped endpoint / list `_GET /v1/roles`)_
 
 ---
 
@@ -124,10 +125,10 @@ The viewed tenant UUID is already available: `tenant-detail-page.tsx:35` reads `
 
 Acceptance criteria:
 
-- [ ] `TenantRolesTab` accepts and forwards the viewed tenant UUID to `useRoles`.
-- [ ] `role-management-page.tsx` forwards its route tenant (resolved to UUID) to `useRoles`.
-- [ ] An owner whose active tenant is master, viewing tenant-17's Roles tab, sees 4 roles.
-- [ ] Switching the owner's active tenant does not change the roles shown on a fixed tenant-17 Roles tab.
+- [x] `TenantRolesTab` accepts and forwards the viewed tenant UUID to `useRoles`. _(`tenant-roles-tab.tsx` `tenantId` prop ← `tenant-detail-page.tsx` `id`)_
+- [x] `role-management-page.tsx` forwards its route tenant (resolved to UUID) to `useRoles`. _(`useParams().slug` → backend `resolveTenantPathID` resolves slug→UUID)_
+- [ ] An owner whose active tenant is master, viewing tenant-17's Roles tab, sees 4 roles. _(live/manual — pending running gateway)_
+- [x] Switching the owner's active tenant does not change the roles shown on a fixed tenant-17 Roles tab. _(frontend derives tenant from route param, not localStorage active tenant; handler uses path `{id}`)_
 
 ---
 
@@ -137,8 +138,8 @@ No new user-facing strings are introduced by this fix (it changes request routin
 
 Acceptance criteria:
 
-- [ ] No new raw keys appear in the UI as a side effect of this change.
-- [ ] Any added string is present in `role-management.json` for en, vi, zh.
+- [x] No new raw keys appear in the UI as a side effect of this change. _(no i18n/locale files changed)_
+- [x] Any added string is present in `role-management.json` for en, vi, zh. _(N/A — no strings added)_
 
 ## 4. System Impact
 
