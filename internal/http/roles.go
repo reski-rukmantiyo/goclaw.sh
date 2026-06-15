@@ -30,6 +30,10 @@ func NewRolesHandler(roles store.RoleStore, users store.UserStore, groups store.
 // RegisterRoutes registers all role management routes on the given mux.
 func (h *RolesHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/roles", requireAuthAction("role.list", h.handleList))
+	// 005: tenant-explicit list. {id} = viewed tenant UUID or slug. Authoritative
+	// path for a cross-tenant owner browsing a specific tenant's roles — it does
+	// not depend on the caller's ambient active tenant (unlike GET /v1/roles).
+	mux.HandleFunc("GET /v1/tenants/{id}/roles", requireAuthAction("role.list", h.handleListForTenant))
 	mux.HandleFunc("POST /v1/roles", requireAuthAction("role.create", h.handleCreate))
 	mux.HandleFunc("GET /v1/roles/{id}", requireAuthAction("role.get", h.handleGet))
 	mux.HandleFunc("PATCH /v1/roles/{id}", requireAuthAction("role.update", h.handleUpdate))
@@ -90,6 +94,78 @@ func (h *RolesHandler) handleList(w http.ResponseWriter, r *http.Request) {
 		"offset": result.Offset,
 		"limit":  result.Limit,
 	})
+}
+
+// handleListForTenant lists roles for an explicitly-specified tenant (005).
+// The {id} path value is the *viewed* tenant (UUID or slug), independent of the
+// caller's ambient active tenant — this is what fixes the cross-tenant owner bug
+// where GET /v1/roles resolved to the owner's home (master) tenant. Non-master
+// callers may only list their own tenant (no cross-tenant leak).
+func (h *RolesHandler) handleListForTenant(w http.ResponseWriter, r *http.Request) {
+	locale := extractLocale(r)
+	ctx := r.Context()
+
+	tenantID, ok := h.resolveTenantPathID(w, r, locale)
+	if !ok {
+		return
+	}
+
+	// Enforce tenant scope for non-master callers (mirror handleGet).
+	if !store.IsMasterScope(ctx) {
+		if tid := store.TenantIDFromContext(ctx); tid != uuid.Nil && tid != tenantID {
+			writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "roles"))
+			return
+		}
+	}
+
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 {
+		limit = 50
+	}
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	if offset < 0 {
+		offset = 0
+	}
+
+	result, err := h.roles.ListRoles(ctx, tenantID, store.RoleListParams{
+		Offset: offset,
+		Limit:  limit,
+		Search: q.Get("search"),
+	})
+	if err != nil {
+		slog.Error("roles.list_for_tenant failed", "error", err)
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgFailedToList, "roles"))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"roles":  result.Roles,
+		"total":  result.Total,
+		"offset": result.Offset,
+		"limit":  result.Limit,
+	})
+}
+
+// resolveTenantPathID resolves the {id} path value to a tenant UUID. Accepts a
+// UUID or a tenant slug (mirrors how X-GoClaw-Tenant-Id resolves via
+// resolveScopedTenant). Returns false (response written) on failure.
+func (h *RolesHandler) resolveTenantPathID(w http.ResponseWriter, r *http.Request, locale string) (uuid.UUID, bool) {
+	idVal := r.PathValue("id")
+	if idVal == "" {
+		writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidID, "tenant"))
+		return uuid.Nil, false
+	}
+	if tid, err := uuid.Parse(idVal); err == nil {
+		return tid, true
+	}
+	if h.tenants != nil {
+		if t, err := h.tenants.GetTenantBySlug(r.Context(), idVal); err == nil && t != nil {
+			return t.ID, true
+		}
+	}
+	writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "tenant"))
+	return uuid.Nil, false
 }
 
 func (h *RolesHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
