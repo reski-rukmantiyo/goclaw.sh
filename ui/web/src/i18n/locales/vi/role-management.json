@@ -28,6 +28,7 @@
   "editPermissions": "Sửa quyền",
   "systemRole": "Hệ thống",
   "customRole": "Tùy chỉnh",
+  "systemRoleReadonly": "Vai trò hệ thống — chỉ xem",
   "columns": {
     "name": "Tên",
     "description": "Mô tả",

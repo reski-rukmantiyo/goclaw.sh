@@ -8,6 +8,8 @@ interface RolePermissionEditorProps {
   roleId: string;
   onSave: (permissions: string[]) => Promise<void>;
   isSaving: boolean;
+  /** When true the permission set is read-only (system roles). Checkboxes are disabled and Save is hidden. */
+  readOnly?: boolean;
 }
 
 const PERMISSION_CATEGORIES: Record<string, string[]> = {
@@ -59,8 +61,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   audit: "Audit Log",
 };
 
-export function RolePermissionEditor({ roleId, onSave, isSaving }: RolePermissionEditorProps) {
-  const { t } = useTranslation("role-management");
+export function RolePermissionEditor({ roleId, onSave, isSaving, readOnly = false }: RolePermissionEditorProps) {
+  const { t } = useTranslation("roleManagement");
   const { permissions: currentPerms, loading } = useRolePermissions(roleId);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -107,9 +109,13 @@ export function RolePermissionEditor({ roleId, onSave, isSaving }: RolePermissio
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">{t("permissions")}</h3>
-        <Button size="sm" variant="outline" onClick={handleSave} disabled={isSaving}>
-          {isSaving ? t("savingPermissions") : t("savePermissions")}
-        </Button>
+        {readOnly ? (
+          <span className="text-xs text-muted-foreground">{t("systemRoleReadonly")}</span>
+        ) : (
+          <Button size="sm" variant="outline" onClick={handleSave} disabled={isSaving}>
+            {isSaving ? t("savingPermissions") : t("savePermissions")}
+          </Button>
+        )}
       </div>
 
       <div className="space-y-6">
@@ -128,6 +134,7 @@ export function RolePermissionEditor({ roleId, onSave, isSaving }: RolePermissio
                     if (el) el.indeterminate = someChecked;
                   }}
                   onChange={(e) => toggleAll(perms, e.target.checked)}
+                  disabled={readOnly}
                   className="h-4 w-4 rounded border-gray-300"
                 />
                 <label htmlFor={`cat-${category}`} className="text-sm font-semibold">
@@ -142,6 +149,7 @@ export function RolePermissionEditor({ roleId, onSave, isSaving }: RolePermissio
                       id={`perm-${perm}`}
                       checked={selected.has(perm)}
                       onChange={() => toggle(perm)}
+                      disabled={readOnly}
                       className="h-4 w-4 rounded border-gray-300"
                     />
                     <label htmlFor={`perm-${perm}`} className="text-sm text-muted-foreground">

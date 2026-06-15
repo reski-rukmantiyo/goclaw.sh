@@ -25,7 +25,7 @@ import { RolePermissionEditor } from "./role-permission-editor";
 import type { Role } from "@/types/user-mgmt";
 
 export default function RoleManagementPage() {
-  const { t } = useTranslation("role-management");
+  const { t } = useTranslation("roleManagement");
   const { t: tc } = useTranslation("common");
 
   const [search, setSearch] = useState("");
@@ -182,11 +182,11 @@ export default function RoleManagementPage() {
           <div className="space-y-6 py-4">
             <div className="space-y-2">
               <Label htmlFor="edit-role-name">{t("name")}</Label>
-              <Input id="edit-role-name" value={name} onChange={(e) => setName(e.target.value)} />
+              <Input id="edit-role-name" value={name} onChange={(e) => setName(e.target.value)} disabled={editRole?.is_system} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-role-desc">{t("description")}</Label>
-              <Input id="edit-role-desc" value={description} onChange={(e) => setDescription(e.target.value)} />
+              <Input id="edit-role-desc" value={description} onChange={(e) => setDescription(e.target.value)} disabled={editRole?.is_system} />
             </div>
             {editRole && (
               <RolePermissionEditor
@@ -195,12 +195,13 @@ export default function RoleManagementPage() {
                   await setRolePermissions({ id: editRole.id, permissions: perms });
                 }}
                 isSaving={isSettingPermissions}
+                readOnly={editRole.is_system}
               />
             )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditRole(null)}>{tc("cancel")}</Button>
-            <Button onClick={handleUpdate} disabled={!name.trim() || isUpdating}>
+            <Button onClick={handleUpdate} disabled={!name.trim() || isUpdating || !!editRole?.is_system}>
               {isUpdating ? tc("saving") : tc("save")}
             </Button>
           </DialogFooter>
