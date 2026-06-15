@@ -591,7 +591,15 @@ func (h *TenantsHandler) checkTenantUserAuth(w http.ResponseWriter, r *http.Requ
 		case "create":
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgTargetRoleForbidden)})
 			return ""
-		case "read", "update", "delete":
+		case "read":
+			// 006: an admin may read a peer admin (read-only); only the Owner is denied.
+			targetRole := h.resolveTargetRole(ctx, tenantID, targetUserID)
+			if targetRole == store.TenantRoleOwner {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgTargetRoleForbidden)})
+				return ""
+			}
+			return targetRole
+		case "update", "delete":
 			targetRole := h.resolveTargetRole(ctx, tenantID, targetUserID)
 			if targetRole == store.TenantRoleOwner || targetRole == store.TenantRoleAdmin {
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": i18n.T(locale, i18n.MsgTargetRoleForbidden)})
@@ -1010,7 +1018,9 @@ func (h *TenantsHandler) enrichTenantUsers(ctx context.Context, users []store.Te
 	for _, tu := range users {
 		role := h.resolveTargetRole(ctx, tu.TenantID, tu.UserID)
 
-		if isAdminCaller && (role == store.TenantRoleOwner || role == store.TenantRoleAdmin) {
+		// 006: admins can now see peer admins (read-only). Only the tenant Owner
+		// (is_owner, bypasses RBAC) stays hidden from a non-owner caller.
+		if isAdminCaller && role == store.TenantRoleOwner {
 			continue
 		}
 

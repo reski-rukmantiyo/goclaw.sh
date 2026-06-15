@@ -7,6 +7,10 @@ import { toast } from "@/stores/use-toast-store";
 import type { Role } from "@/types/user-mgmt";
 
 interface RoleListParams {
+  // 005: the explicitly-viewed tenant (UUID or slug). When provided the hook uses
+  // the tenant-scoped endpoint so the result follows the viewed tenant, not the
+  // caller's ambient active tenant.
+  tenantId?: string;
   search?: string;
   limit?: number;
   offset?: number;
@@ -30,11 +34,16 @@ export function useRoles(params: RoleListParams = {}) {
   queryParams.limit = String(params.limit ?? 50);
   queryParams.offset = String(params.offset ?? 0);
 
-  const queryKey = queryKeys.roles.list(queryParams);
+  // 005: prefer the tenant-scoped endpoint when a viewed tenant is supplied.
+  const endpoint = params.tenantId
+    ? `/v1/tenants/${params.tenantId}/roles`
+    : "/v1/roles";
+  // Include tenantId in the key so different tenants cache independently.
+  const queryKey = queryKeys.roles.list({ ...queryParams, tenantId: params.tenantId ?? "" });
 
   const { data, isLoading: loading } = useQuery({
     queryKey,
-    queryFn: () => http.get<RoleListResponse>("/v1/roles", queryParams),
+    queryFn: () => http.get<RoleListResponse>(endpoint, queryParams),
     staleTime: 30_000,
   });
 

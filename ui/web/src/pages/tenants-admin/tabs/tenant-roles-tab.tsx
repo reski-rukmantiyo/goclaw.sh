@@ -20,7 +20,11 @@ import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { useRoles } from "@/pages/role-management/hooks/use-roles";
 import { RolePermissionEditor } from "@/pages/role-management/role-permission-editor";
 
-export function TenantRolesTab() {
+interface TenantRolesTabProps {
+  tenantId: string;
+}
+
+export function TenantRolesTab({ tenantId }: TenantRolesTabProps) {
   const { t } = useTranslation("roleManagement");
 
   const [search, setSearch] = useState("");
@@ -28,7 +32,7 @@ export function TenantRolesTab() {
     roles, loading,
     createRole, updateRole, deleteRole, setRolePermissions,
     isCreating, isUpdating, isDeleting,
-  } = useRoles({ search: search || undefined });
+  } = useRoles({ tenantId, search: search || undefined });
 
   const showSkeleton = useDeferredLoading(loading && roles.length === 0);
 
