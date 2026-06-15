@@ -16,6 +16,7 @@
 |---------|------|---------|
 | 0.1-draft | 2026-06-16 | Initial draft. Hypothesized two root causes: unseeded master tenant + frontend list-response contract mismatch. Proposed runtime backfill + editable system-role permissions. |
 | 0.2-draft | 2026-06-16 | Corrected after code verification. Migration `000083` already seeds Admin/Member/Viewer for every tenant incl. master (`ON CONFLICT DO NOTHING`, schema version 88 = applied), so data is present — runtime backfill is out of scope. The empty page root cause is the frontend contract mismatch (FR-01). Decisions locked: minimal fix, system roles fully read-only, leave existing seeded permissions as-is (catalog drift deferred). |
+| 0.3-draft | 2026-06-16 | Folded in the i18n namespace-mismatch defect (formerly `005-bugfix-roles-i18n-namespace-mismatch.md`). Added **FR-07**: Roles UI renders raw keys because `useTranslation("role-management")` (kebab) does not match the registered `roleManagement` (camel) namespace. Fix = 2 call-site changes in `role-management-page.tsx` + `role-permission-editor.tsx`. |
 
 ---
 
@@ -33,6 +34,7 @@ This SRS owns: the contract fix, the page-rendering requirements, the visibility
 - Rendering the three default system roles on the Roles page with name, description, permission count, and a system badge.
 - Defining which users ("eligible roles") may view and navigate to the Roles page.
 - Defining the **fully read-only** mutability policy for system roles (name, description, permissions, and deletion all locked).
+- Fixing the i18n namespace-resolution defect that renders raw keys (`editRole`, `editRoleDescription`, …) in the Roles UI (see FR-07).
 
 **Out of scope**:
 
@@ -152,12 +154,39 @@ Acceptance criteria:
 - [ ] Any new UI string is added to `role-management.json` in `en`, `vi`, and `zh`.
 - [ ] The three locale files have identical key sets (no missing keys that would cause runtime fallback).
 
+---
+
+### FR-07: i18n Namespace Alignment (defect fix)
+
+The Roles UI currently renders **raw translation keys** (`editRole`, `editRoleDescription`, `permissions`, `savePermissions`, `systemRoleReadonly`) instead of localized strings — in the `/admin/roles` edit view and the tenant-detail Roles "Edit Permissions" dialog.
+
+**Root cause — namespace name mismatch.** The `roleManagement` namespace is registered **camelCase** in `ui/web/src/i18n/index.ts` (`ns` array at `:172`; resource keys en/vi/zh at `:201`/`:227`/`:253`), but two components call `useTranslation("role-management")` (kebab-case). i18next finds no `role-management` namespace and returns the raw key:
+
+| Site | Namespace | Status |
+|------|-----------|:------:|
+| `role-management-page.tsx:28` | `"role-management"` | ❌ |
+| `role-permission-editor.tsx:65` | `"role-management"` | ❌ |
+| `tenant-roles-tab.tsx:24` | `roleManagement` | ✅ (but embeds the ❌ editor at `:21`) |
+
+The locale JSON files are correct and complete — only the lookup fails. `RolePermissionEditor` is shared, so its wrong namespace leaks into both `/admin/roles` (page edit dialog) and `/admin/tenants/{id}` Roles tab (permissions dialog).
+
+Acceptance criteria:
+
+- [x] Both broken call sites use `roleManagement`: `role-management-page.tsx:28` and `role-permission-editor.tsx:65`.
+- [x] `grep -rn 'useTranslation("role-management")' ui/web/src` returns 0 matches.
+- [ ] `/admin/roles` edit view shows localized strings (e.g. "Edit Role", "Update role details and permissions", "Permissions", "Save Permissions") — no raw keys — in `en`, `vi`, `zh`. _(manual — pending browser check)_
+- [ ] Tenant-detail Roles "Edit Permissions" dialog shows a localized header/buttons (no raw keys). _(manual — pending browser check)_
+- [ ] `systemRoleReadonly` hint renders localized, not as a raw key. _(manual — pending browser check)_
+- [x] `cd ui/web && pnpm build` succeeds.
+
+**Prevention:** enforce one namespace form (camelCase is the current majority) — the `useTranslation()` namespace argument MUST match the registered namespace key in `ui/web/src/i18n/index.ts` exactly (case-sensitive). Add a grep gate in CI.
+
 ## 4. System Impact
 
 - **Backend HTTP:** `internal/http/roles.go` `handleSetPermissions` must reject system roles with 403 before applying (load the role, check `IsSystem`). No other backend change; the list response shape stays `{ "roles", "total", "offset", "limit" }`.
 - **Frontend hook:** `ui/web/src/pages/role-management/hooks/use-roles.ts` reads `data?.roles` / `data?.total` instead of `data?.items` (the actual empty-page fix).
 - **Frontend page:** edit dialog disables name/description inputs for `is_system` roles (FR-04); the `RolePermissionEditor` renders read-only for `is_system` roles and hides Save (FR-05).
-- **i18n:** optional new key(s) for the read-only hint, added to all 3 locales.
+- **i18n:** optional new key(s) for the read-only hint, added to all 3 locales. **Plus the FR-07 defect fix:** change `useTranslation("role-management")` → `useTranslation("roleManagement")` in `role-management-page.tsx:28` and `role-permission-editor.tsx:65` (2 one-line changes).
 - **No schema migration**, no startup hook, no store change.
 
 ## 5. Test Plan
@@ -169,6 +198,8 @@ Acceptance criteria:
 - Frontend test: `use-roles` returns the seeded rows when the handler returns `{ roles: [...], total }`; row count + total render correctly.
 - Frontend test: editing a system role shows read-only name/desc and read-only permission set (no Save).
 - Manual: open `/t/master/admin/roles` as Owner → three roles visible; as Admin → three roles visible; as Member → redirected.
+- i18n (FR-07): `grep -rn 'useTranslation("role-management")' ui/web/src` → 0 matches after fix.
+- i18n (FR-07): `/admin/roles` edit view + tenant Roles "Edit Permissions" dialog show localized strings (not raw keys) in `en`/`vi`/`zh`.
 
 ## 6. Decision Log (locked)
 
@@ -192,7 +223,7 @@ Acceptance criteria:
 2. **Frontend contract fix:** `use-roles.ts` read `data?.roles` / `data?.total` (FR-01).
 3. **Backend read-only enforcement:** in `internal/http/roles.go` `handleSetPermissions`, load the role and return 403 when `IsSystem` (FR-04).
 4. **Frontend edit dialog:** disable name/description inputs and render `RolePermissionEditor` read-only (hide Save) for `is_system` roles (FR-04/FR-05).
-5. **i18n:** add any new read-only hint key to `en`/`vi`/`zh` `role-management.json` (FR-06).
+5. **i18n:** add any new read-only hint key to `en`/`vi`/`zh` `role-management.json` (FR-06). **Plus FR-07 defect fix:** change `useTranslation("role-management")` → `useTranslation("roleManagement")` in `role-management-page.tsx` + `role-permission-editor.tsx`.
 6. **Tests:** handler test (system role `PUT /permissions` → 403) + frontend test (read-only rendering, `use-roles` contract).
 7. **Manual verification:** open `/t/master/admin/roles` as Owner and Admin; confirm three roles render; confirm editing a system role is read-only; confirm Member is blocked.
 8. **Checklist:** `go build ./...`, `go build -tags sqliteonly ./...`, `go vet ./...`, and `pnpm build` in `ui/web`.

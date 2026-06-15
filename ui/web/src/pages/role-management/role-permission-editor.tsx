@@ -62,7 +62,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export function RolePermissionEditor({ roleId, onSave, isSaving, readOnly = false }: RolePermissionEditorProps) {
-  const { t } = useTranslation("role-management");
+  const { t } = useTranslation("roleManagement");
   const { permissions: currentPerms, loading } = useRolePermissions(roleId);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 

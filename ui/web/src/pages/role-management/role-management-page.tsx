@@ -25,7 +25,7 @@ import { RolePermissionEditor } from "./role-permission-editor";
 import type { Role } from "@/types/user-mgmt";
 
 export default function RoleManagementPage() {
-  const { t } = useTranslation("role-management");
+  const { t } = useTranslation("roleManagement");
   const { t: tc } = useTranslation("common");
 
   const [search, setSearch] = useState("");
