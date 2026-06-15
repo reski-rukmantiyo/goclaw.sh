@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Plus, RefreshCw, ShieldCheck, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,8 +29,11 @@ export default function RoleManagementPage() {
   const { t } = useTranslation("roleManagement");
   const { t: tc } = useTranslation("common");
 
+  // 005: scope the roles list to the explicitly-viewed tenant (route slug), so a
+  // cross-tenant owner sees the viewed tenant's roles, not their ambient tenant.
+  const { slug = "" } = useParams<{ slug: string }>();
   const [search, setSearch] = useState("");
-  const { roles, total, loading, refresh, createRole, updateRole, deleteRole, setRolePermissions, isCreating, isUpdating, isDeleting, isSettingPermissions } = useRoles({ search });
+  const { roles, total, loading, refresh, createRole, updateRole, deleteRole, setRolePermissions, isCreating, isUpdating, isDeleting, isSettingPermissions } = useRoles({ tenantId: slug, search });
 
   const spinning = useMinLoading(loading);
   const showSkeleton = useDeferredLoading(loading && roles.length === 0);

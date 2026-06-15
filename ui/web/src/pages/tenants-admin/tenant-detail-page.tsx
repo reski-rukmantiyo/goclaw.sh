@@ -150,7 +150,7 @@ export function TenantDetailPage() {
         </TabsContent>
         <TabsContent value="roles">
           <Suspense fallback={<TableSkeleton rows={4} />}>
-            <TenantRolesTab />
+            <TenantRolesTab tenantId={id} />
           </Suspense>
         </TabsContent>
         {false && (
