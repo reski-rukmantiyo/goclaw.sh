@@ -598,6 +598,13 @@ func runGateway() {
 		slog.Error("failed to start channels", "error", err)
 	}
 
+	// Periodically reconcile loaded channel instances against the DB so direct edits to
+	// channel_instances.config (which bypass channels.instances.update) are applied without a
+	// manual restart. Goroutine exits when ctx is cancelled on shutdown.
+	if instanceLoader != nil {
+		instanceLoader.StartConfigResync(ctx, 60*time.Second)
+	}
+
 	// Create lane-based scheduler (matching TS CommandLane pattern).
 	// Must be created before cron setup so cron jobs route through the scheduler.
 	sched := scheduler.NewScheduler(
