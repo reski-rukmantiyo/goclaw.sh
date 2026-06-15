@@ -28,6 +28,7 @@
   "editPermissions": "编辑权限",
   "systemRole": "系统",
   "customRole": "自定义",
+  "systemRoleReadonly": "系统角色 — 只读",
   "columns": {
     "name": "名称",
     "description": "描述",

@@ -4,12 +4,21 @@ import i18next from "i18next";
 import { useHttp } from "@/hooks/use-ws";
 import { queryKeys } from "@/lib/query-keys";
 import { toast } from "@/stores/use-toast-store";
-import type { Role, PaginatedResult } from "@/types/user-mgmt";
+import type { Role } from "@/types/user-mgmt";
 
 interface RoleListParams {
   search?: string;
   limit?: number;
   offset?: number;
+}
+
+// GET /v1/roles returns this shape (see internal/http/roles.go handleList):
+// { roles: [...], total, offset, limit }. Note: NOT PaginatedResult (which uses `items`).
+interface RoleListResponse {
+  roles: Role[];
+  total: number;
+  offset: number;
+  limit: number;
 }
 
 export function useRoles(params: RoleListParams = {}) {
@@ -25,11 +34,12 @@ export function useRoles(params: RoleListParams = {}) {
 
   const { data, isLoading: loading } = useQuery({
     queryKey,
-    queryFn: () => http.get<PaginatedResult<Role>>("/v1/roles", queryParams),
+    queryFn: () => http.get<RoleListResponse>("/v1/roles", queryParams),
     staleTime: 30_000,
   });
 
-  const roles = data?.items ?? [];
+  // Backend returns { roles: [...], total, offset, limit } (see internal/http/roles.go handleList).
+  const roles = data?.roles ?? [];
   const total = data?.total ?? 0;
 
   const invalidate = useCallback(

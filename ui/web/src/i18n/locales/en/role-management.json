@@ -28,6 +28,7 @@
   "editPermissions": "Edit Permissions",
   "systemRole": "System",
   "customRole": "Custom",
+  "systemRoleReadonly": "System role — read only",
   "columns": {
     "name": "Name",
     "description": "Description",

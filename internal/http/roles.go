@@ -319,6 +319,22 @@ func (h *RolesHandler) handleSetPermissions(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// System roles are fully read-only — their permission set cannot be changed.
+	role, err := h.roles.GetRole(ctx, id)
+	if err != nil {
+		slog.Error("roles.set_permissions get failed", "error", err)
+		writeError(w, http.StatusInternalServerError, protocol.ErrInternal, i18n.T(locale, i18n.MsgInternalError))
+		return
+	}
+	if role == nil {
+		writeError(w, http.StatusNotFound, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "role"))
+		return
+	}
+	if role.IsSystem {
+		writeError(w, http.StatusForbidden, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, "cannot modify system role"))
+		return
+	}
+
 	// Validate all permissions are known.
 	known := make(map[string]bool)
 	for _, p := range permissions.AllPermissions() {
