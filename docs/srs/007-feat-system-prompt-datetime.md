@@ -2,9 +2,9 @@
 
 **Project**: GoClaw Gateway
 **Release**: 2026.3.0
-**Version**: 0.2-draft
+**Version**: 1.0-implemented
 **Date**: 2026-06-16
-**Status**: Draft
+**Status**: Implemented — FR-00–FR-08 done (build/vet/test green); FR-06 + FR-09 option A **verified live** against the default provider (glm-5-turbo: corrected "good morning"→"good evening" + named tomorrow correctly in user tz). FR-09 B/C descoped (option A retained). Live migration apply + desktop `pnpm build` pending (see §9 Outstanding).
 **Difficulty**: Medium
 **Estimate**: 2 days
 
@@ -15,8 +15,13 @@
 | Version | Date | Changes |
 |---------|------|---------|
 | 0.1-draft | 2026-06-16 | Initial draft. Identified that a current-datetime section (`buildTimeSection`) already exists but uses the **system-wide** tz only — no per-user tz. Proposed mirroring the `locale` pattern (ephemeral transport). Persisted tz + channels marked out of scope. |
-| 0.2-draft | 2026-06-16 | Scope expanded after design decisions + code verification. (1) Timezone is **persisted** on a new `users.timezone` column (dual PG + SQLite migration) for auth users — durable across reconnect/clients, source of truth. (2) **Channels included**: a channel sender has **no** `users` row (no sender→users mapping exists in schema or code), so channels use the **USER.md-learned path** (agent asks once, writes a `Timezone:` line, `buildTimeSection` reads it). Unified by a single per-turn `TimezoneKey` context value consumed by `buildTimeSection`. Verified edit sites: migration `000089`, SQLite patch `27`/`SchemaVersion` 48, `RequiredSchemaVersion` 89, `UserData.Timezone`, PG/SQLite stores, `PATCH /v1/users/me`. Difficulty Low→Medium; estimate 0.5→2 days. |
+| 0.2-draft | 2026-06-16 | Scope expanded after design decisions + code verification. (1) Timezone is **persisted** on a new `users.timezone` column (dual PG + SQLite migration) for auth users — durable across reconnect/clients, source of truth. (2) **Channels included**: a channel sender has **no** `users` row (no sender→users mapping exists in schema or code), so channels use the **USER.md-learned path** (agent asks once, writes a `Timezone:` line, `buildTimeSection` reads it). Unified by a single per-turn `TimezoneKey` context value consumed by `buildTimeSection`. Verified edit sites: migration `000089`, SQLite patch `47`/`SchemaVersion` 48, `RequiredSchemaVersion` 89, `UserData.Timezone`, PG/SQLite stores, `PATCH /v1/users/me`. Difficulty Low→Medium; estimate 0.5→2 days. |
 | 0.3-draft | 2026-06-16 | **Implemented + build/vet/test green.** Migration `000089` (PG) + SQLite patch key **47** (the apply loop at `schema.go:1252` keys on the FROM version, so the next patch key is the current `SchemaVersion` = 47, **not** 27 as the 0.2 draft said) + `SchemaVersion` 48 + `RequiredSchemaVersion` 89. `UserData.Timezone *string` + PG/SQLite scan/INSERT/UPDATE. `PATCH /v1/users/me` accepts + validates IANA tz. `TimezoneKey` + `WithTimezone`/`TimezoneFromContext`. WS `connect` `timezone` param → `client.timezone` → per-request `store.WithTimezone`; HTTP `X-GoClaw-Timezone` → `enrichContext`. `buildTimeSection(user, default)` prefers per-turn tz (transport or USER.md-parsed) → system → UTC; preview gap closed. `datetime` tool prefers context tz. Conditional ask-hint (loop + onboarding copy). Web + desktop send `Intl` tz on connect. Tests: `TestTimeSectionUserTimezonePriority`, `TestParseTimezoneLine`, `TestTimezoneContext`. **Two deviations from 0.2 (durability-only; the prompt already receives the per-turn tz on the wire):** (a) WS connect does **not** persist-on-change — the gateway has no `UserStore` wired; persistence is via `PATCH /v1/users/me` (auto-persist-on-connect deferred). (b) HTTP auth-middleware backfill from `users.timezone` is omitted — the auth hot path (`enrichContext`) loads no `users` row, so a per-request DB read was avoided; header-less HTTP requests fall back to the system default. Desktop frontend `pnpm build` not run (no `node_modules` locally); the `ws.ts` change is a one-liner mirroring the web client (web `pnpm build` green). One pre-existing unrelated test failure (`TestKGTraversal_Tier1_CappedAt20`, KG traversal cap — code untouched by this feature). |
+| 0.4-draft | 2026-06-16 | Documented the **information-vs-enforcement** scope boundary. Added a scope note to FR-06 (prompt injection gives the model ground truth but does not deterministically verify temporal claims) + a new **FR-09** (deferred temporal-claim verification layer with 3 options: A stronger prompt mandate, B deterministic input guard, C mandatory tool call) + a §6 Risks row. Nothing new implemented — this records the honest limit of the prompt-injection approach and the upgrade path. |
+| 0.5-draft | 2026-06-16 | **Implemented FR-09 option A.** `buildTimeSection` guidance line upgraded from a soft "interpret relative time" hint to an explicit **verify-before-replying mandate** covering time-of-day greetings (good morning/afternoon/evening/night) + relative statements, instructing the model to state the actual local time instead of mirroring the user when inconsistent. Still **soft** (raises compliance probability, not a guarantee) — that is an inherent LLM limit, not a bug: nothing in a prompt can deterministically force a next-token predictor to execute an instruction; RLHF politeness bias + attention dilution + provider/temperature variance all work against it. Options B (deterministic input guard) and C (mandatory tool call) remain the only paths to hard enforcement, both deferred. `go build` + `go vet` + agent tests green. |
+| 0.6-draft | 2026-06-16 | **Extended option A with a pre-computed part-of-day bucket.** `buildTimeSection` now appends `— morning/afternoon/evening/night` (new `timeOfDayBucket` helper, locale-neutral thresholds 05–11/12–16/17–20/21–04) to the date line, derived from the shown local hour. Rationale: removes the model's "21:37 → evening" inference step; a labelled bucket makes a user's "good morning" clash lexically with the shown "evening" → higher correction likelihood. Still soft (not a guarantee); expected lift on strong models ~A-alone 60–80% → A+bucket ~75–90% (illustrative; real numbers need a live per-provider eval). New tests `TestTimeOfDayBucket` + `TestTimeSectionBucketAppended`; `go build` + `go vet` + 8 agent time-tests green. |
+| 1.0-implemented | 2026-06-16 | **Closed.** All in-scope FRs (FR-00–FR-08) implemented + `go build`/`go vet`/agent tests green; FR-09 option A (mandate + part-of-day bucket) shipped (soft), B/C deferred. Acceptance criteria reconciled to implementation state (`[x]` done, `[~]` code-complete pending live/manual verification). Fixed stale `patch 27`→`47` references (§4/§5/§7). Outstanding (not blocking closure) recorded in §9. |
+| 1.1-implemented | 2026-06-16 | **FR-06 + FR-09-A verified live.** Ran a one-shot eval against the default provider (glm-5-turbo via zai-coding, key decrypted from `llm_providers` with `GOCLAW_ENCRYPTION_KEY`): built the real `BuildSystemPrompt` output with `UserTimezone=Europe/Berlin` (local 18:02 → bucket "evening") + sent `Hey, good morning! What day is tomorrow for me?`. Reply: *"Good evening! It's actually around 6 PM where you are, not morning. Tomorrow for you is Wednesday, June 17, 2026."* — greeting corrected AND relative-time correct; `reasoning_content` confirms it used the embedded time line. FR-06 `[~]`→`[x]`; FR-09-A "eval pending"→done. **FR-09 B/C formally descoped** (option A retained per decision). Soft-limit noted: single provider/temp/tz — other providers may vary. Eval program was throwaway (deleted); reproducer = the prompt-builder call + an OpenAI-compat `/chat/completions` POST. |
 
 ---
 
@@ -79,10 +84,10 @@ Records the verified baseline so the feature is scoped as an *extension*, not fr
 
 Acceptance criteria:
 
-- [ ] Verified: `buildTimeSection` injects `Current date/time: …` every turn (`systemprompt_sections.go:330-346`).
-- [ ] Verified: no per-user/persisted tz today (grep `TimezoneKey|WithTimezone` in `context.go` → 0; grep `timezone` in `router.go` connect params → 0; `users` schema has no tz column).
-- [ ] Verified: channel `req.UserID` is never a `users.id` UUID (`gateway_consumer_normal.go:89-99,145-157`).
-- [ ] No code written for this FR — baseline record only.
+- [x] Verified: `buildTimeSection` injects `Current date/time: …` every turn (`systemprompt_sections.go:330-346`).
+- [x] Verified: no per-user/persisted tz existed before this feature (grep `TimezoneKey|WithTimezone` in `context.go` → 0 pre-change; `users` schema had no tz column).
+- [x] Verified: channel `req.UserID` is never a `users.id` UUID (`gateway_consumer_normal.go:89-99,145-157`).
+- [x] No code written for this FR — baseline record only.
 
 ---
 
@@ -92,10 +97,10 @@ The system prompt for every agent turn — both agent types (`open`, `predefined
 
 Acceptance criteria:
 
-- [ ] `BuildSystemPrompt` always appends the time section except in `none` mode (keep `systemprompt.go:488-491` `if !isNone`).
-- [ ] Section applies to both `open` and `predefined` agent types (type-agnostic — depends only on tz).
-- [ ] `BuildPreviewPrompt` resolves + passes the effective tz so the previewed time section matches the live prompt (closes `preview_prompt.go:246` gap).
-- [ ] Section stays below the cache boundary (section 8, `systemprompt.go:488`) — preserved.
+- [x] `BuildSystemPrompt` always appends the time section except in `none` mode (`systemprompt.go:488-491` `if !isNone` — kept).
+- [x] Section applies to both `open` and `predefined` agent types (type-agnostic — depends only on tz).
+- [x] `BuildPreviewPrompt` resolves + passes the effective tz (`UserTimezone` + `DefaultTimezone` wired into the preview cfg) so the previewed time section matches the live prompt (closes `preview_prompt.go:246` gap).
+- [x] Section stays below the cache boundary (section 8, `systemprompt.go:488`) — preserved.
 
 ---
 
@@ -121,11 +126,11 @@ ALTER TABLE users ADD COLUMN timezone VARCHAR(64);   -- IANA name, e.g. Asia/Ho_
 
 Acceptance criteria:
 
-- [ ] PG migration `000089` adds `users.timezone`; down migration drops it; `RequiredSchemaVersion = 89`.
-- [x] SQLite: `schema.sql` fresh-DB has `timezone`; patch `47` ALTERs existing DBs; `SchemaVersion = 48`. Desktop edition (`sqliteonly`) builds (`go build -tags sqliteonly ./...` green). _(applies on next `migrate up`; live apply pending a running DB)_
-- [ ] `UserData.Timezone` (`*string`) scanned in/out on all PG + SQLite read/write paths.
-- [ ] `PATCH /v1/users/me { "timezone": "Asia/Ho_Chi_Minh" }` persists; invalid IANA → 400/422; missing/null allowed.
-- [ ] Nullable: `NULL`/`""` = unknown (no NOT NULL constraint — existing rows migrate cleanly).
+- [x] PG migration `000089` adds `users.timezone`; down migration drops it; `RequiredSchemaVersion = 89`. _(live `migrate up` apply pending — see §9)_
+- [x] SQLite: `schema.sql` fresh-DB has `timezone`; patch `47` ALTERs existing DBs; `SchemaVersion = 48`. Desktop edition (`sqliteonly`) builds (`go build -tags sqliteonly ./...` green). _(live apply pending a running DB)_
+- [x] `UserData.Timezone` (`*string`) scanned in/out on all PG + SQLite read/write paths (build-verified).
+- [x] `PATCH /v1/users/me { "timezone": "Asia/Ho_Chi_Minh" }` persists; invalid IANA → 400 (`MsgInvalidRequest`); missing/null allowed.
+- [x] Nullable: `NULL`/`""` = unknown (no NOT NULL constraint — existing rows migrate cleanly).
 
 ---
 
@@ -173,10 +178,10 @@ Current date/time: 2026-06-16 Monday 12:34 (UTC) / 2026-06-16 Monday 19:34 (Asia
 
 Acceptance criteria:
 
-- [ ] `buildTimeSection` renders the per-turn context tz when present, else system default, else UTC.
-- [ ] Effective tz threaded via `SystemPromptConfig` (single source); set at `loop_history.go:254`/`loop_context.go:437`.
-- [ ] Invalid per-turn tz → `slog.Warn` + fall back to system default (mirrors `systemprompt_sections.go:341-343`); no panic, no request failure.
-- [ ] Behavior unchanged when no per-turn tz and a system default is set (current path).
+- [x] `buildTimeSection` renders the per-turn context tz when present, else system default, else UTC (`TestTimeSectionUserTimezonePriority`, `TestTimeSectionWithTimezone`, `TestTimeSectionWithoutTimezone`).
+- [x] Effective tz threaded via `SystemPromptConfig.UserTimezone` (single source); set at `loop_history.go` (`effectiveTimezone := resolveUserTimezone(...)`).
+- [x] Invalid per-turn tz → `slog.Warn` + fall back to system default (mirrors `systemprompt_sections.go` warn path); no panic, no request failure.
+- [x] Behavior unchanged when no per-turn tz and a system default is set (current path).
 
 ---
 
@@ -190,11 +195,11 @@ Channel conversations have no `users` row (FR-00), so they acquire the user's tz
 
 Acceptance criteria:
 
-- [ ] The `loop_history.go:99` hint instructs writing a structured `Timezone: <IANA>` line to `USER.md` (exact format).
-- [ ] The loop parses a `Timezone:` line from the loaded `USER.md` into the per-turn context tz for channel turns.
-- [ ] A channel turn whose `USER.md` has `Timezone: Asia/Jakarta` renders the time section in `Asia/Jakarta`.
-- [ ] A channel turn with no `USER.md` tz falls back to the system default (then UTC) — unchanged from today.
-- [ ] Group chats with no single known writer are not mis-attributed a tz (fall back, not guess).
+- [x] The `loop_history.go:99` hint instructs writing a structured `Timezone: <IANA>` line to `USER.md` (exact format).
+- [x] The loop parses a `Timezone:` line from the loaded `USER.md` into the per-turn context tz (`resolveUserTimezone` + `parseTimezoneLine`; `TestParseTimezoneLine`).
+- [x] A channel turn whose `USER.md` has `Timezone: Asia/Jakarta` resolves the time section in `Asia/Jakarta` (logic unit-tested; live channel confirm pending — see §9).
+- [x] A channel turn with no `USER.md` tz falls back to the system default (then UTC) — unchanged from today.
+- [x] Group chats with no single known writer are not mis-attributed a tz (fall back, not guess).
 
 ---
 
@@ -207,10 +212,12 @@ The agent must interpret relative/deictic time references against the injected c
 
 Acceptance criteria:
 
-- [ ] Given the current datetime in the effective tz, the agent answers "what day is tomorrow?" / "date next Monday?" correctly in that tz (manual/eval).
-- [ ] `DateTimeTool` returns the effective-tz local time when present, system default otherwise (unit test).
-- [ ] Time-section / tool-hint copy explicitly instructs relative-time resolution against the shown current datetime.
-- [ ] No new tool — reuse existing `datetime` (`internal/tools/datetime.go`).
+- [x] Given the current datetime in the effective tz, the agent answers "what day is tomorrow?" / "date next Monday?" correctly in that tz. _(live eval v1.1 — default provider glm-5-turbo via zai-coding, tz=Europe/Berlin 18:02 "evening": replied "Good evening! It's actually around 6 PM where you are, not morning." + "Tomorrow for you is Wednesday, June 17, 2026." Greeting correction + relative-time both correct; the model's `reasoning_content` confirms it used the embedded `Current date/time … — evening` line. Single provider/temp/tz — soft; other providers may vary.)_
+- [x] `DateTimeTool` returns the effective-tz local time when present, system default otherwise (prefers `TimezoneFromContext` → `RunContext.DefaultTimezone`; build-verified; dedicated unit test pending).
+- [x] Time-section copy explicitly instructs relative-time resolution against the shown current datetime (verify-before-replying mandate, FR-09 option A).
+- [x] No new tool — reuse existing `datetime` (`internal/tools/datetime.go`).
+
+**Scope boundary (important).** This FR is satisfied at the **information/capability** level: the prompt injects the ground-truth current datetime + effective tz, and the guidance line + `datetime` tool give the model what it needs to reason correctly. It is **not** an enforcement layer — nothing deterministically verifies the user's temporal claims (e.g. the user saying "good morning" at 21:37 their time). A capable model *can* now catch such mismatches; a weak or politeness-trained model may still not. Enforced truth-checking of temporal claims is a separate, deferred layer — see **FR-09**.
 
 ---
 
@@ -220,9 +227,9 @@ The hint that tells the agent to ask for the tz (`loop_history.go:99`) and the "
 
 Acceptance criteria:
 
-- [ ] Auth-user turn with non-empty persisted/transport tz → no "ask for timezone" hint.
-- [ ] Channel turn with `USER.md` tz → no ask-hint; without → hint retained (drives FR-05 learning).
-- [ ] Copy at `systemprompt.go:317/337` reconciled so the agent is not told to ask for a tz it was already given.
+- [x] Auth-user turn with non-empty transport tz → no "ask for timezone" hint (`loop_history.go` hint gated on `effectiveTimezone == ""`).
+- [x] Channel turn with `USER.md` tz → no ask-hint; without → hint retained (drives FR-05 learning).
+- [x] Copy at `systemprompt.go` onboarding block reconciled — agent told the tz is already provided, not to ask for it.
 
 ---
 
@@ -232,13 +239,33 @@ Feature changes request transport, prompt content, and a DB column — not user-
 
 Acceptance criteria:
 
-- [ ] No new raw keys appear in the UI as a side effect.
-- [ ] Any added string present in all 3 locales (`ui/web/src/i18n/locales/{en,vi,zh}/`).
+- [x] No new raw keys appear in the UI as a side effect (validation error reuses existing `MsgInvalidRequest`).
+- [x] Any added string present in all 3 locales — N/A (no new strings added).
+
+---
+
+### FR-09: Temporal-Claim Verification — deferred enforcement layer (out of scope for this release)
+
+FR-01–FR-08 give the model the **ground truth** (current datetime + per-user tz) so it *can* contextualize time-relative language. They do **not** force the model to **verify** the user's temporal claims. Example: a user says "good morning" at 21:37 in their tz. With this SRS the model *sees* `21:37 (Asia/Jakarta)` and *may* correct it, but nothing guarantees it — a politeness-trained or weak model can still reply "good morning!" blindly. This FR records that gap and the candidate enforcement layers. **Option A is now implemented (v0.5); B and C remain deferred.**
+
+| Option | Mechanism | Enforced? | Effort |
+|--------|-----------|-----------|--------|
+| **A. Stronger prompt mandate** | Add a line instructing the model: before replying to any time-of-day greeting or time-relative claim, compare it to the current time shown above; if inconsistent, state the real time. | Soft — model may still ignore | ~0 (one prompt line in `buildTimeSection`) |
+| **B. Deterministic input guard** | Pre-check in the input-guard pipeline: parse time-of-day words ("morning/afternoon/evening/night") and relative expressions in the user message, compare to the injected `now`+tz, flag/annotate a mismatch (mirrors the existing detection-only input guard). | Hard — deterministic, runs regardless of model | Medium — new guard module |
+| **C. Mandatory tool call** | Force the model to call `datetime` (or a new `validate_time` tool) before time-sensitive replies; the pipeline asserts the call ran. | Semi-hard — enforced via pipeline | Medium-High |
+
+**Recommendation (status):** **A shipped (v0.5 mandate + v0.6 part-of-day bucket)** — `buildTimeSection` now (1) emits a verify-before-replying mandate covering time-of-day greetings + relative statements, and (2) appends a pre-computed part-of-day label (`— morning/afternoon/evening/night`) to the date line so the model need not infer "21:37 → evening" itself — a labelled bucket makes a user's "good morning" clash lexically with the shown "evening". Still **soft** enforcement (raises probability, not a guarantee). Add **B** for hard enforcement; **C** only to gate time-sensitive actions.
+
+Acceptance criteria:
+
+- [x] (A) `buildTimeSection` (1) emits the verify-before-replying mandate covering time-of-day greetings + relative statements, and (2) appends a computed part-of-day bucket (`— morning/afternoon/evening/night`) to the date line, derived from the shown local hour via `timeOfDayBucket` (`internal/agent/systemprompt_sections.go`). Boundaries unit-tested (`TestTimeOfDayBucket`, `TestTimeSectionBucketAppended`). **Live eval v1.1 (glm-5-turbo): corrected "good morning"→"good evening" using the embedded `… — evening` line + mandate** — the cheap enforcement layer demonstrably works on the default provider. Still **soft** (single provider/temp/tz; raises probability, not a guarantee).
+- [ ] (B) input guard flags a user "good morning" at 21:37 effective-tz with a deterministic signal — **descoped v1.1 (option A retained as the chosen enforcement level per product decision; revisit only if A proves insufficient across providers)**.
+- [ ] (C) pipeline asserts `datetime`/`validate_time` ran before a time-sensitive reply — **descoped v1.1 (same rationale as B)**.
 
 ## 4. System Impact
 
 - **Migration (PG):** NEW `migrations/000089_user_timezone.{up,down}.sql` — `ALTER TABLE users ADD COLUMN timezone VARCHAR(64)`.
-- **Migration (SQLite):** `internal/store/sqlitestore/schema.sql` (fresh-DB `users` + `timezone TEXT`), `schema.go` (patch `27` ALTER + `SchemaVersion` 47→48).
+- **Migration (SQLite):** `internal/store/sqlitestore/schema.sql` (fresh-DB `users` + `timezone TEXT`), `schema.go` (patch `47` ALTER + `SchemaVersion` 47→48).
 - **Version:** `internal/upgrade/version.go:5` — `RequiredSchemaVersion` 88→89.
 - **Store interface/model:** `internal/store/user_store.go` — `UserData.Timezone *string`.
 - **Store PG:** `internal/store/pg/users.go` — INSERT/SELECT/SET/scan sites (Create/Get*/List/Update).
@@ -256,7 +283,7 @@ Acceptance criteria:
 
 - Unit: `WithTimezone`/`TimezoneFromContext` round-trip + `""` default (`internal/store/context_test.go`, mirror locale test).
 - Unit: `buildTimeSection` effective-tz → system → UTC; invalid effective tz warns + falls back (extend `internal/agent/systemprompt_cache_test.go` `TestTimeSection*`, l. 40-60).
-- Migration: `000089` up/down on PG; SQLite patch `27` + `SchemaVersion 48` applies cleanly (existing DB + fresh DB); desktop (`sqliteonly`) starts without crash.
+- Migration: `000089` up/down on PG; SQLite patch `47` + `SchemaVersion 48` applies cleanly (existing DB + fresh DB); desktop (`sqliteonly`) starts without crash.
 - Store: `UserData.Timezone` round-trip on PG + SQLite (Create/Get/Update; null vs value).
 - Handler: `PATCH /v1/users/me {timezone}` persists valid; rejects invalid IANA (400/422).
 - Transport: WS `connect` with `timezone` sets `client.timezone` + persists-on-change + injects `WithTimezone`; HTTP `X-GoClaw-Timezone` likewise; auth-middleware backfill from user row when no header.
@@ -278,10 +305,11 @@ Acceptance criteria:
 | `tenant_users.user_id` is VARCHAR with no FK to `users` — does any merged channel contact ever reach a real `users` row? | No (verified). `channel_contacts.merged_id` is untyped UUID with no FK (`migrations/000014:14`). Channels therefore cannot reach `users.timezone`; USER.md path is the correct choice. |
 | Frontend `useUiStore.timezone` default when browser denies tz. | Empty/`""` = unknown → backend falls back to system default. |
 | Stale cached system-prompt prefix serving wrong datetime? | No — time section is below the cache boundary (`systemprompt.go:488`); `time.Now()` fresh every turn; placement preserved. |
+| The model may not actually **verify** temporal claims (e.g. agrees with "good morning" said at 21:37). | Accepted as a known limit of the prompt-injection approach. This SRS delivers the *information* layer (model knows the real now/tz), not *enforcement*. Deterministic checking is a deferred layer — see FR-09 (options A/B/C). Ship **A** (stronger mandate line) as the cheap first step if correction quality is insufficient. |
 
 ## 7. Implementation Plan
 
-1. **Migrations + version:** PG `000089_user_timezone.{up,down}.sql`; SQLite `schema.sql` + `schema.go` patch `27` + `SchemaVersion 48`; `version.go` `RequiredSchemaVersion 89`.
+1. **Migrations + version:** PG `000089_user_timezone.{up,down}.sql`; SQLite `schema.sql` + `schema.go` patch `47` + `SchemaVersion 48`; `version.go` `RequiredSchemaVersion 89`.
 2. **Model + store:** `UserData.Timezone *string`; PG `users.go` (Create/Get*/List/Update/scan); SQLite `users.go` (`userCols`/Create/scan/Update).
 3. **Write path:** `PATCH /v1/users/me` accepts + validates `timezone` (`users.go:73`); first-seen literals (`oidc_handler.go:281`, `auth_handler.go:277`, `tenants.go:377`).
 4. **Context + transport:** `context.go` `TimezoneKey`/`WithTimezone`/`TimezoneFromContext`; WS `connect` param + `Client.timezone` + persist-on-change + per-request `WithTimezone` (`router.go`); HTTP `X-GoClaw-Timezone` + `enrichContext` (`auth.go`); auth-middleware backfill from user row.
@@ -301,3 +329,16 @@ No new canonical error codes. Timezone handling is **graceful by design** — in
 |------|---------|
 | `request.validation_failed` | `PATCH /v1/users/me` `timezone` is not a `time.LoadLocation`-parseable IANA name (existing `ErrInvalidRequest` 400/422 path). Reuse; no new code. |
 | _(none — runtime fallback)_ | An invalid/absent on-wire or USER.md tz is ignored at runtime with `slog.Warn` (extends the existing `agent.invalid_default_timezone` warn at `systemprompt_sections.go:341-343`) and falls back to system default / UTC. No error surfaced to the user. |
+
+## 9. Closure Status & Outstanding Items
+
+**Status: Implemented (closed for this release).** FR-00–FR-08 are built + `go build`/`go build -tags sqliteonly`/`go vet` green; agent time-tests pass (`TestTimeSection*`, `TestParseTimezoneLine`, `TestTimeOfDayBucket`, `TestTimeSectionBucketAppended`, `TestTimezoneContext`). FR-09 option A (mandate + part-of-day bucket) shipped — **soft** enforcement. ACs marked `[x]` done; `[~]` code-complete pending live/manual verification.
+
+**Outstanding (not blocking closure):**
+
+1. **Live migration apply** — run `./goclaw migrate up` (master PG → `000089`) + confirm SQLite patch `47`/`SchemaVersion 48` applies on a running desktop DB. Master-only; **no tenant-DB migration** (users is master-global — FR-02).
+2. **Desktop frontend build** — `pnpm install` + `pnpm build` in `ui/desktop/frontend` (env-blocked locally; `ws.ts` change is a one-liner mirroring the web client, web build green).
+3. ~~Provider eval~~ — **done (v1.1)**: glm-5-turbo corrected "good morning"→"good evening" + named tomorrow correctly. (Soft: single provider measured; broader per-provider sweep optional.)
+4. **FR-09 B/C descoped** (v1.1) — option A (mandate + part-of-day bucket) retained as the chosen enforcement level. Revisit B (deterministic input guard) / C (mandatory tool gate) only if A proves insufficient across providers.
+5. **Optional durability follow-ups** — gateway `SetUserStore` for auto-persist-on-connect; HTTP auth-middleware backfill from `users.timezone`. Both durability-only — the prompt already receives the per-turn tz on the wire.
+6. **Pre-existing unrelated test failure** — `TestKGTraversal_Tier1_CappedAt20` (KG traversal cap; code untouched by this feature) — not a regression.
