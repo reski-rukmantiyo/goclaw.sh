@@ -77,6 +77,7 @@ func (m *mockTenantStore) setUserRole(tenantID uuid.UUID, userID, role string) {
 	m.roles[tenantID][userID] = role
 }
 
+func (m *mockTenantStore) DeleteTenant(context.Context, uuid.UUID) error { return nil }
 func (m *mockTenantStore) CreateTenant(context.Context, *store.TenantData) error { return nil }
 func (m *mockTenantStore) GetTenant(_ context.Context, id uuid.UUID) (*store.TenantData, error) {
 	if t := m.tenantsByID[id]; t != nil {
@@ -94,7 +95,7 @@ func (m *mockTenantStore) ListTenants(context.Context) ([]store.TenantData, erro
 func (m *mockTenantStore) UpdateTenant(context.Context, uuid.UUID, map[string]any) error {
 	return nil
 }
-func (m *mockTenantStore) AddUser(context.Context, uuid.UUID, string, string) error { return nil }
+func (m *mockTenantStore) AddUser(context.Context, uuid.UUID, string, bool) error { return nil }
 func (m *mockTenantStore) RemoveUser(context.Context, uuid.UUID, string) error      { return nil }
 func (m *mockTenantStore) GetUserRole(_ context.Context, tenantID uuid.UUID, userID string) (string, error) {
 	if role := m.roles[tenantID][userID]; role != "" {
@@ -114,11 +115,23 @@ func (m *mockTenantStore) ResolveUserTenant(context.Context, string) (uuid.UUID,
 func (m *mockTenantStore) GetTenantUser(context.Context, uuid.UUID) (*store.TenantUserData, error) {
 	return nil, fmt.Errorf("not found")
 }
-func (m *mockTenantStore) CreateTenantUserReturning(context.Context, uuid.UUID, string, string, string) (*store.TenantUserData, error) {
+func (m *mockTenantStore) CreateTenantUserReturning(context.Context, uuid.UUID, string, string) (*store.TenantUserData, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 func (m *mockTenantStore) GetTenantsByIDs(context.Context, []uuid.UUID) ([]store.TenantData, error) {
 	return nil, nil
+}
+func (m *mockTenantStore) IsOwner(context.Context, uuid.UUID, string) (bool, error) {
+	return false, nil
+}
+func (m *mockTenantStore) CountOwners(context.Context, uuid.UUID) (int, error) {
+	return 0, nil
+}
+func (m *mockTenantStore) GetTenantUserByUser(context.Context, uuid.UUID, string) (*store.TenantUserData, error) {
+	return nil, nil
+}
+func (m *mockTenantStore) UpdateOwnerFlag(context.Context, uuid.UUID, string, bool) error {
+	return nil
 }
 
 type mockPairingStore struct {
@@ -292,7 +305,7 @@ func TestResolveAuth_APIKeyWriteScope(t *testing.T) {
 	if key == nil {
 		t.Fatal("expected key from cache")
 	}
-	if role != permissions.RoleOperator {
+	if role != permissions.RoleMember {
 		t.Errorf("role = %v, want operator for write scope", role)
 	}
 }
@@ -370,7 +383,7 @@ func TestResolveAuth_BrowserPairingScopesToMemberTenant(t *testing.T) {
 	if !auth.Authenticated {
 		t.Fatal("expected authenticated")
 	}
-	if auth.Role != permissions.RoleOperator {
+	if auth.Role != permissions.RoleMember {
 		t.Fatalf("role = %v, want operator", auth.Role)
 	}
 	if auth.TenantID != tenantID {
@@ -406,10 +419,10 @@ func TestHttpMinRole(t *testing.T) {
 		{http.MethodGet, permissions.RoleViewer},
 		{http.MethodHead, permissions.RoleViewer},
 		{http.MethodOptions, permissions.RoleViewer},
-		{http.MethodPost, permissions.RoleOperator},
-		{http.MethodPut, permissions.RoleOperator},
-		{http.MethodPatch, permissions.RoleOperator},
-		{http.MethodDelete, permissions.RoleOperator},
+		{http.MethodPost, permissions.RoleMember},
+		{http.MethodPut, permissions.RoleMember},
+		{http.MethodPatch, permissions.RoleMember},
+		{http.MethodDelete, permissions.RoleMember},
 	}
 
 	for _, tt := range tests {

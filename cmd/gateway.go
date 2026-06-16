@@ -42,6 +42,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/sessionclear"
 	"github.com/nextlevelbuilder/goclaw/internal/skills"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/tenantauth"
 	"github.com/nextlevelbuilder/goclaw/internal/tools"
 	"github.com/nextlevelbuilder/goclaw/internal/vault"
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
@@ -324,6 +325,7 @@ func runGateway() {
 	server.SetDB(pgStores.DB)
 	server.SetPolicyEngine(permPE)
 	server.SetPairingService(pgStores.Pairing)
+	server.SetTenantDBManager(pgStores.TenantDBManager)
 	server.SetMessageBus(msgBus)
 	server.SetOAuthHandler(httpapi.NewOAuthHandler(pgStores.Providers, pgStores.ConfigSecrets, providerRegistry, msgBus))
 
@@ -530,7 +532,8 @@ func runGateway() {
 		instanceLoader.SetListenRawMsgStore(pgStores.ListenRawMessages)
 		instanceLoader.SetMediaStore(mediaStore)
 		instanceLoader.SetConfigPermStore(pgStores.ConfigPermissions)
-			instanceLoader.SetExecApprovalManager(execApprovalMgr)
+		instanceLoader.SetExecApprovalManager(execApprovalMgr)
+		instanceLoader.SetTenantDBManager(pgStores.TenantDBManager)
 		instanceLoader.RegisterFactory(channels.TypeTelegram, telegram.FactoryWithStoresAndAudio(pgStores.Agents, pgStores.ConfigPermissions, pgStores.Teams, pgStores.SubagentTasks, pgStores.PendingMessages, audioMgr, execApprovalMgr))
 		instanceLoader.RegisterFactory(channels.TypeDiscord, discord.FactoryWithStoresAndAudio(pgStores.Agents, pgStores.ConfigPermissions, pgStores.PendingMessages, audioMgr))
 		instanceLoader.RegisterFactory(channels.TypeFeishu, feishu.FactoryWithPendingStoreAndAudio(pgStores.PendingMessages, audioMgr))
@@ -595,6 +598,13 @@ func runGateway() {
 		slog.Error("failed to start channels", "error", err)
 	}
 
+	// Periodically reconcile loaded channel instances against the DB so direct edits to
+	// channel_instances.config (which bypass channels.instances.update) are applied without a
+	// manual restart. Goroutine exits when ctx is cancelled on shutdown.
+	if instanceLoader != nil {
+		instanceLoader.StartConfigResync(ctx, 60*time.Second)
+	}
+
 	// Create lane-based scheduler (matching TS CommandLane pattern).
 	// Must be created before cron setup so cron jobs route through the scheduler.
 	sched := scheduler.NewScheduler(
@@ -642,8 +652,9 @@ func runGateway() {
 
 	// Tenant management RPC + HTTP
 	if pgStores.Tenants != nil {
-		methods.NewTenantsMethods(pgStores.Tenants, msgBus, workspace).Register(server.Router())
-		server.SetTenantsHandler(httpapi.NewTenantsHandler(pgStores.Tenants, msgBus, workspace))
+		tenantAuthLoader := tenantauth.NewSystemConfigLoader(pgStores.SystemConfigs, cfg.Auth, os.Getenv("GOCLAW_ENCRYPTION_KEY"))
+		methods.NewTenantsMethods(pgStores.Tenants, pgStores.TenantDBConnections, pgStores.TenantDBManager, pgStores.DB, msgBus, workspace, cfg.Database.TenantDBSSLMode, cfg.Database.PostgresDSN, pgStores.SystemConfigs, tenantAuthLoader, os.Getenv("GOCLAW_ENCRYPTION_KEY"), cfg.Gateway.OwnerIDs, pgStores.Roles, pgStores.Users).Register(server.Router())
+		server.SetTenantsHandler(httpapi.NewTenantsHandler(pgStores.Tenants, pgStores.TenantDBConnections, pgStores.TenantDBManager, pgStores.DB, msgBus, workspace, cfg.Database.TenantDBSSLMode, cfg.Database.PostgresDSN, pgStores.Roles, pgStores.Users))
 		server.Router().SetTenantStore(pgStores.Tenants)
 		// Permission cache for tenant membership checks. Store on deps so
 		// lifecycle shutdown can call Close() to stop the sweep goroutines.
@@ -656,6 +667,7 @@ func runGateway() {
 		})
 		server.Router().SetPermissionCache(permCache)
 		httpapi.InitTenantStore(pgStores.Tenants, msgBus)
+		httpapi.InitTenantDBManager(pgStores.TenantDBManager)
 		httpapi.InitOwnerIDs(cfg.Gateway.OwnerIDs)
 	}
 

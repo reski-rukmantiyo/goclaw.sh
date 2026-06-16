@@ -32,7 +32,7 @@ func (s *PGKnowledgeGraphStore) BackfillKGEmbeddings(ctx context.Context) (int, 
 
 	for {
 		queryArgs := []any{batchSize}
-		rows, err := s.db.QueryContext(ctx, batchQ, queryArgs...)
+		rows, err := s.dbFor(ctx).QueryContext(ctx, batchQ, queryArgs...)
 		if err != nil {
 			return total, err
 		}
@@ -86,7 +86,7 @@ func (s *PGKnowledgeGraphStore) BackfillKGEmbeddings(ctx context.Context) (int, 
 				continue
 			}
 			vecStr := vectorToString(emb)
-			if _, err := s.db.ExecContext(ctx,
+			if _, err := s.dbFor(ctx).ExecContext(ctx,
 				`UPDATE kg_entities SET embedding = $1::vector WHERE id = $2`,
 				vecStr, pending[i].id,
 			); err != nil {
@@ -127,7 +127,7 @@ func (s *PGKnowledgeGraphStore) EmbedEntity(ctx context.Context, entityID, name,
 		return // best-effort, don't fail the upsert
 	}
 	vecStr := vectorToString(embeddings[0])
-	if _, err := s.db.ExecContext(ctx,
+	if _, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE kg_entities SET embedding = $1::vector WHERE id = $2`,
 		vecStr, eid,
 	); err != nil {

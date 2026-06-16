@@ -39,6 +39,7 @@
   "global": "全局",
   "invalidJson": "JSON 语法无效",
   "items": "条",
+  "totalItems": "{{count}} 条",
   "live": "实时",
   "loading": "加载中...",
   "loadingModels": "加载模型中...",

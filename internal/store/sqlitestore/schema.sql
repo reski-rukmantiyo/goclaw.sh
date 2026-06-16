@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS tenant_users (
     tenant_id    TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     user_id      VARCHAR(255) NOT NULL,
     display_name VARCHAR(255),
-    role         VARCHAR(20) NOT NULL DEFAULT 'member',
+    is_owner     INTEGER NOT NULL DEFAULT 0,
     metadata     TEXT NOT NULL DEFAULT '{}',
     created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -1918,3 +1918,208 @@ INSERT OR IGNORE INTO workstation_command_groups (id, tenant_id, name, descripti
   ('0193a5b0-7000-7000-8000-000000000102', NULL, 'System Utilities', 'Service and log management', '["systemctl","journalctl","service","timedatectl","hostnamectl"]', 1, 'system'),
   ('0193a5b0-7000-7000-8000-000000000103', NULL, 'Network Tools', 'Network diagnostics', '["ping","traceroute","curl","wget","nslookup","dig","ss","ip"]', 1, 'system'),
   ('0193a5b0-7000-7000-8000-000000000104', NULL, 'Default Commands', 'Safe commands automatically allowed on all workstations', '["echo","pwd","ls","cat","git","env","whoami","hostname","date","uname","claude","cd","pushd","popd","dirs","printf","read","export","unset","declare","typeset","local","test","true","false","set","shift","exit","wait","source",".","type","help","history","times","builtin","command","shopt","ulimit","umask","mapfile","readarray","caller","enable","compgen","complete","compopt"]', 1, 'system');
+
+-- ============================================================
+-- Table: users (multi-auth module, migration 000079)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS users (
+    id               TEXT NOT NULL PRIMARY KEY,
+    email            VARCHAR(255) NOT NULL UNIQUE,
+    display_name     VARCHAR(255) NOT NULL,
+    avatar_url       TEXT,
+    auth_provider    VARCHAR(20) NOT NULL CHECK (auth_provider IN ('local', 'entra_id', 'google')),
+    password_hash    TEXT,
+    status           VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'deactivated')),
+    phone            TEXT,
+    last_login_at    TEXT,
+    created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+
+-- ============================================================
+-- Table: user_identities (multi-provider identity linking)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS user_identities (
+    id               TEXT NOT NULL PRIMARY KEY,
+    user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider         VARCHAR(20) NOT NULL CHECK (provider IN ('local', 'entra_id', 'google')),
+    provider_subject VARCHAR(255) NOT NULL,
+    provider_tenant  VARCHAR(255),
+    email            VARCHAR(255) NOT NULL,
+    linked_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    last_used_at     TEXT,
+    UNIQUE(user_id, provider),
+    UNIQUE(provider, provider_subject)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_identities_email ON user_identities(email);
+CREATE INDEX IF NOT EXISTS idx_user_identities_lookup ON user_identities(provider, provider_subject);
+
+-- ============================================================
+-- Table: groups (organizational hierarchy)
+-- SQLite has no recursive trigger for depth enforcement;
+-- depth validation done in application code.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS groups (
+    id              TEXT NOT NULL PRIMARY KEY,
+    name            VARCHAR(255) NOT NULL,
+    slug            VARCHAR(100) NOT NULL,
+    description     TEXT,
+    parent_group_id TEXT REFERENCES groups(id) ON DELETE SET NULL,
+    tenant_id       TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    visibility      VARCHAR(20) NOT NULL DEFAULT 'closed' CHECK (visibility IN ('open', 'closed')),
+    max_members     INTEGER NOT NULL DEFAULT 0,
+    created_by      TEXT NOT NULL REFERENCES users(id),
+    status          VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'deleted')),
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE(slug, tenant_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_groups_slug ON groups(slug);
+CREATE INDEX IF NOT EXISTS idx_groups_tenant ON groups(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_groups_parent ON groups(parent_group_id);
+CREATE INDEX IF NOT EXISTS idx_groups_tenant_status ON groups(tenant_id, status) WHERE status = 'active';
+
+-- ============================================================
+-- Table: group_members
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS group_members (
+    id         TEXT NOT NULL PRIMARY KEY,
+    group_id   TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    joined_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    joined_via VARCHAR(20) NOT NULL DEFAULT 'admin_add' CHECK (joined_via IN ('admin_add', 'self_join', 'request_approved')),
+    UNIQUE(group_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_members_group ON group_members(group_id);
+CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id);
+
+-- ============================================================
+-- Table: join_requests
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS join_requests (
+    id           TEXT NOT NULL PRIMARY KEY,
+    group_id     TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status       VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    reviewed_by  TEXT REFERENCES users(id),
+    reviewed_at  TEXT,
+    message      TEXT,
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE(group_id, user_id, status)
+);
+
+CREATE INDEX IF NOT EXISTS idx_join_requests_group_status ON join_requests(group_id, status);
+CREATE INDEX IF NOT EXISTS idx_join_requests_user ON join_requests(user_id);
+
+-- ============================================================
+-- Table: audit_log (append-only compliance trail)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id             TEXT NOT NULL PRIMARY KEY,
+    tenant_id      TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    actor_id       TEXT NOT NULL REFERENCES users(id),
+    action         VARCHAR(100) NOT NULL,
+    resource_type  VARCHAR(20) NOT NULL CHECK (resource_type IN ('user', 'group', 'membership', 'permission', 'system')),
+    resource_id    TEXT NOT NULL,
+    group_id       TEXT REFERENCES groups(id) ON DELETE SET NULL,
+    detail         TEXT,
+    ip_address     VARCHAR(45),
+    user_agent     TEXT,
+    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_tenant ON audit_log(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log(tenant_id, actor_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(tenant_id, resource_type, resource_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_group ON audit_log(tenant_id, group_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(tenant_id, created_at DESC);
+
+-- ============================================================
+-- Table: refresh_tokens (JWT session management)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id          TEXT NOT NULL PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash  VARCHAR(64) NOT NULL UNIQUE,
+    device_info TEXT,
+    expires_at  TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens(expires_at);
+
+-- ============================================================
+-- Table: roles (tenant-scoped role definitions)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS roles (
+    id          TEXT NOT NULL PRIMARY KEY,
+    tenant_id   TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name        VARCHAR(255) NOT NULL,
+    description TEXT,
+    is_system   INTEGER NOT NULL DEFAULT 0,
+    permissions TEXT NOT NULL DEFAULT '[]',
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE(tenant_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_roles_tenant ON roles(tenant_id);
+
+-- ============================================================
+-- Table: role_permissions
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS role_permissions (
+    id          TEXT NOT NULL PRIMARY KEY,
+    role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    permission  VARCHAR(100) NOT NULL,
+    UNIQUE(role_id, permission)
+);
+
+CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role_id);
+
+-- ============================================================
+-- Table: user_roles
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS user_roles (
+    id          TEXT NOT NULL PRIMARY KEY,
+    tenant_id   TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id     VARCHAR(255) NOT NULL,
+    role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    UNIQUE(tenant_id, user_id, role_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_roles_user_tenant ON user_roles(user_id, tenant_id);
+CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role_id);
+
+-- ============================================================
+-- Table: group_roles
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS group_roles (
+    id          TEXT NOT NULL PRIMARY KEY,
+    group_id    TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    UNIQUE(group_id, role_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_roles_group ON group_roles(group_id);
+CREATE INDEX IF NOT EXISTS idx_group_roles_role ON group_roles(role_id);

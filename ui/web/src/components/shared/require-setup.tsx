@@ -38,6 +38,7 @@ function DisconnectedOverlay() {
 export function RequireSetup({ children }: { children: React.ReactNode }) {
   const { needsSetup, loading } = useBootstrapStatus();
   const connected = useAuthStore((s) => s.connected);
+  const role = useAuthStore((s) => s.role);
   const [timedOut, setTimedOut] = useState(false);
 
   useEffect(() => {
@@ -51,6 +52,7 @@ export function RequireSetup({ children }: { children: React.ReactNode }) {
 
   if (!connected && timedOut) return <DisconnectedOverlay />;
   if (loading) return <SetupLoader />;
+  if (role === "viewer") return <>{children}</>;
   if (needsSetup) return <Navigate to={ROUTES.SETUP} replace />;
 
   return <>{children}</>;

@@ -21,6 +21,14 @@ func NewPGSnapshotStore(db *sql.DB) *PGSnapshotStore {
 	return &PGSnapshotStore{db: db}
 }
 
+func (s *PGSnapshotStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 const snapshotFieldCount = 23
 
 // maxBatchRows limits each INSERT to stay under PG's 65535 param limit (65535 / 21 ≈ 3120).
@@ -94,7 +102,7 @@ func (s *PGSnapshotStore) upsertBatch(ctx context.Context, snapshots []store.Usa
 		kg_relations = EXCLUDED.kg_relations,
 			embedded_chunks = EXCLUDED.embedded_chunks`
 
-	_, err := s.db.ExecContext(ctx, query, args...)
+	_, err := s.dbFor(ctx).ExecContext(ctx, query, args...)
 	return err
 }
 
@@ -145,7 +153,7 @@ func (s *PGSnapshotStore) GetTimeSeries(ctx context.Context, q store.SnapshotQue
 	GROUP BY bucket_time
 	ORDER BY bucket_time`, bucketExpr, where)
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("get timeseries: %w", err)
 	}
@@ -228,7 +236,7 @@ func (s *PGSnapshotStore) GetBreakdown(ctx context.Context, q store.SnapshotQuer
 	GROUP BY %s
 	ORDER BY %s`, groupCol, where, groupCol, orderExpr)
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("get breakdown: %w", err)
 	}
@@ -254,7 +262,7 @@ func (s *PGSnapshotStore) GetBreakdown(ctx context.Context, q store.SnapshotQuer
 
 func (s *PGSnapshotStore) GetLatestBucket(ctx context.Context) (*time.Time, error) {
 	var t sql.NullTime
-	err := s.db.QueryRowContext(ctx, `SELECT MAX(bucket_hour) FROM usage_snapshots`).Scan(&t)
+	err := s.dbFor(ctx).QueryRowContext(ctx, `SELECT MAX(bucket_hour) FROM usage_snapshots`).Scan(&t)
 	if err != nil {
 		return nil, fmt.Errorf("get latest bucket: %w", err)
 	}

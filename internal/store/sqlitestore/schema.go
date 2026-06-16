@@ -16,7 +16,7 @@ var schemaSQL string
 
 // SchemaVersion is the current SQLite schema version.
 // Bump this when adding new migration steps below.
-const SchemaVersion = 40
+const SchemaVersion = 47
 
 // migrations maps version → SQL to apply when upgrading FROM that version.
 // schema.sql always represents the LATEST full schema (for fresh DBs).
@@ -768,6 +768,301 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_webhook_calls_idempotency
 
 		// Version 39 → 40: add agent_id index on workstation_activity for filter support.
 		39: `CREATE INDEX IF NOT EXISTS idx_ws_activity_agent_time ON workstation_activity(agent_id, created_at DESC);`,
+
+		// Version 40 → 41: multi-auth module tables (mirrors PG migration 000079).
+		// users, user_identities, groups, group_members, join_requests, audit_log, refresh_tokens.
+		40: `CREATE TABLE IF NOT EXISTS users (
+	    id               TEXT NOT NULL PRIMARY KEY,
+	    email            VARCHAR(255) NOT NULL,
+	    display_name     VARCHAR(255) NOT NULL,
+	    avatar_url       TEXT,
+	    tenant_id        TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+	    auth_provider    VARCHAR(20) NOT NULL CHECK (auth_provider IN ('local', 'entra_id', 'google')),
+	    password_hash    TEXT,
+	    status           VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'deactivated')),
+	    last_login_at    TEXT,
+	    created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+	    updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+	    UNIQUE(tenant_id, email)
+	);
+	CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+	CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
+	CREATE INDEX IF NOT EXISTS idx_users_tenant_email ON users(tenant_id, email);
+	CREATE INDEX IF NOT EXISTS idx_users_status ON users(tenant_id, status);
+
+	CREATE TABLE IF NOT EXISTS user_identities (
+	    id               TEXT NOT NULL PRIMARY KEY,
+	    user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	    provider         VARCHAR(20) NOT NULL CHECK (provider IN ('local', 'entra_id', 'google')),
+	    provider_subject VARCHAR(255) NOT NULL,
+	    provider_tenant  VARCHAR(255),
+	    email            VARCHAR(255) NOT NULL,
+	    linked_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+	    last_used_at     TEXT,
+	    UNIQUE(user_id, provider),
+	    UNIQUE(provider, provider_subject)
+	);
+	CREATE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities(user_id);
+	CREATE INDEX IF NOT EXISTS idx_user_identities_email ON user_identities(email);
+	CREATE INDEX IF NOT EXISTS idx_user_identities_lookup ON user_identities(provider, provider_subject);
+
+	CREATE TABLE IF NOT EXISTS groups (
+	    id              TEXT NOT NULL PRIMARY KEY,
+	    name            VARCHAR(255) NOT NULL,
+	    slug            VARCHAR(100) NOT NULL,
+	    description     TEXT,
+	    parent_group_id TEXT REFERENCES groups(id) ON DELETE SET NULL,
+	    tenant_id       TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+	    visibility      VARCHAR(20) NOT NULL DEFAULT 'closed' CHECK (visibility IN ('open', 'closed')),
+	    max_members     INTEGER NOT NULL DEFAULT 0,
+	    created_by      TEXT NOT NULL REFERENCES users(id),
+	    status          VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'deleted')),
+	    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+	    updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+	    UNIQUE(slug, tenant_id)
+	);
+	CREATE INDEX IF NOT EXISTS idx_groups_slug ON groups(slug);
+	CREATE INDEX IF NOT EXISTS idx_groups_tenant ON groups(tenant_id);
+	CREATE INDEX IF NOT EXISTS idx_groups_parent ON groups(parent_group_id);
+	CREATE INDEX IF NOT EXISTS idx_groups_tenant_status ON groups(tenant_id, status) WHERE status = 'active';
+
+	CREATE TABLE IF NOT EXISTS group_members (
+	    id         TEXT NOT NULL PRIMARY KEY,
+	    group_id   TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+	    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	    role       VARCHAR(20) NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+	    joined_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+	    joined_via VARCHAR(20) NOT NULL DEFAULT 'admin_add' CHECK (joined_via IN ('admin_add', 'self_join', 'request_approved')),
+	    UNIQUE(group_id, user_id)
+	);
+	CREATE INDEX IF NOT EXISTS idx_group_members_group ON group_members(group_id);
+	CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id);
+	CREATE INDEX IF NOT EXISTS idx_group_members_group_role ON group_members(group_id, role);
+
+	CREATE TABLE IF NOT EXISTS join_requests (
+	    id           TEXT NOT NULL PRIMARY KEY,
+	    group_id     TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+	    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	    status       VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+	    reviewed_by  TEXT REFERENCES users(id),
+	    reviewed_at  TEXT,
+	    message      TEXT,
+	    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+	    UNIQUE(group_id, user_id, status)
+	);
+	CREATE INDEX IF NOT EXISTS idx_join_requests_group_status ON join_requests(group_id, status);
+	CREATE INDEX IF NOT EXISTS idx_join_requests_user ON join_requests(user_id);
+
+	CREATE TABLE IF NOT EXISTS audit_log (
+	    id             TEXT NOT NULL PRIMARY KEY,
+	    tenant_id      TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+	    actor_id       TEXT NOT NULL REFERENCES users(id),
+	    action         VARCHAR(100) NOT NULL,
+	    resource_type  VARCHAR(20) NOT NULL CHECK (resource_type IN ('user', 'group', 'membership', 'permission', 'system')),
+	    resource_id    TEXT NOT NULL,
+	    group_id       TEXT REFERENCES groups(id) ON DELETE SET NULL,
+	    detail         TEXT,
+	    ip_address     VARCHAR(45),
+	    user_agent     TEXT,
+	    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+	);
+	CREATE INDEX IF NOT EXISTS idx_audit_log_tenant ON audit_log(tenant_id);
+	CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log(tenant_id, actor_id);
+	CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(tenant_id, resource_type, resource_id);
+	CREATE INDEX IF NOT EXISTS idx_audit_log_group ON audit_log(tenant_id, group_id);
+	CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(tenant_id, created_at DESC);
+
+	CREATE TABLE IF NOT EXISTS refresh_tokens (
+	    id          TEXT NOT NULL PRIMARY KEY,
+	    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	    token_hash  VARCHAR(64) NOT NULL UNIQUE,
+	    device_info TEXT,
+	    expires_at  TEXT NOT NULL,
+	    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+	);
+	CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
+	CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash);
+	CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens(expires_at);`,
+
+	// Version 41 → 42: drop is_tenant_admin from users (roles now in tenant_users).
+	41: `ALTER TABLE users DROP COLUMN IF EXISTS is_tenant_admin;`,
+
+	// Version 42 → 43: drop tenant_id from users; users becomes global identity table.
+	42: `INSERT INTO tenant_users (tenant_id, user_id, role, metadata, created_at, updated_at)
+SELECT u.tenant_id, u.id, 'member', '{}', datetime('now'), datetime('now')
+FROM users u
+WHERE u.tenant_id IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM tenant_users tu
+      WHERE tu.tenant_id = u.tenant_id AND tu.user_id = u.id
+  );
+ALTER TABLE users DROP COLUMN tenant_id;
+DROP INDEX IF EXISTS idx_users_tenant;
+DROP INDEX IF EXISTS idx_users_tenant_email;
+DROP INDEX IF EXISTS idx_users_status;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);`,
+
+	// Version 43 → 44: user/group/role refactor.
+	// Adds roles, role_permissions, user_roles, group_roles.
+	// Replaces tenant_users.role with is_owner and many-to-many user_roles.
+	// Removes group_members.role.
+	43: `ALTER TABLE tenant_users ADD COLUMN is_owner INTEGER NOT NULL DEFAULT 0;
+UPDATE tenant_users SET is_owner = 1 WHERE role = 'owner';
+
+CREATE TABLE IF NOT EXISTS roles (
+    id          TEXT NOT NULL PRIMARY KEY,
+    tenant_id   TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name        VARCHAR(255) NOT NULL,
+    description TEXT,
+    is_system   INTEGER NOT NULL DEFAULT 0,
+    permissions TEXT NOT NULL DEFAULT '[]',
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE(tenant_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_roles_tenant ON roles(tenant_id);
+
+CREATE TABLE IF NOT EXISTS role_permissions (
+    id          TEXT NOT NULL PRIMARY KEY,
+    role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    permission  VARCHAR(100) NOT NULL,
+    UNIQUE(role_id, permission)
+);
+CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role_id);
+
+CREATE TABLE IF NOT EXISTS user_roles (
+    id          TEXT NOT NULL PRIMARY KEY,
+    tenant_id   TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id     VARCHAR(255) NOT NULL,
+    role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    UNIQUE(tenant_id, user_id, role_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_roles_user_tenant ON user_roles(user_id, tenant_id);
+CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role_id);
+
+CREATE TABLE IF NOT EXISTS group_roles (
+    id          TEXT NOT NULL PRIMARY KEY,
+    group_id    TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    UNIQUE(group_id, role_id)
+);
+CREATE INDEX IF NOT EXISTS idx_group_roles_group ON group_roles(group_id);
+CREATE INDEX IF NOT EXISTS idx_group_roles_role ON group_roles(role_id);
+
+-- Default system roles per tenant
+INSERT INTO roles (id, tenant_id, name, description, is_system, permissions, created_at, updated_at)
+SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),
+       t.id, 'Admin', 'Full tenant administration', 1,
+       '["user.list","user.get","user.create","user.update","user.delete","user.enroll","user.unenroll","user.assign_role","user.pre_provision","user.suspend","user.deactivate","group.list","group.get","group.create","group.update","group.delete","group.manage_members","group.assign_role","role.list","role.get","role.create","role.update","role.delete","audit.view_all","system.manage_settings","system.manage_auth","system.view_health"]',
+       strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+FROM tenants t
+WHERE NOT EXISTS (SELECT 1 FROM roles r WHERE r.tenant_id = t.id AND r.name = 'Admin');
+
+INSERT INTO roles (id, tenant_id, name, description, is_system, permissions, created_at, updated_at)
+SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),
+       t.id, 'Member', 'Regular member', 1,
+       '["group.list","group.get","group.view_hierarchy","artifact.upload_personal","artifact.submit_review","agent.create_personal","artifact.view_group","artifact.view_tenant","artifact.delete_own"]',
+       strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+FROM tenants t
+WHERE NOT EXISTS (SELECT 1 FROM roles r WHERE r.tenant_id = t.id AND r.name = 'Member');
+
+INSERT INTO roles (id, tenant_id, name, description, is_system, permissions, created_at, updated_at)
+SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),
+       t.id, 'Viewer', 'Read-only access', 1,
+       '["group.list","group.get","artifact.view_group","artifact.view_tenant"]',
+       strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+FROM tenants t
+WHERE NOT EXISTS (SELECT 1 FROM roles r WHERE r.tenant_id = t.id AND r.name = 'Viewer');
+
+-- Backfill user_roles from old tenant_users.role
+INSERT INTO user_roles (id, tenant_id, user_id, role_id)
+SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),
+       tu.tenant_id, tu.user_id,
+       COALESCE(
+         (SELECT id FROM roles WHERE tenant_id = tu.tenant_id AND name = CASE tu.role
+           WHEN 'admin' THEN 'Admin'
+           WHEN 'operator' THEN 'Member'
+           WHEN 'member' THEN 'Member'
+           WHEN 'viewer' THEN 'Viewer'
+           ELSE 'Member'
+         END),
+         (SELECT id FROM roles WHERE tenant_id = tu.tenant_id AND name = 'Member')
+       )
+FROM tenant_users tu
+WHERE tu.role != 'owner' AND tu.role IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM user_roles ur
+      WHERE ur.tenant_id = tu.tenant_id AND ur.user_id = tu.user_id
+        AND ur.role_id = COALESCE(
+             (SELECT id FROM roles WHERE tenant_id = tu.tenant_id AND name = CASE tu.role
+               WHEN 'admin' THEN 'Admin'
+               WHEN 'operator' THEN 'Member'
+               WHEN 'member' THEN 'Member'
+               WHEN 'viewer' THEN 'Viewer'
+               ELSE 'Member'
+             END),
+             (SELECT id FROM roles WHERE tenant_id = tu.tenant_id AND name = 'Member')
+           )
+  );
+
+-- Normalize role_permissions from denormalized cache
+INSERT INTO role_permissions (id, role_id, permission)
+SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),
+       r.id, json_each.value
+FROM roles r, json_each(r.permissions)
+WHERE NOT EXISTS (SELECT 1 FROM role_permissions rp WHERE rp.role_id = r.id AND rp.permission = json_each.value);
+
+-- Drop old columns
+ALTER TABLE tenant_users DROP COLUMN role;
+ALTER TABLE group_members DROP COLUMN role;
+DROP INDEX IF EXISTS idx_group_members_group_role;`,
+		// Version 43 → 44: remove Operator system role, reassign users to Member.
+		44: `-- Reassign Operator users to Member role (skip if already Member)
+INSERT OR IGNORE INTO user_roles (id, tenant_id, user_id, role_id)
+SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),
+       ur.tenant_id, ur.user_id,
+       (SELECT id FROM roles WHERE tenant_id = ur.tenant_id AND name = 'Member' LIMIT 1)
+FROM user_roles ur
+JOIN roles r ON r.id = ur.role_id
+WHERE r.name = 'Operator'
+  AND NOT EXISTS (
+    SELECT 1 FROM user_roles ur2
+    JOIN roles r2 ON r2.id = ur2.role_id
+    WHERE ur2.tenant_id = ur.tenant_id
+      AND ur2.user_id = ur.user_id
+      AND r2.name = 'Member'
+  );
+
+DELETE FROM role_permissions WHERE role_id IN (SELECT id FROM roles WHERE name = 'Operator');
+DELETE FROM user_roles WHERE role_id IN (SELECT id FROM roles WHERE name = 'Operator');
+DELETE FROM group_roles WHERE role_id IN (SELECT id FROM roles WHERE name = 'Operator');
+DELETE FROM roles WHERE name = 'Operator';`,
+	// Version 44 -> 45: add user.pre_provision, user.suspend, user.deactivate to existing Admin roles.
+	// Mirrors PG migration 000085. Fresh DBs already include these in the seed (migration 43).
+	45: `-- Add missing user lifecycle permissions to existing Admin roles.
+-- These are required by route guards in internal/http/users.go but were
+-- missing from the initial seed data (migration 43 only seeds NEW roles).
+
+-- Step 1: Add permissions to role_permissions table (used by resolver)
+INSERT OR IGNORE INTO role_permissions (id, role_id, permission)
+SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),
+       r.id, p.value
+FROM roles r, json_each('["user.pre_provision","user.suspend","user.deactivate"]') AS p
+WHERE r.name = 'Admin'
+  AND r.is_system = 1;
+
+-- Step 2: Update denormalized roles.permissions JSON to match
+UPDATE roles
+SET permissions = (
+    SELECT json_group_array(p2.permission)
+    FROM (SELECT DISTINCT permission FROM role_permissions WHERE role_id = roles.id ORDER BY permission) p2
+  ),
+  updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE name = 'Admin'
+  AND is_system = 1;`,
+		// Version 45 → 46: no-op placeholder (reserved).
+		// Version 46 → 47: add phone column to users table (mirrors PG migration 000088).
+		46: `ALTER TABLE users ADD COLUMN phone TEXT;`,
 }
 
 // addHooksTables is the SQLite incremental migration for schema v19 → v20.

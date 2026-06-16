@@ -36,7 +36,7 @@ func (s *PGVaultStore) CreateLinks(ctx context.Context, links []store.VaultLink)
 		teamID   *uuid.UUID
 	}
 	docMap := make(map[string]docMeta, len(docIDs))
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT id, tenant_id, team_id FROM vault_documents WHERE id = ANY($1)`,
 		pqStringArray(docIDs))
 	if err != nil {
@@ -109,7 +109,7 @@ func (s *PGVaultStore) CreateLinks(ctx context.Context, links []store.VaultLink)
 			ON CONFLICT (from_doc_id, to_doc_id, link_type) DO UPDATE SET
 				context = EXCLUDED.context,
 				metadata = EXCLUDED.metadata`
-		if _, err := s.db.ExecContext(ctx, q, args...); err != nil {
+		if _, err := s.dbFor(ctx).ExecContext(ctx, q, args...); err != nil {
 			return fmt.Errorf("vault batch create links: %w", err)
 		}
 	}
@@ -131,13 +131,13 @@ func (s *PGVaultStore) CreateLink(ctx context.Context, link *store.VaultLink) er
 	// Verify both docs exist and belong to same tenant + team boundary.
 	var fromTenant, toTenant uuid.UUID
 	var fromTeamID, toTeamID *uuid.UUID
-	err = s.db.QueryRowContext(ctx,
+	err = s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT tenant_id, team_id FROM vault_documents WHERE id = $1`, fromID,
 	).Scan(&fromTenant, &fromTeamID)
 	if err != nil {
 		return fmt.Errorf("vault link: source doc not found: %w", err)
 	}
-	err = s.db.QueryRowContext(ctx,
+	err = s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT tenant_id, team_id FROM vault_documents WHERE id = $1`, toID,
 	).Scan(&toTenant, &toTeamID)
 	if err != nil {
@@ -160,7 +160,7 @@ func (s *PGVaultStore) CreateLink(ctx context.Context, link *store.VaultLink) er
 	id := uuid.Must(uuid.NewV7())
 	now := time.Now().UTC()
 	var actualID uuid.UUID
-	err = s.db.QueryRowContext(ctx, `
+	err = s.dbFor(ctx).QueryRowContext(ctx, `
 		INSERT INTO vault_links (id, from_doc_id, to_doc_id, link_type, context, metadata, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (from_doc_id, to_doc_id, link_type) DO UPDATE SET
@@ -186,7 +186,7 @@ func (s *PGVaultStore) DeleteLink(ctx context.Context, tenantID, id string) erro
 	if err != nil {
 		return fmt.Errorf("vault delete link: tenant: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.dbFor(ctx).ExecContext(ctx, `
 		DELETE FROM vault_links vl
 		USING vault_documents vd
 		WHERE vl.id = $1 AND vl.from_doc_id = vd.id AND vd.tenant_id = $2`, uid, tid)
@@ -203,7 +203,7 @@ func (s *PGVaultStore) GetOutLinks(ctx context.Context, tenantID, docID string) 
 	if err != nil {
 		return nil, fmt.Errorf("vault get out links: tenant: %w", err)
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.dbFor(ctx).QueryContext(ctx, `
 		SELECT vl.id, vl.from_doc_id, vl.to_doc_id, vl.link_type, vl.context, vl.metadata, vl.created_at
 		FROM vault_links vl
 		JOIN vault_documents vd ON vl.from_doc_id = vd.id
@@ -225,7 +225,7 @@ func (s *PGVaultStore) GetOutLinksBatch(ctx context.Context, tenantID string, do
 	if err != nil {
 		return nil, fmt.Errorf("vault get out links batch: %w", err)
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.dbFor(ctx).QueryContext(ctx, `
 		SELECT vl.id, vl.from_doc_id, vl.to_doc_id, vl.link_type, vl.context, vl.metadata, vl.created_at
 		FROM vault_links vl
 		JOIN vault_documents vd ON vl.from_doc_id = vd.id
@@ -248,7 +248,7 @@ func (s *PGVaultStore) GetBacklinks(ctx context.Context, tenantID, docID string)
 	if err != nil {
 		return nil, fmt.Errorf("vault backlinks: tenant: %w", err)
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.dbFor(ctx).QueryContext(ctx, `
 		SELECT vl.from_doc_id, vl.context, vd.title, vd.path, vd.team_id
 		FROM vault_links vl
 		JOIN vault_documents vd ON vd.id = vl.from_doc_id
@@ -287,7 +287,7 @@ func (s *PGVaultStore) DeleteDocLinks(ctx context.Context, tenantID, docID strin
 	if err != nil {
 		return fmt.Errorf("vault delete doc links: tenant: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.dbFor(ctx).ExecContext(ctx, `
 		DELETE FROM vault_links vl
 		USING vault_documents vd
 		WHERE (vl.from_doc_id = $1 OR vl.to_doc_id = $1)
@@ -305,7 +305,7 @@ func (s *PGVaultStore) DeleteDocLinksByType(ctx context.Context, tenantID, docID
 	if err != nil {
 		return fmt.Errorf("vault delete doc links by type: tenant: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.dbFor(ctx).ExecContext(ctx, `
 		DELETE FROM vault_links vl
 		USING vault_documents vd
 		WHERE vl.from_doc_id = $1
@@ -340,7 +340,7 @@ func (s *PGVaultStore) DeleteDocLinksByTypes(ctx context.Context, tenantID, docI
 		WHERE vl.from_doc_id = $1
 			AND vd.id = vl.from_doc_id AND vd.tenant_id = $2
 			AND vl.link_type IN (%s)`, strings.Join(placeholders, ","))
-	_, err = s.db.ExecContext(ctx, q, params...)
+	_, err = s.dbFor(ctx).ExecContext(ctx, q, params...)
 	return err
 }
 

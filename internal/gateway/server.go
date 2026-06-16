@@ -48,11 +48,12 @@ type Server struct {
 	handlers []routeRegistrar
 
 	// Non-handler dependencies (don't implement RegisterRoutes)
-	policyEngine   *permissions.PolicyEngine
-	pairingService store.PairingStore
-	apiKeyStore    store.APIKeyStore  // for API key auth lookup
-	agentStore     store.AgentStore   // for context injection in tools_invoke
-	msgBus         *bus.MessageBus    // for MCP bridge media delivery
+	policyEngine     *permissions.PolicyEngine
+	pairingService   store.PairingStore
+	apiKeyStore      store.APIKeyStore  // for API key auth lookup
+	agentStore       store.AgentStore   // for context injection in tools_invoke
+	msgBus           *bus.MessageBus    // for MCP bridge media delivery
+	tenantDBManager  store.TenantDBManager // per-tenant DB resolution
 
 	upgrader    websocket.Upgrader
 	rateLimiter *RateLimiter
@@ -396,6 +397,9 @@ func (s *Server) SetPolicyEngine(pe *permissions.PolicyEngine) { s.policyEngine 
 // SetPairingService sets the pairing service for channel authentication.
 func (s *Server) SetPairingService(ps store.PairingStore) { s.pairingService = ps }
 
+// SetTenantDBManager sets the tenant DB manager for per-tenant database resolution.
+func (s *Server) SetTenantDBManager(mgr store.TenantDBManager) { s.tenantDBManager = mgr }
+
 // SetAgentsHandler sets the agent CRUD handler.
 func (s *Server) SetAgentsHandler(h *httpapi.AgentsHandler) { s.handlers = append(s.handlers, h) }
 
@@ -481,6 +485,13 @@ func (s *Server) SetOAuthHandler(h *httpapi.OAuthHandler) { s.handlers = append(
 func (s *Server) SetAPIKeysHandler(h *httpapi.APIKeysHandler) {
 	s.handlers = append(s.handlers, h)
 }
+
+func (s *Server) SetUsersHandler(h *httpapi.UsersHandler)  { s.handlers = append(s.handlers, h) }
+func (s *Server) SetGroupsHandler(h *httpapi.GroupsHandler) { s.handlers = append(s.handlers, h) }
+func (s *Server) SetRolesHandler(h *httpapi.RolesHandler)   { s.handlers = append(s.handlers, h) }
+func (s *Server) SetAuditHandler(h *httpapi.AuditHandler)  { s.handlers = append(s.handlers, h) }
+func (s *Server) SetAuthHandler(h *httpapi.AuthHandler)    { s.handlers = append(s.handlers, h) }
+func (s *Server) SetOIDCHandler(h *httpapi.OIDCHandler)   { s.handlers = append(s.handlers, h) }
 
 // SetWebhooksAdminHandler registers the webhook admin CRUD handler.
 func (s *Server) SetWebhooksAdminHandler(h *httpapi.WebhooksAdminHandler) {

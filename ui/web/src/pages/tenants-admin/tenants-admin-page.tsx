@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { Plus, RefreshCw, Building2 } from "lucide-react";
+import { Plus, RefreshCw, Building2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/shared/page-header";
@@ -19,7 +20,8 @@ import { TableSkeleton } from "@/components/shared/loading-skeleton";
 import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { useMinLoading } from "@/hooks/use-min-loading";
 import { useTenantsAdmin } from "./hooks/use-tenants-admin";
-import { ROUTES } from "@/lib/constants";
+import { ROUTES, route } from "@/lib/constants";
+import { useTenants } from "@/hooks/use-tenants";
 
 function statusVariant(status: string): "default" | "secondary" | "destructive" {
   if (status === "active") return "default";
@@ -31,7 +33,8 @@ export function TenantsAdminPage() {
   const { t } = useTranslation("tenants");
   const { t: tc } = useTranslation("common");
   const navigate = useNavigate();
-  const { tenants, loading, refreshing, refresh, createTenant, isOwner } = useTenantsAdmin();
+  const { currentTenantSlug } = useTenants();
+  const { tenants, loading, refreshing, refresh, createTenant, deleteTenant, isOwner } = useTenantsAdmin();
 
   const spinning = useMinLoading(refreshing);
   const showSkeleton = useDeferredLoading(loading && tenants.length === 0);
@@ -40,6 +43,10 @@ export function TenantsAdminPage() {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [creating, setCreating] = useState(false);
+
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const [deleteSaving, setDeleteSaving] = useState(false);
 
   const handleCreate = async () => {
     if (!name.trim() || !slug.trim()) return;
@@ -58,6 +65,20 @@ export function TenantsAdminPage() {
     setName(v);
     // Auto-derive slug from name if not manually edited
     setSlug(v.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""));
+  };
+
+  const deleteTargetTenant = tenants.find((t) => t.id === deleteTarget);
+
+  const handleDelete = async () => {
+    if (!deleteTarget || deleteConfirmName.trim() !== deleteTargetTenant?.name) return;
+    setDeleteSaving(true);
+    try {
+      await deleteTenant(deleteTarget);
+      setDeleteTarget(null);
+      setDeleteConfirmName("");
+    } finally {
+      setDeleteSaving(false);
+    }
   };
 
   return (
@@ -94,6 +115,7 @@ export function TenantsAdminPage() {
                   <th className="px-4 py-2 text-left font-medium">{t("slug")}</th>
                   <th className="px-4 py-2 text-left font-medium">{t("status")}</th>
                   <th className="px-4 py-2 text-left font-medium">{t("created")}</th>
+                  {isOwner && <th className="px-4 py-2 text-right font-medium"></th>}
                 </tr>
               </thead>
               <tbody>
@@ -101,7 +123,7 @@ export function TenantsAdminPage() {
                   <tr
                     key={tenant.id}
                     className="border-b last:border-0 hover:bg-muted/30 cursor-pointer"
-                    onClick={() => navigate(ROUTES.TENANT_DETAIL.replace(":id", tenant.id))}
+                    onClick={() => navigate(route(currentTenantSlug, ROUTES.TENANT_DETAIL).replace(":id", tenant.id))}
                   >
                     <td className="px-4 py-2 font-medium">{tenant.name}</td>
                     <td className="px-4 py-2">
@@ -115,6 +137,19 @@ export function TenantsAdminPage() {
                     <td className="px-4 py-2 text-muted-foreground text-xs">
                       {new Date(tenant.created_at).toLocaleDateString()}
                     </td>
+                    {isOwner && (
+                      <td className="px-4 py-2 text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={(e) => { e.stopPropagation(); setDeleteTarget(tenant.id); setDeleteConfirmName(""); }}
+                          title={t("deleteTenant")}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -127,6 +162,7 @@ export function TenantsAdminPage() {
         <DialogContent className="max-sm:inset-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{t("createTenant")}</DialogTitle>
+            <DialogDescription className="sr-only">{t("createTenant")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
@@ -157,6 +193,39 @@ export function TenantsAdminPage() {
             </Button>
             <Button onClick={handleCreate} disabled={creating || !name.trim() || !slug.trim()}>
               {t("createTenant")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) { setDeleteTarget(null); setDeleteConfirmName(""); } }}>
+        <DialogContent className="max-sm:inset-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("deleteTenant")}</DialogTitle>
+            <DialogDescription>{t("deleteConfirm")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              {t("typeToConfirm", { name: deleteTargetTenant?.name ?? "" })}
+            </p>
+            <Input
+              value={deleteConfirmName}
+              onChange={(e) => setDeleteConfirmName(e.target.value)}
+              placeholder={deleteTargetTenant?.name ?? ""}
+              className="text-base md:text-sm"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteTarget(null); setDeleteConfirmName(""); }} disabled={deleteSaving}>
+              {tc("cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteSaving || deleteConfirmName.trim() !== deleteTargetTenant?.name}
+            >
+              {t("deleteTenant")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/nextlevelbuilder/goclaw/internal/cron"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
@@ -16,14 +18,15 @@ const defaultCronCacheTTL = 2 * time.Minute
 // PGCronStore implements store.CronStore backed by Postgres.
 // GetDueJobs() uses an in-memory cache with TTL to reduce DB polling (1s interval).
 type PGCronStore struct {
-	db        *sql.DB
-	mu        sync.Mutex
-	baseCtx   context.Context    // lifecycle context for background DB operations
-	cancelCtx context.CancelFunc // cancelled on Stop()
-	onJob     func(job *store.CronJob) (*store.CronJobResult, error)
-	onEvent   func(event store.CronEvent)
-	running   bool
-	stop      chan struct{}
+	db              *sql.DB
+	tenantDBManager store.TenantDBManager // nil until wired via SetTenantDBManager
+	mu              sync.Mutex
+	baseCtx         context.Context    // lifecycle context for background DB operations
+	cancelCtx       context.CancelFunc // cancelled on Stop()
+	onJob           func(job *store.CronJob) (*store.CronJobResult, error)
+	onEvent         func(event store.CronEvent)
+	running         bool
+	stop            chan struct{}
 
 	// Job cache: reduces GetDueJobs polling from 86,400 queries/day to ~720/day
 	jobCache    []store.CronJob
@@ -37,6 +40,46 @@ type PGCronStore struct {
 
 func NewPGCronStore(db *sql.DB) *PGCronStore {
 	return &PGCronStore{db: db, cacheTTL: defaultCronCacheTTL, retryCfg: cron.DefaultRetryConfig()}
+}
+
+func (s *PGCronStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+// tenantCtx returns a context with the tenant DB injected for the given tenant ID.
+func (s *PGCronStore) tenantCtx(tenantID uuid.UUID) context.Context {
+	ctx := s.baseCtx
+	if tenantID == uuid.Nil || tenantID == store.MasterTenantID || s.tenantDBManager == nil {
+		return ctx
+	}
+	if db, err := s.tenantDBManager.GetPool(ctx, tenantID); err == nil && db != nil {
+		ctx = store.WithTenantDB(ctx, db)
+	}
+	return ctx
+}
+
+// allDBs returns master DB plus all cached tenant DB pools.
+func (s *PGCronStore) allDBs() []*sql.DB {
+	dbs := []*sql.DB{s.db}
+	if s.tenantDBManager == nil {
+		return dbs
+	}
+	if pm, ok := s.tenantDBManager.(*PGTenantDBManager); ok {
+		for _, db := range pm.AllPools() {
+			dbs = append(dbs, db)
+		}
+	}
+	return dbs
+}
+
+// SetTenantDBManager sets the tenant DB manager for multi-DB cron awareness.
+func (s *PGCronStore) SetTenantDBManager(mgr store.TenantDBManager) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tenantDBManager = mgr
 }
 
 // SetRetryConfig overrides the default retry configuration.

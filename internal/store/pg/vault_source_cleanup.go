@@ -21,7 +21,7 @@ func (s *PGVaultStore) DeleteLinksBySource(ctx context.Context, tenantID, source
 	if err != nil {
 		return 0, fmt.Errorf("delete links by source: tenant: %w", err)
 	}
-	res, err := s.db.ExecContext(ctx, `
+	res, err := s.dbFor(ctx).ExecContext(ctx, `
 		DELETE FROM vault_links vl
 		USING vault_documents vd
 		WHERE vl.metadata->>'source' = $1
@@ -98,7 +98,7 @@ ORDER BY deleg_id, created_at DESC
 `
 	args = append(args, limit)
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("batch find by delegation: %w", err)
 	}

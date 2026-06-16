@@ -23,6 +23,14 @@ func NewPGWorkstationCommandGroupStore(db *sql.DB) *PGWorkstationCommandGroupSto
 	return &PGWorkstationCommandGroupStore{db: db}
 }
 
+func (s *PGWorkstationCommandGroupStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 const cgSelectCols = `id, tenant_id, name, description, patterns, is_builtin, created_at, updated_at, created_by`
 
 func (s *PGWorkstationCommandGroupStore) List(ctx context.Context) ([]store.WorkstationCommandGroup, error) {
@@ -30,7 +38,7 @@ func (s *PGWorkstationCommandGroupStore) List(ctx context.Context) ([]store.Work
 	if tid == uuid.Nil {
 		return nil, nil
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT `+cgSelectCols+` FROM workstation_command_groups
 		 WHERE tenant_id = $1 OR tenant_id IS NULL
 		 ORDER BY is_builtin DESC, name`,
@@ -47,7 +55,7 @@ func (s *PGWorkstationCommandGroupStore) GetByID(ctx context.Context, id uuid.UU
 	if tid == uuid.Nil {
 		return nil, sql.ErrNoRows
 	}
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT `+cgSelectCols+` FROM workstation_command_groups
 		 WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)`,
 		id, tid)
@@ -81,7 +89,7 @@ func (s *PGWorkstationCommandGroupStore) Create(ctx context.Context, group *stor
 	if err != nil {
 		return fmt.Errorf("marshal patterns: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO workstation_command_groups
 		 (id, tenant_id, name, description, patterns, is_builtin, created_at, updated_at, created_by)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
@@ -101,7 +109,7 @@ func (s *PGWorkstationCommandGroupStore) Update(ctx context.Context, id uuid.UUI
 	}
 	// Verify the group is tenant-owned (not built-in) before updating.
 	var isBuiltin bool
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT is_builtin FROM workstation_command_groups WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)`,
 		id, tid).Scan(&isBuiltin)
 	if err != nil {
@@ -132,7 +140,7 @@ func (s *PGWorkstationCommandGroupStore) Update(ctx context.Context, id uuid.UUI
 		}
 	}
 	setMap["updated_at"] = time.Now()
-	if err := execMapUpdateWhereTenant(ctx, s.db, "workstation_command_groups", setMap, id, tid); err != nil {
+	if err := execMapUpdateWhereTenant(ctx, s.dbFor(ctx), "workstation_command_groups", setMap, id, tid); err != nil {
 		return fmt.Errorf("workstation_command_groups update: %w", err)
 	}
 	return nil
@@ -143,7 +151,7 @@ func (s *PGWorkstationCommandGroupStore) Delete(ctx context.Context, id uuid.UUI
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required")
 	}
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM workstation_command_groups WHERE id = $1 AND tenant_id = $2 AND is_builtin = FALSE`,
 		id, tid)
 	if err != nil {
@@ -168,6 +176,13 @@ func NewPGWorkstationGroupPermissionStore(db *sql.DB) *PGWorkstationGroupPermiss
 	return &PGWorkstationGroupPermissionStore{db: db}
 }
 
+func (s *PGWorkstationGroupPermissionStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
 const gpSelectCols = `id, workstation_id, group_id, tenant_id, enabled, created_at`
 
 func (s *PGWorkstationGroupPermissionStore) ListForWorkstation(ctx context.Context, workstationID uuid.UUID) ([]store.WorkstationGroupPermission, error) {
@@ -175,7 +190,7 @@ func (s *PGWorkstationGroupPermissionStore) ListForWorkstation(ctx context.Conte
 	if tid == uuid.Nil {
 		return nil, nil
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT `+gpSelectCols+` FROM workstation_group_permissions
 		 WHERE workstation_id = $1 AND tenant_id = $2
 		 ORDER BY created_at`,
@@ -199,7 +214,7 @@ func (s *PGWorkstationGroupPermissionStore) Add(ctx context.Context, link *store
 	if link.CreatedAt.IsZero() {
 		link.CreatedAt = time.Now()
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO workstation_group_permissions
 		 (id, workstation_id, group_id, tenant_id, enabled, created_at)
 		 VALUES ($1,$2,$3,$4,$5,$6)
@@ -217,7 +232,7 @@ func (s *PGWorkstationGroupPermissionStore) Remove(ctx context.Context, id uuid.
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required")
 	}
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM workstation_group_permissions WHERE id = $1 AND tenant_id = $2`,
 		id, tid)
 	if err != nil {
@@ -235,7 +250,7 @@ func (s *PGWorkstationGroupPermissionStore) SetEnabled(ctx context.Context, id u
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required")
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE workstation_group_permissions SET enabled = $1 WHERE id = $2 AND tenant_id = $3`,
 		enabled, id, tid)
 	return err

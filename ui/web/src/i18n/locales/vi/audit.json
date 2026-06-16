@@ -1,0 +1,21 @@
+{
+  "title": "Nhật ký kiểm tra",
+  "description": "Xem hoạt động hệ thống và lịch sử tuân thủ",
+  "time": "Thời gian",
+  "actor": "Người thực hiện",
+  "action": "Hành động",
+  "resourceType": "Loại tài nguyên",
+  "resourceId": "ID tài nguyên",
+  "group": "Nhóm",
+  "ipAddress": "Địa chỉ IP",
+  "detail": "Chi tiết",
+  "viewDetail": "Xem",
+  "export": "Xuất",
+  "filterAction": "Lọc theo hành động...",
+  "allTypes": "Tất cả loại",
+  "user": "Người dùng",
+  "membership": "Thành viên",
+  "permission": "Quyền hạn",
+  "system": "Hệ thống",
+  "noEntries": "Không tìm thấy mục nhật ký kiểm tra"
+}

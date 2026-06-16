@@ -52,16 +52,13 @@ func (h *MCPUserCredentialsHandler) resolveTargetUserID(r *http.Request, callerI
 		return targetID, 0
 	}
 
-	// Tenant admin/owner can target users within their tenant.
+	// Tenant owner can target users within their tenant.
 	if h.tenantStore != nil {
 		tid := store.TenantIDFromContext(r.Context())
 		if tid != uuid.Nil {
-			callerTenantRole, err := h.tenantStore.GetUserRole(r.Context(), tid, callerID)
-			if err == nil && (callerTenantRole == store.TenantRoleOwner || callerTenantRole == store.TenantRoleAdmin) {
-				// Verify target user belongs to the same tenant.
-				if _, err := h.tenantStore.GetUserRole(r.Context(), tid, targetID); err == nil {
-					return targetID, 0
-				}
+			isOwner, err := h.tenantStore.IsOwner(r.Context(), tid, callerID)
+			if err == nil && isOwner {
+				return targetID, 0
 			}
 		}
 	}

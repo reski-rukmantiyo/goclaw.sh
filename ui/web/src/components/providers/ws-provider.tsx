@@ -10,6 +10,15 @@ import { TEAM_RELATED_EVENTS, Methods } from "@/api/protocol";
 import { useTeamEventStore } from "@/stores/use-team-event-store";
 import type { TenantMembership } from "@/types/tenant";
 
+async function fetchPermissions(http: HttpClient) {
+  try {
+    const res = await http.get<{ is_owner: boolean; permissions: string[] }>("/v1/users/me/permissions");
+    useAuthStore.getState().setPermissions(res.permissions ?? []);
+  } catch {
+    // Non-critical: silently ignore
+  }
+}
+
 // In dev mode, connect directly to backend WS (bypass Vite proxy).
 // In production, use relative "/ws" path.
 const WS_URL = import.meta.env.VITE_WS_URL || "/ws";
@@ -17,7 +26,6 @@ const WS_URL = import.meta.env.VITE_WS_URL || "/ws";
 export function WsProvider({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
   const userId = useAuthStore((s) => s.userId);
-  const senderID = useAuthStore((s) => s.senderID);
 
   const wsRef = useRef<WsClient | null>(null);
 
@@ -27,7 +35,6 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
       WS_URL,
       () => useAuthStore.getState().token,
       () => useAuthStore.getState().userId,
-      () => useAuthStore.getState().senderID,
       (state: ConnectionState) => {
         const store = useAuthStore.getState();
         const isConnected = state === "connected";
@@ -41,6 +48,8 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
           store.setRole(client.role || "");
           store.setTenant(client.tenantId, client.tenantName, client.tenantSlug, client.isOwner);
           store.setConnectInfo({ isMasterScope: client.isMasterScope, edition: client.edition });
+          // Fetch permissions asynchronously
+          fetchPermissions(http);
           // Fetch tenant memberships asynchronously
           client.call<{ tenants: TenantMembership[] }>(Methods.TENANTS_MINE)
             .then((res) => {
@@ -52,16 +61,21 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
               if (savedScope && tenants.some((t) => t.slug === savedScope)) {
                 // Already scoped via localStorage — auto-select
                 store.setTenantSelected(true);
+              } else if (savedScope && tenants.length > 0) {
+                // Saved scope stale (e.g. master revoked) — reset to first available tenant
+                localStorage.setItem(LOCAL_STORAGE_KEYS.TENANT_ID, tenants[0]!.slug);
+                window.location.reload();
+                return;
               } else if (!client.isOwner && tenants.length === 1) {
                 // Non-owner with single tenant — auto-select
-                 
+
                 localStorage.setItem(LOCAL_STORAGE_KEYS.TENANT_ID, tenants[0]!.slug);
                 store.setTenantSelected(true);
               } else if (!client.isOwner && tenants.length === 0) {
                 // No tenants — leave tenantSelected=false (blocked)
               } else if (client.isOwner && !savedScope && tenants.length > 0) {
                 // Owner without scope — auto-select first tenant
-                 
+
                 localStorage.setItem(LOCAL_STORAGE_KEYS.TENANT_ID, tenants[0]!.slug);
                 window.location.reload();
                 return;
@@ -80,16 +94,15 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
           store.setRole("");
           store.setTenant("", "", "", false);
           store.setConnectInfo({ isMasterScope: false, edition: "standard" });
+          store.setPermissions([]);
           store.setAvailableTenants([]);
           store.setTenantSelected(false);
+          store.setIsGatewayToken(false);
         }
       },
     );
     wsRef.current.onAuthFailure = () => {
-      // Don't logout if authenticated via browser pairing (no token)
-      const state = useAuthStore.getState();
-      if (state.senderID && !state.token) return;
-      state.logout();
+      useAuthStore.getState().logout();
     };
   }
   const ws = wsRef.current;
@@ -99,25 +112,21 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
       "",
       () => useAuthStore.getState().token,
       () => useAuthStore.getState().userId,
-      () => useAuthStore.getState().senderID,
     );
     client.onAuthFailure = () => {
-      // Don't logout if authenticated via browser pairing (no token)
-      const state = useAuthStore.getState();
-      if (state.senderID && !state.token) return;
-      state.logout();
+      useAuthStore.getState().logout();
     };
     return client;
   }, []);
 
-  // Auto-connect when credentials are available (token or sender_id), disconnect when not.
+  // Auto-connect when credentials are available, disconnect when not.
   useEffect(() => {
-    if ((token || senderID) && userId) {
+    if (token && userId) {
       ws.connect();
     } else {
       ws.disconnect();
     }
-  }, [token, userId, senderID, ws]);
+  }, [token, userId, ws]);
 
   const value = useMemo(() => ({ ws, http }), [ws, http]);
 

@@ -290,7 +290,7 @@ func ExportKGEntities(ctx context.Context, db *sql.DB, agentID uuid.UUID) ([]sto
 	for {
 		args := append(append([]any{}, baseArgs...), cursor, exportBatchSize)
 		var eRows []entityTemporalRow
-		if err := pkgSqlxDB.SelectContext(ctx, &eRows,
+		if err := SqlxDBFor(ctx).SelectContext(ctx, &eRows,
 			"SELECT id, agent_id, user_id, external_id, name, entity_type, description,"+
 				" properties, source_id, confidence, created_at, updated_at, valid_from, valid_until"+
 				" FROM kg_entities WHERE agent_id = $1"+tc+
@@ -333,7 +333,7 @@ func ExportKGRelations(ctx context.Context, db *sql.DB, agentID uuid.UUID) ([]st
 	for {
 		args := append(append([]any{}, baseArgs...), cursor, exportBatchSize)
 		var rRows []relationExportRow
-		if err := pkgSqlxDB.SelectContext(ctx, &rRows,
+		if err := SqlxDBFor(ctx).SelectContext(ctx, &rRows,
 			"SELECT id, agent_id, user_id, source_entity_id, relation_type, target_entity_id,"+
 				" confidence, properties, created_at, valid_from, valid_until"+
 				" FROM kg_relations WHERE agent_id = $1"+tc+
@@ -416,7 +416,7 @@ func ExportSkillGrants(ctx context.Context, db *sql.DB, agentID uuid.UUID) ([]Sk
 		return nil, err
 	}
 	var result []SkillGrantExport
-	err = pkgSqlxDB.SelectContext(ctx, &result,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &result,
 		"SELECT skill_id, pinned_version, granted_by FROM skill_agent_grants WHERE agent_id = $1"+tc,
 		append([]any{agentID}, tcArgs...)...,
 	)
@@ -430,7 +430,7 @@ func ExportMCPGrants(ctx context.Context, db *sql.DB, agentID uuid.UUID) ([]MCPG
 		return nil, err
 	}
 	var result []MCPGrantExport
-	err = pkgSqlxDB.SelectContext(ctx, &result,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &result,
 		"SELECT server_id, enabled, tool_allow, tool_deny, config_overrides, granted_by"+
 			" FROM mcp_agent_grants WHERE agent_id = $1"+tc,
 		append([]any{agentID}, tcArgs...)...,
@@ -475,7 +475,7 @@ func ExportConfigPermissions(ctx context.Context, db *sql.DB, agentID uuid.UUID)
 		return nil, err
 	}
 	var result []ConfigPermissionExport
-	err = pkgSqlxDB.SelectContext(ctx, &result,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &result,
 		"SELECT scope, config_type, user_id, permission, metadata, granted_by"+
 			" FROM agent_config_permissions WHERE agent_id = $1"+tc,
 		append([]any{agentID}, tcArgs...)...,
@@ -490,7 +490,7 @@ func ExportUserProfiles(ctx context.Context, db *sql.DB, agentID uuid.UUID) ([]U
 		return nil, err
 	}
 	var result []UserProfileExport
-	err = pkgSqlxDB.SelectContext(ctx, &result,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &result,
 		"SELECT user_id, workspace FROM user_agent_profiles WHERE agent_id = $1"+tc,
 		append([]any{agentID}, tcArgs...)...,
 	)
@@ -504,7 +504,7 @@ func ExportUserOverrides(ctx context.Context, db *sql.DB, agentID uuid.UUID) ([]
 		return nil, err
 	}
 	var result []UserOverrideExport
-	err = pkgSqlxDB.SelectContext(ctx, &result,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &result,
 		"SELECT user_id, provider, model, settings"+
 			" FROM user_agent_overrides WHERE agent_id = $1"+tc,
 		append([]any{agentID}, tcArgs...)...,

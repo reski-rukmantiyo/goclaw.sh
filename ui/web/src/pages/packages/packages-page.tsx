@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { useAuthStore } from "@/stores/use-auth-store";
+import { useRole } from "@/hooks/use-role";
 import { usePackages } from "./hooks/use-packages";
 import { usePackageRuntimes } from "./hooks/use-package-runtimes";
 import { RuntimesStickyHeader } from "./runtimes-sticky-header";
@@ -27,12 +27,6 @@ const GithubBinariesTab = lazy(() =>
 const CliCredentialsTab = lazy(() =>
   import("./tabs/cli-credentials-tab").then((m) => ({ default: m.CliCredentialsTab }))
 );
-
-// --- Permission helper (mirrors require-role.tsx logic) ---
-function hasMinRole(role: string, minRole: string): boolean {
-  const levels: Record<string, number> = { owner: 4, admin: 3, operator: 2, viewer: 1 };
-  return (levels[role] ?? 0) >= (levels[minRole] ?? 0);
-}
 
 // --- Valid tab ids ---
 const VALID_TABS = ["system", "python", "node", "github", "cli-credentials"] as const;
@@ -56,15 +50,15 @@ export function PackagesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { refresh } = usePackages();
   const { refresh: refreshRuntimes } = usePackageRuntimes();
-  const role = useAuthStore((s) => s.role);
-  const isAdmin = hasMinRole(role, "admin");
+  const { hasMinRole } = useRole();
+  const canSeeCliCredentials = hasMinRole("member");
 
   // Validate tab param — fall back to "system" for unknown values
   const rawTab = searchParams.get("tab");
   const activeTab: TabId =
     isValidTab(rawTab)
-      ? // Non-admin trying to reach cli-credentials directly via URL → fall back
-        rawTab === "cli-credentials" && !isAdmin
+      ? // Non-member trying to reach cli-credentials directly via URL → fall back
+        rawTab === "cli-credentials" && !canSeeCliCredentials
         ? "system"
         : rawTab
       : "system";
@@ -107,8 +101,8 @@ export function PackagesPage() {
             <TabsTrigger value="python">{t("tabs.python", { defaultValue: "Python" })}</TabsTrigger>
             <TabsTrigger value="node">{t("tabs.node", { defaultValue: "Node" })}</TabsTrigger>
             <TabsTrigger value="github">{t("tabs.github", { defaultValue: "GitHub" })}</TabsTrigger>
-            {/* CLI Credentials tab: visible only to admins */}
-            {isAdmin && (
+            {/* CLI Credentials tab: visible to members+ */}
+            {canSeeCliCredentials && (
               <TabsTrigger value="cli-credentials">
                 {t("tabs.cliCredentials", { defaultValue: "CLI Credentials" })}
               </TabsTrigger>
@@ -149,11 +143,11 @@ export function PackagesPage() {
           </ErrorBoundary>
         </TabsContent>
 
-        {/* CLI Credentials: gate rendered body — direct URL by non-admin must NOT reach panel */}
+        {/* CLI Credentials: gate rendered body — direct URL by non-member must NOT reach panel */}
         <TabsContent value="cli-credentials">
           <ErrorBoundary key="tab-cli-credentials">
             <Suspense fallback={<TabLoader />}>
-              {isAdmin ? (
+              {canSeeCliCredentials ? (
                 <CliCredentialsTab />
               ) : (
                 <div className="py-8 text-center text-sm text-muted-foreground">

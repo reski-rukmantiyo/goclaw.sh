@@ -1,0 +1,22 @@
+{
+  "title": "Hồ sơ",
+  "description": "Thông tin tài khoản và cài đặt của bạn",
+  "account": {
+    "title": "Tài khoản",
+    "description": "Thông tin danh tính và xác thực của bạn",
+    "displayName": "Tên hiển thị",
+    "email": "Email",
+    "memberSince": "Thành viên từ {{date}}",
+    "save": "Lưu",
+    "saving": "Đang lưu..."
+  },
+  "password": {
+    "title": "Mật khẩu",
+    "description": "Thay đổi mật khẩu tài khoản cục bộ",
+    "change": "Đổi mật khẩu"
+  },
+  "toast": {
+    "saved": "Đã cập nhật hồ sơ",
+    "saveFailed": "Không thể cập nhật hồ sơ"
+  }
+}

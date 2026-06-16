@@ -41,7 +41,7 @@ func ExportCustomSkills(ctx context.Context, db *sql.DB) ([]CustomSkillExport, e
 		return nil, err
 	}
 	var scanned []customSkillExportRow
-	if err := pkgSqlxDB.SelectContext(ctx, &scanned,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned,
 		"SELECT id, name, slug, description, visibility, version, frontmatter, tags, deps, file_path"+
 			" FROM skills WHERE is_system = false"+tc+
 			" ORDER BY name",
@@ -63,7 +63,7 @@ func ExportSkillGrantsWithAgentKey(ctx context.Context, db *sql.DB, skillID uuid
 		return nil, err
 	}
 	var result []SkillGrantWithKey
-	if err := pkgSqlxDB.SelectContext(ctx, &result,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &result,
 		"SELECT a.agent_key, g.pinned_version"+
 			" FROM skill_agent_grants g"+
 			" JOIN agents a ON a.id = g.agent_id"+

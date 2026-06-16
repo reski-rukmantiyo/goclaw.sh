@@ -29,7 +29,7 @@ func (s *PGCronStore) scanJob(ctx context.Context, id uuid.UUID) (*store.CronJob
 		args = append(args, tid)
 	}
 
-	row := s.db.QueryRowContext(ctx, q, args...)
+	row := s.dbFor(ctx).QueryRowContext(ctx, q, args...)
 	return scanCronSingleRow(row)
 }
 

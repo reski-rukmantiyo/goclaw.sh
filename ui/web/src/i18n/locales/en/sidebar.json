@@ -6,6 +6,7 @@
     "capabilities": "Capabilities",
     "data": "Data",
     "monitoring": "Monitoring",
+    "security": "Security",
     "system": "System"
   },
   "nav": {
@@ -35,6 +36,7 @@
     "storage": "Storage",
     "providers": "Providers",
     "config": "Config",
+    "authentication": "Authentication",
     "approvals": "Approvals",
     "importExport": "Import & Export",
     "nodes": "Nodes",
@@ -45,6 +47,10 @@
     "apiDocs": "API Docs",
     "packages": "Packages",
     "tenants": "Tenants",
+    "userMgmt": "Users",
+    "groups": "Groups",
+    "roles": "Roles",
+    "auditLog": "Audit Log",
     "backupRestore": "Backup & Restore",
     "workstations": "Workstations"
   }

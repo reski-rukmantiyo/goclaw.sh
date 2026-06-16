@@ -41,7 +41,7 @@ func (s *PGMemoryStore) lookupEmbeddingCache(ctx context.Context, hashes []strin
 		Embedding string `db:"embedding"`
 	}
 	var cacheRows []cacheRow
-	if err := pkgSqlxDB.SelectContext(ctx, &cacheRows, query, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &cacheRows, query, args...); err != nil {
 		return nil, fmt.Errorf("lookup embedding cache: %w", err)
 	}
 
@@ -87,7 +87,7 @@ func (s *PGMemoryStore) writeEmbeddingCache(ctx context.Context, entries []embed
 		}
 		sb.WriteString(` ON CONFLICT (hash, provider, model) DO UPDATE SET embedding = EXCLUDED.embedding, dims = EXCLUDED.dims, updated_at = EXCLUDED.updated_at`)
 
-		_, err := s.db.ExecContext(ctx, sb.String(), args...)
+		_, err := s.dbFor(ctx).ExecContext(ctx, sb.String(), args...)
 		if err != nil {
 			// pgvector dimension mismatch — skip cache gracefully
 			if strings.Contains(err.Error(), "dimensions") {

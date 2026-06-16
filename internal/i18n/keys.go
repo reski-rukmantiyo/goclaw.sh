@@ -207,7 +207,15 @@ const (
 	MsgSkillNudge90Pct      = "skill.nudge_90_pct"
 
 	// --- Tenants ---
-	MsgInvalidRole = "error.invalid_role" // "invalid role: allowed values are owner, admin, operator, member, viewer"
+	MsgInvalidRole       = "error.invalid_role"        // "invalid role: allowed values are owner, admin, member, viewer"
+	MsgSlugImmutable     = "error.slug_immutable"      // "slug cannot be modified"
+	MsgTenantDeleted     = "info.tenant_deleted"       // "tenant deleted"
+	MsgTenantDeleteFailed = "error.tenant_delete_failed" // "failed to delete tenant: %s"
+
+	// --- Tenant DB ---
+	MsgTenantDBConnectionFailed = "error.tenant_db_connection_failed" // "failed to connect to tenant database: %s"
+	MsgTenantDBProvisionFailed  = "error.tenant_db_provision_failed"  // "failed to provision tenant database: %s"
+	MsgTenantDBNotFound         = "error.tenant_db_not_found"         // "tenant database configuration not found"
 
 	// --- TTS / Voices ---
 	MsgTtsUnknownModel          = "error.tts_unknown_model"           // "unknown tts model: %s"
@@ -298,4 +306,30 @@ const (
 	MsgGrantEnvValueInvalid = "error.grant_env_value_invalid" // "invalid env value: %s"
 	MsgGrantEnvTooManyKeys  = "error.grant_env_too_many_keys" // "too many env keys: max 50"
 	MsgGrantEnvRevealLimit  = "error.grant_env_reveal_limit"  // "rate limit exceeded for env reveal"
+
+	// --- Multi-auth ---
+	MsgAuthInvalidCredentials  = "error.auth_invalid_credentials"   // "invalid email or password"
+	MsgAuthAccountSuspended    = "error.auth_account_suspended"     // "account is suspended"
+	MsgAuthRefreshTokenInvalid = "error.auth_refresh_token_invalid" // "invalid or expired refresh token"
+	MsgAuthPasswordMismatch    = "error.auth_password_mismatch"     // "current password is incorrect"
+	MsgAuthPasswordTooShort    = "error.auth_password_too_short"    // "password must be at least %d characters"
+	MsgAuthPasswordComplexity  = "error.auth_password_complexity"   // "password must contain uppercase letter and symbol"
+	MsgUserHasGroups           = "error.user_has_groups"            // "user is member of %d group(s), remove from groups first"
+	MsgUserDeleteBlockedTenants = "error.user_delete_blocked_tenants" // "user is enrolled in %d tenant(s), unenroll first"
+	MsgAuthOIDCFailed          = "error.auth_oidc_failed"           // "OIDC authentication failed: %s"
+	MsgAuthStateInvalid        = "error.auth_state_invalid"         // "invalid or expired OAuth state"
+
+	// --- Roles ---
+	MsgRoleAssigned           = "role.assigned"            // "role assigned"
+	MsgRoleUnassigned         = "role.unassigned"          // "role unassigned"
+	MsgRoleDeleteBlocked      = "role.delete_blocked"      // "cannot delete role: assigned to %d user(s) or group(s)"
+	MsgGroupDeleteBlockedChildren = "group.delete_blocked_children" // "cannot delete group: has %d child group(s)"
+
+	// --- Tenant User CRUD ---
+	MsgSelfDeleteBlocked    = "error.self_delete_blocked"     // "cannot delete your own account"
+	MsgLastOwnerBlocked     = "error.last_owner_blocked"      // "cannot remove the last owner of a tenant"
+	MsgTargetRoleForbidden  = "error.target_role_forbidden"    // "insufficient permissions for target user's role"
+	MsgFieldNotUpdatable    = "error.field_not_updatable"      // "field %s is not updatable"
+	MsgTenantNotActive      = "error.tenant_not_active"        // "tenant is not active"
+	MsgRoleNotPermitted     = "error.role_not_permitted"       // "role %s is not permitted for this operation"
 )

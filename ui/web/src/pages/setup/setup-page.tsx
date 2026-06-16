@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { useBootstrapStatus, type SetupStep } from "./hooks/use-bootstrap-status";
+import { useBootstrapStatus } from "./hooks/use-bootstrap-status";
 import { SetupLayout } from "./setup-layout";
 import { SetupStepper } from "./setup-stepper";
 import { StepProvider } from "./step-provider";
@@ -10,7 +10,7 @@ import { StepAgent } from "./step-agent";
 import { StepChannel } from "./step-channel";
 import { SetupCompleteModal } from "./setup-complete-modal";
 import { Building2 } from "lucide-react";
-import { ROUTES, SUPPORTED_LANGUAGES, LANGUAGE_LABELS, LOCAL_STORAGE_KEYS } from "@/lib/constants";
+import { ROUTES, route, SUPPORTED_LANGUAGES, LANGUAGE_LABELS, LOCAL_STORAGE_KEYS } from "@/lib/constants";
 import { markSetupSkipped } from "@/lib/setup-skip";
 import { useChatGPTOAuthProviderStatuses } from "@/pages/providers/hooks/use-chatgpt-oauth-provider-statuses";
 import { useAuthStore } from "@/stores/use-auth-store";
@@ -95,13 +95,12 @@ export function SetupPage() {
   // Initialize step from server state (only on first load, not on refetches)
   useEffect(() => {
     if (loading || initialized) return;
-    if (currentStep === ("complete" as SetupStep)) {
-      navigate(ROUTES.OVERVIEW, { replace: true });
-      return;
-    }
+    // DO NOT redirect to overview here — RequireSetup is the single source of
+    // truth for whether setup is needed. Redirecting from SetupPage creates a
+    // race loop when RequireSetup disagrees (e.g. stale cache or refetch lag).
     setStep(currentStep as 1 | 2 | 3 | 4);
     setInitialized(true);
-  }, [currentStep, loading, initialized, navigate]);
+  }, [currentStep, loading, initialized]);
 
   if (loading || !initialized) {
     return <SetupLayout><PageLoader /></SetupLayout>;
@@ -186,7 +185,7 @@ export function SetupPage() {
             onClick={() => {
               if (window.confirm(t("skipSetupConfirm"))) {
                 markSetupSkipped({ userId, tenantId: currentTenantId, tenantSlug: currentTenantSlug });
-                navigate(ROUTES.OVERVIEW, { replace: true });
+                navigate(route(currentTenantSlug, ROUTES.OVERVIEW), { replace: true });
               }
             }}
           >
@@ -201,7 +200,7 @@ export function SetupPage() {
 
       <SetupCompleteModal
         open={showComplete}
-        onGoToDashboard={() => navigate(ROUTES.OVERVIEW, { replace: true })}
+        onGoToDashboard={() => navigate(route(currentTenantSlug, ROUTES.OVERVIEW), { replace: true })}
       />
     </SetupLayout>
   );

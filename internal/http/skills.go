@@ -102,7 +102,7 @@ func (h *SkillsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/skills/rescan-deps", h.adminMiddleware(h.handleRescanDeps))
 	mux.HandleFunc("POST /v1/skills/install-deps", h.adminMiddleware(h.handleInstallDeps))
 	mux.HandleFunc("POST /v1/skills/install-dep", h.adminMiddleware(h.handleInstallDep))
-	mux.HandleFunc("GET /v1/skills/runtimes", h.adminMiddleware(h.handleRuntimes))
+	mux.HandleFunc("GET /v1/skills/runtimes", h.authMiddleware(h.handleRuntimes))
 	mux.HandleFunc("POST /v1/skills/{id}/toggle", h.adminMiddleware(h.handleToggle))
 	// Per-tenant overrides (admin+)
 	mux.HandleFunc("PUT /v1/skills/{id}/tenant-config", h.adminMiddleware(h.handleSetTenantConfig))

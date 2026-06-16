@@ -54,7 +54,7 @@ func (h *SecureCLIHandler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (h *SecureCLIHandler) auth(next http.HandlerFunc) http.HandlerFunc {
-	return requireAuth(permissions.RoleAdmin, next)
+	return requireAuth(permissions.RoleMember, next)
 }
 
 func (h *SecureCLIHandler) emitCacheInvalidate(key string) {

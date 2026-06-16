@@ -27,6 +27,14 @@ func NewPGChannelInstanceStore(db *sql.DB, encryptionKey string) *PGChannelInsta
 	return &PGChannelInstanceStore{db: db, encKey: encryptionKey}
 }
 
+func (s *PGChannelInstanceStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 const channelInstanceSelectCols = `id, name, display_name, channel_type, agent_id,
  credentials, config, enabled, created_by, created_at, updated_at, tenant_id`
 
@@ -59,7 +67,7 @@ func (s *PGChannelInstanceStore) Create(ctx context.Context, inst *store.Channel
 		tenantID = store.MasterTenantID
 	}
 
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO channel_instances (id, name, display_name, channel_type, agent_id,
 		 credentials, config, enabled, created_by, created_at, updated_at, tenant_id)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
@@ -72,7 +80,7 @@ func (s *PGChannelInstanceStore) Create(ctx context.Context, inst *store.Channel
 
 func (s *PGChannelInstanceStore) Get(ctx context.Context, id uuid.UUID) (*store.ChannelInstanceData, error) {
 	if store.IsCrossTenant(ctx) {
-		row := s.db.QueryRowContext(ctx,
+		row := s.dbFor(ctx).QueryRowContext(ctx,
 			`SELECT `+channelInstanceSelectCols+` FROM channel_instances WHERE id = $1`, id)
 		return s.scanInstance(row)
 	}
@@ -80,14 +88,14 @@ func (s *PGChannelInstanceStore) Get(ctx context.Context, id uuid.UUID) (*store.
 	if tenantID == uuid.Nil {
 		return nil, sql.ErrNoRows
 	}
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT `+channelInstanceSelectCols+` FROM channel_instances WHERE id = $1 AND tenant_id = $2`, id, tenantID)
 	return s.scanInstance(row)
 }
 
 func (s *PGChannelInstanceStore) GetByName(ctx context.Context, name string) (*store.ChannelInstanceData, error) {
 	if store.IsCrossTenant(ctx) {
-		row := s.db.QueryRowContext(ctx,
+		row := s.dbFor(ctx).QueryRowContext(ctx,
 			`SELECT `+channelInstanceSelectCols+` FROM channel_instances WHERE name = $1`, name)
 		return s.scanInstance(row)
 	}
@@ -95,7 +103,7 @@ func (s *PGChannelInstanceStore) GetByName(ctx context.Context, name string) (*s
 	if tenantID == uuid.Nil {
 		return nil, sql.ErrNoRows
 	}
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT `+channelInstanceSelectCols+` FROM channel_instances WHERE name = $1 AND tenant_id = $2`, name, tenantID)
 	return s.scanInstance(row)
 }
@@ -239,19 +247,19 @@ func (s *PGChannelInstanceStore) Update(ctx context.Context, id uuid.UUID, updat
 
 	updates["updated_at"] = time.Now()
 	if store.IsCrossTenant(ctx) {
-		return execMapUpdate(ctx, s.db, "channel_instances", id, updates)
+		return execMapUpdate(ctx, s.dbFor(ctx), "channel_instances", id, updates)
 	}
 	tid := store.TenantIDFromContext(ctx)
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required for update")
 	}
-	return execMapUpdateWhereTenant(ctx, s.db, "channel_instances", updates, id, tid)
+	return execMapUpdateWhereTenant(ctx, s.dbFor(ctx), "channel_instances", updates, id, tid)
 }
 
 // loadExistingCreds reads and decrypts the current credentials for merging.
 func (s *PGChannelInstanceStore) loadExistingCreds(ctx context.Context, id uuid.UUID) (map[string]any, error) {
 	var raw []byte
-	err := s.db.QueryRowContext(ctx, "SELECT credentials FROM channel_instances WHERE id = $1", id).Scan(&raw)
+	err := s.dbFor(ctx).QueryRowContext(ctx, "SELECT credentials FROM channel_instances WHERE id = $1", id).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) || len(raw) == 0 {
 		return make(map[string]any), nil
 	}
@@ -272,14 +280,14 @@ func (s *PGChannelInstanceStore) loadExistingCreds(ctx context.Context, id uuid.
 
 func (s *PGChannelInstanceStore) Delete(ctx context.Context, id uuid.UUID) error {
 	if store.IsCrossTenant(ctx) {
-		_, err := s.db.ExecContext(ctx, "DELETE FROM channel_instances WHERE id = $1", id)
+		_, err := s.dbFor(ctx).ExecContext(ctx, "DELETE FROM channel_instances WHERE id = $1", id)
 		return err
 	}
 	tid := store.TenantIDFromContext(ctx)
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required")
 	}
-	_, err := s.db.ExecContext(ctx, "DELETE FROM channel_instances WHERE id = $1 AND tenant_id = $2", id, tid)
+	_, err := s.dbFor(ctx).ExecContext(ctx, "DELETE FROM channel_instances WHERE id = $1 AND tenant_id = $2", id, tid)
 	return err
 }
 
@@ -295,7 +303,7 @@ func (s *PGChannelInstanceStore) ListEnabled(ctx context.Context) ([]store.Chann
 		qArgs = append(qArgs, tenantID)
 	}
 	query += ` ORDER BY name`
-	rows, err := s.db.QueryContext(ctx, query, qArgs...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, query, qArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -314,7 +322,7 @@ func (s *PGChannelInstanceStore) ListAll(ctx context.Context) ([]store.ChannelIn
 		qArgs = append(qArgs, tenantID)
 	}
 	query += ` ORDER BY name`
-	rows, err := s.db.QueryContext(ctx, query, qArgs...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, query, qArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +365,7 @@ func (s *PGChannelInstanceStore) ListPaged(ctx context.Context, opts store.Chann
 	q := `SELECT ` + channelInstanceSelectCols + ` FROM channel_instances` + where +
 		fmt.Sprintf(" ORDER BY name OFFSET %d LIMIT %d", opts.Offset, limit)
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -367,6 +375,6 @@ func (s *PGChannelInstanceStore) ListPaged(ctx context.Context, opts store.Chann
 func (s *PGChannelInstanceStore) CountInstances(ctx context.Context, opts store.ChannelInstanceListOpts) (int, error) {
 	where, args := buildChannelInstanceWhere(ctx, opts)
 	var count int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM channel_instances"+where, args...).Scan(&count)
+	err := s.dbFor(ctx).QueryRowContext(ctx, "SELECT COUNT(*) FROM channel_instances"+where, args...).Scan(&count)
 	return count, err
 }

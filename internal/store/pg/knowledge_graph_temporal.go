@@ -63,7 +63,7 @@ func (s *PGKnowledgeGraphStore) ListEntitiesTemporal(ctx context.Context, agentI
 		      ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, where, argN, argN+1)
 
 	var tRows []entityTemporalRow
-	if err := pkgSqlxDB.SelectContext(ctx, &tRows, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &tRows, q, args...); err != nil {
 		return nil, fmt.Errorf("list entities temporal: %w", err)
 	}
 	entities := make([]store.Entity, len(tRows))
@@ -79,7 +79,7 @@ func (s *PGKnowledgeGraphStore) SupersedeEntity(ctx context.Context, old *store.
 	if err != nil {
 		return fmt.Errorf("kg supersede entity: %w", err)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("supersede begin tx: %w", err)
 	}
@@ -168,7 +168,7 @@ func (s *PGKnowledgeGraphStore) SearchEntitiesByEventTime(ctx context.Context, a
 		      FROM kg_entities WHERE %s ORDER BY event_time DESC LIMIT $%d`, where, argN)
 
 	var tRows []entityTemporalRow
-	if err := pkgSqlxDB.SelectContext(ctx, &tRows, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &tRows, q, args...); err != nil {
 		return nil, fmt.Errorf("search entities by event time: %w", err)
 	}
 	entities := make([]store.Entity, len(tRows))

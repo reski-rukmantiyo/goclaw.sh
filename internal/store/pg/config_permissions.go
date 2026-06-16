@@ -54,6 +54,14 @@ func NewPGConfigPermissionStore(db *sql.DB) *PGConfigPermissionStore {
 	}
 }
 
+func (s *PGConfigPermissionStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 // InvalidateCache clears all cached permission entries.
 func (s *PGConfigPermissionStore) InvalidateCache() {
 	s.mu.Lock()
@@ -87,7 +95,7 @@ func (s *PGConfigPermissionStore) CheckPermission(ctx context.Context, agentID u
 		return false, err
 	}
 	var permRows []permRow
-	err = pkgSqlxDB.SelectContext(ctx, &permRows,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &permRows,
 		`SELECT scope, config_type, permission, user_id FROM agent_config_permissions
 		 WHERE agent_id = $1 AND (user_id = $2 OR user_id = '*')`+tClause,
 		append([]any{agentID, userID}, tArgs...)...,
@@ -169,7 +177,7 @@ func (s *PGConfigPermissionStore) Grant(ctx context.Context, perm *store.ConfigP
 		meta = json.RawMessage("{}")
 	}
 	now := time.Now()
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO agent_config_permissions (agent_id, scope, config_type, user_id, permission, granted_by, metadata, created_at, updated_at, tenant_id)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,$9)
 		 ON CONFLICT (agent_id, scope, config_type, user_id) DO UPDATE SET
@@ -190,7 +198,7 @@ func (s *PGConfigPermissionStore) Revoke(ctx context.Context, agentID uuid.UUID,
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM agent_config_permissions WHERE agent_id = $1 AND scope = $2 AND config_type = $3 AND user_id = $4`+tClause,
 		append([]any{agentID, scope, configType, userID}, tArgs...)...,
 	)
@@ -223,7 +231,7 @@ func (s *PGConfigPermissionStore) List(ctx context.Context, agentID uuid.UUID, c
 	}
 	query += ` ORDER BY created_at`
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +260,7 @@ func (s *PGConfigPermissionStore) ListFileWriters(ctx context.Context, agentID u
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT id, agent_id, scope, config_type, user_id, permission, granted_by, metadata, created_at, updated_at
 		 FROM agent_config_permissions
 		 WHERE agent_id = $1 AND config_type = 'file_writer' AND scope = $2 AND permission = 'allow'`+tClause+`

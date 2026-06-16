@@ -18,6 +18,14 @@ func NewPGKGGraphStore(db *sql.DB) *PGKGGraphStore {
 	return &PGKGGraphStore{db: db}
 }
 
+func (s *PGKGGraphStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 // ListKGGraphNodes returns lightweight KG entities for graph visualization.
 func (s *PGKGGraphStore) ListKGGraphNodes(ctx context.Context, agentID, userID string, limit int) ([]store.KGGraphNode, int, error) {
 	aid := parseUUIDOrNil(agentID)
@@ -45,7 +53,7 @@ func (s *PGKGGraphStore) ListKGGraphNodes(ctx context.Context, agentID, userID s
 	q += fmt.Sprintf(" LIMIT $%d", p)
 	args = append(args, limit)
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("kg graph nodes: %w", err)
 	}
@@ -91,7 +99,7 @@ func (s *PGKGGraphStore) ListKGGraphEdges(ctx context.Context, agentID, userID s
 	q += fmt.Sprintf(" LIMIT $%d", p)
 	args = append(args, limit)
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("kg graph edges: %w", err)
 	}

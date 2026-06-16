@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nextlevelbuilder/goclaw/internal/auth"
 	"github.com/nextlevelbuilder/goclaw/internal/audio"
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/edition"
@@ -16,6 +17,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/media"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/internal/store/pg"
+	"github.com/nextlevelbuilder/goclaw/internal/tenantauth"
 	"github.com/nextlevelbuilder/goclaw/internal/tools"
 )
 
@@ -199,6 +201,39 @@ func (d *gatewayDeps) wireHTTPHandlersOnServer(
 		d.server.SetAPIKeysHandler(httpapi.NewAPIKeysHandler(d.pgStores.APIKeys, d.msgBus))
 		d.server.SetAPIKeyStore(d.pgStores.APIKeys)
 		httpapi.InitAPIKeyCache(d.pgStores.APIKeys, d.msgBus)
+	}
+
+	// Multi-auth module handlers (user, group, audit)
+	if d.pgStores != nil {
+		d.server.SetUsersHandler(httpapi.NewUsersHandler(d.pgStores.Users, d.pgStores.Groups, d.pgStores.Tenants, d.pgStores.Roles))
+		d.server.SetGroupsHandler(httpapi.NewGroupsHandler(d.pgStores.Groups))
+		d.server.SetRolesHandler(httpapi.NewRolesHandler(d.pgStores.Roles, d.pgStores.Users, d.pgStores.Groups, d.pgStores.Tenants))
+		d.server.SetAuditHandler(httpapi.NewAuditHandler(d.pgStores.Audit))
+
+		// Multi-auth session + OIDC handlers
+		if d.pgStores.Users != nil {
+			jwtManager, err := auth.NewJWTManager("goclaw", "goclaw-session", time.Duration(d.cfg.Auth.Session.SessionTimeout())*time.Minute)
+			if err != nil {
+				slog.Error("auth.jwt_init_failed", "error", err)
+			} else {
+				httpapi.InitJWTManager(jwtManager)
+					d.server.Router().SetJWTManager(jwtManager)
+
+				// Per-tenant auth config loader
+				tenantAuthLoader := tenantauth.NewSystemConfigLoader(d.pgStores.SystemConfigs, d.cfg.Auth, os.Getenv("GOCLAW_ENCRYPTION_KEY"))
+
+				authH := httpapi.NewAuthHandler(d.pgStores.Users, d.pgStores.Tenants, jwtManager, tenantAuthLoader)
+				d.server.SetAuthHandler(authH)
+
+				// Permission resolver for RBAC
+				permResolver := httpapi.NewPermissionCache(d.pgStores.Roles, d.pgStores.Groups, 5*time.Minute)
+				httpapi.InitPermCache(permResolver)
+
+				// OIDC handler — always mount; providers resolved per-tenant at runtime
+				oidcH := httpapi.NewOIDCHandler(d.pgStores.Users, d.pgStores.Groups, d.pgStores.Tenants, tenantAuthLoader, jwtManager)
+				d.server.SetOIDCHandler(oidcH)
+			}
+		}
 	}
 
 	// K10: single shared webhookLimiter — one per process enforces per-tenant RPM cap across

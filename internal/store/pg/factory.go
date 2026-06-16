@@ -23,9 +23,14 @@ func NewPGStores(cfg store.StoreConfig) (*store.Stores, error) {
 		skillsDir = config.ResolvedDataDirFromEnv() + "/skills-store"
 	}
 
+	connStore := NewPGTenantDBConnectionStore(db, cfg.EncryptionKey)
+	tenantDBMgr := NewPGTenantDBManager(db, connStore, cfg.EncryptionKey)
+
 	pgStores := &store.Stores{
-		DB:        db,
-		Sessions:  NewPGSessionStore(db),
+		DB:                  db,
+		TenantDBManager:     tenantDBMgr,
+		TenantDBConnections: connStore,
+		Sessions:            NewPGSessionStore(db),
 		Memory:    NewPGMemoryStore(db, memCfg),
 		Cron:      NewPGCronStore(db),
 		Pairing:   NewPGPairingStore(db),
@@ -69,9 +74,15 @@ func NewPGStores(cfg store.StoreConfig) (*store.Stores, error) {
 		WorkstationActivity:          NewPGWorkstationActivityStore(db),
 		WorkstationCommandGroups:     NewPGWorkstationCommandGroupStore(db),
 		WorkstationGroupPermissions:  NewPGWorkstationGroupPermissionStore(db),
+		Users:   NewPGUserStore(db),
+		Groups:  NewPGGroupStore(db),
+		Roles:   NewPGRoleStore(db),
+		Audit:   NewPGAuditStore(db),
 	}
 	// Wire permStore into WorkstationStore so Create seeds allowlist atomically (H5 fix).
 	// Must happen after both stores are constructed.
 	pgStores.Workstations.(*PGWorkstationStore).SetPermStore(pgStores.WorkstationPermissions)
+	// Wire tenant DB manager into CronStore for multi-DB job scheduling.
+	pgStores.Cron.(*PGCronStore).SetTenantDBManager(tenantDBMgr)
 	return pgStores, nil
 }

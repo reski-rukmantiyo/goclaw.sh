@@ -146,6 +146,10 @@ const (
 	MethodTeamsUpdate        = "teams.update"
 	MethodTeamsKnownUsers    = "teams.known_users"
 	MethodTeamsScopes        = "teams.scopes"
+
+	// Tenant auth config
+	MethodTenantAuthGet  = "tenant.auth.get"
+	MethodTenantAuthPatch = "tenant.auth.patch"
 )
 
 // Team workspace

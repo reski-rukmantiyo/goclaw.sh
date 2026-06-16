@@ -110,8 +110,6 @@ export const Methods = {
   PAIRING_LIST: "device.pair.list",
   PAIRING_REVOKE: "device.pair.revoke",
 
-  BROWSER_PAIRING_STATUS: "browser.pairing.status",
-
   APPROVALS_LIST: "exec.approval.list",
   APPROVALS_APPROVE: "exec.approval.approve",
   APPROVALS_DENY: "exec.approval.deny",
@@ -181,6 +179,12 @@ export const Methods = {
   TENANTS_USERS_LIST: "tenants.users.list",
   TENANTS_USERS_ADD: "tenants.users.add",
   TENANTS_USERS_REMOVE: "tenants.users.remove",
+  TENANTS_USERS_UPDATE_ROLE: "tenants.users.updateRole",
+  TENANTS_DELETE: "tenants.delete",
+
+  // Tenant auth config
+  TENANT_AUTH_GET: "tenant.auth.get",
+  TENANT_AUTH_PATCH: "tenant.auth.patch",
 
   // WhatsApp
   WHATSAPP_GROUPS_REFRESH: "whatsapp.groups.refresh",

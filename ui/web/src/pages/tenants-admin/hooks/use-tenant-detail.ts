@@ -1,14 +1,28 @@
 import { useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import i18next from "i18next";
-import { useWs } from "@/hooks/use-ws";
+import { useWs, useHttp } from "@/hooks/use-ws";
 import { queryKeys } from "@/lib/query-keys";
 import { toast } from "@/stores/use-toast-store";
 import { Methods } from "@/api/protocol";
 import type { TenantData, TenantUserData } from "@/types/tenant";
 
+interface CreateUserInput {
+  email: string;
+  display_name: string;
+  phone?: string;
+  password: string;
+  role: string;
+}
+
+interface UpdateUserInput {
+  display_name?: string;
+  phone?: string;
+}
+
 export function useTenantDetail(tenantId: string) {
   const ws = useWs();
+  const http = useHttp();
   const queryClient = useQueryClient();
 
   const { data: tenant, isLoading: tenantLoading } = useQuery({
@@ -20,6 +34,11 @@ export function useTenantDetail(tenantId: string) {
     enabled: !!tenantId,
     staleTime: 60_000,
   });
+
+  const invalidateTenant = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.tenants.detail(tenantId) }),
+    [queryClient, tenantId],
+  );
 
   const { data: users = [], isLoading: usersLoading, isFetching: usersRefreshing } = useQuery({
     queryKey: queryKeys.tenants.users(tenantId),
@@ -36,32 +55,100 @@ export function useTenantDetail(tenantId: string) {
     [queryClient, tenantId],
   );
 
-  const addUser = useCallback(
-    async (userId: string, role: string) => {
+  // --- HTTP mutations ---
+
+  const createUserMutation = useMutation({
+    mutationFn: async (input: CreateUserInput) => {
+      return http.post(`/v1/tenants/${tenantId}/users`, input);
+    },
+    onSuccess: () => {
+      invalidateUsers();
+      toast.success(i18next.t("tenants:userCreated"));
+    },
+    onError: (err: Error) => {
+      toast.error(i18next.t("tenants:createUserFailed"), err.message);
+    },
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: async ({ userId, input }: { userId: string; input: UpdateUserInput }) => {
+      return http.put(`/v1/tenants/${tenantId}/users/${userId}`, input);
+    },
+    onSuccess: () => {
+      invalidateUsers();
+      toast.success(i18next.t("tenants:userUpdated"));
+    },
+    onError: (err: Error) => {
+      toast.error(i18next.t("tenants:updateUserFailed"), err.message);
+    },
+  });
+
+  const removeUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      return http.delete(`/v1/tenants/${tenantId}/users/${userId}`);
+    },
+    onSuccess: () => {
+      invalidateUsers();
+      toast.success(i18next.t("tenants:userDeleted"));
+    },
+    onError: (err: Error) => {
+      toast.error(i18next.t("tenants:deleteUserFailed"), err.message);
+    },
+  });
+
+  const updateUserRoleMutation = useMutation({
+    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
+      return http.put(`/v1/tenants/${tenantId}/users/${userId}/role`, { role });
+    },
+    onSuccess: () => {
+      invalidateUsers();
+      toast.success(i18next.t("tenants:roleUpdated"));
+    },
+    onError: (err: Error) => {
+      toast.error(i18next.t("tenants:roleUpdateFailed"), err.message);
+    },
+  });
+
+  const changePasswordMutation = useMutation({
+    mutationFn: async ({ userId, password }: { userId: string; password: string }) => {
+      return http.put(`/v1/tenants/${tenantId}/users/${userId}/password`, { password });
+    },
+    onSuccess: () => {
+      toast.success(i18next.t("tenants:passwordChanged", { defaultValue: "Password changed" }));
+    },
+    onError: (err: Error) => {
+      toast.error(i18next.t("tenants:passwordChangeFailed", { defaultValue: "Failed to change password" }), err.message);
+    },
+  });
+
+  // --- WS-based tenant ops ---
+
+  const updateTenantName = useCallback(
+    async (name: string) => {
       try {
-        await ws.call(Methods.TENANTS_USERS_ADD, { tenant_id: tenantId, user_id: userId, role });
-        await invalidateUsers();
-        toast.success(i18next.t("tenants:addUser"), userId);
+        await ws.call(Methods.TENANTS_UPDATE, { id: tenantId, name });
+        await invalidateTenant();
+        toast.success(i18next.t("tenants:editName"));
       } catch (err) {
-        toast.error(i18next.t("tenants:addUser"), err instanceof Error ? err.message : "");
+        toast.error(i18next.t("tenants:editName"), err instanceof Error ? err.message : "");
         throw err;
       }
     },
-    [ws, tenantId, invalidateUsers],
+    [ws, tenantId, invalidateTenant],
   );
 
-  const removeUser = useCallback(
-    async (userId: string) => {
+  const deleteTenant = useCallback(
+    async () => {
       try {
-        await ws.call(Methods.TENANTS_USERS_REMOVE, { tenant_id: tenantId, user_id: userId });
-        await invalidateUsers();
-        toast.success(i18next.t("tenants:removeUser"), userId);
+        await ws.call(Methods.TENANTS_DELETE, { tenant_id: tenantId });
+        queryClient.invalidateQueries({ queryKey: queryKeys.tenants.list() });
+        toast.success(i18next.t("tenants:deleteTenant"));
       } catch (err) {
-        toast.error(i18next.t("tenants:removeUser"), err instanceof Error ? err.message : "");
+        toast.error(i18next.t("tenants:deleteTenant"), err instanceof Error ? err.message : "");
         throw err;
       }
     },
-    [ws, tenantId, invalidateUsers],
+    [ws, tenantId, queryClient],
   );
 
   return {
@@ -71,7 +158,20 @@ export function useTenantDetail(tenantId: string) {
     usersLoading,
     usersRefreshing,
     refreshUsers: invalidateUsers,
-    addUser,
-    removeUser,
+    // HTTP mutations
+    createUser: createUserMutation.mutateAsync,
+    updateUser: updateUserMutation.mutateAsync,
+    removeUser: removeUserMutation.mutateAsync,
+    updateUserRole: updateUserRoleMutation.mutateAsync,
+    changePassword: changePasswordMutation.mutateAsync,
+    // Pending flags
+    isCreating: createUserMutation.isPending,
+    isUpdating: updateUserMutation.isPending,
+    isRemoving: removeUserMutation.isPending,
+    isSavingRole: updateUserRoleMutation.isPending,
+    isChangingPassword: changePasswordMutation.isPending,
+    // WS mutations
+    updateTenantName,
+    deleteTenant,
   };
 }

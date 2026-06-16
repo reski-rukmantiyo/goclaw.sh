@@ -14,6 +14,7 @@
   "pairingRequests": "Yêu cầu ghép nối",
   "pendingPairingRequest": "{{count}} yêu cầu ghép nối đang chờ",
   "pendingPairingRequests": "{{count}} yêu cầu ghép nối đang chờ",
+  "profile": "Hồ sơ",
   "apiKeys": "API Keys",
   "documents": "Tài liệu",
   "about": {

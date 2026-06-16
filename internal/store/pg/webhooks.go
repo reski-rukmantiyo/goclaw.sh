@@ -24,6 +24,14 @@ func NewPGWebhookStore(db *sql.DB) *PGWebhookStore {
 	return &PGWebhookStore{db: db}
 }
 
+func (s *PGWebhookStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 // webhookColumns is the canonical SELECT column list for webhooks.
 const webhookColumns = `id, tenant_id, agent_id, name, kind, secret_prefix, secret_hash, encrypted_secret,
 	scopes, channel_id, rate_limit_per_min, ip_allowlist,
@@ -75,7 +83,7 @@ func (s *PGWebhookStore) Create(ctx context.Context, w *store.WebhookData) error
 	if ipAllow == nil {
 		ipAllow = []string{}
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO webhooks
 		 (id, tenant_id, agent_id, name, kind, secret_prefix, secret_hash, encrypted_secret,
 		  scopes, channel_id, rate_limit_per_min, ip_allowlist,
@@ -95,7 +103,7 @@ func (s *PGWebhookStore) GetByID(ctx context.Context, id uuid.UUID) (*store.Webh
 	if err != nil {
 		return nil, err
 	}
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT `+webhookColumns+`
 		 FROM webhooks
 		 WHERE id = $1 AND tenant_id = $2`,
@@ -109,7 +117,7 @@ func (s *PGWebhookStore) GetByHash(ctx context.Context, secretHash string) (*sto
 	if err != nil {
 		return nil, err
 	}
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT `+webhookColumns+`
 		 FROM webhooks
 		 WHERE secret_hash = $1 AND tenant_id = $2 AND NOT revoked`,
@@ -122,7 +130,7 @@ func (s *PGWebhookStore) GetByHash(ctx context.Context, secretHash string) (*sto
 // Intended only for WebhookAuthMiddleware pre-auth resolution before tenant context
 // has been established. Downstream queries must remain tenant-scoped.
 func (s *PGWebhookStore) GetByHashUnscoped(ctx context.Context, secretHash string) (*store.WebhookData, error) {
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT `+webhookColumns+`
 		 FROM webhooks
 		 WHERE secret_hash = $1 AND NOT revoked`,
@@ -134,7 +142,7 @@ func (s *PGWebhookStore) GetByHashUnscoped(ctx context.Context, secretHash strin
 // GetByIDUnscoped looks up a webhook by UUID without a tenant filter.
 // Intended only for WebhookAuthMiddleware HMAC pre-auth resolution.
 func (s *PGWebhookStore) GetByIDUnscoped(ctx context.Context, id uuid.UUID) (*store.WebhookData, error) {
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT `+webhookColumns+`
 		 FROM webhooks
 		 WHERE id = $1 AND NOT revoked`,
@@ -167,7 +175,7 @@ func (s *PGWebhookStore) List(ctx context.Context, f store.WebhookListFilter) ([
 	q += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, n, n+1)
 	args = append(args, limit, f.Offset)
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +197,7 @@ func (s *PGWebhookStore) Update(ctx context.Context, id uuid.UUID, updates map[s
 	if err != nil {
 		return err
 	}
-	return execMapUpdateWhereTenant(ctx, s.db, "webhooks", updates, id, tid)
+	return execMapUpdateWhereTenant(ctx, s.dbFor(ctx), "webhooks", updates, id, tid)
 }
 
 func (s *PGWebhookStore) RotateSecret(ctx context.Context, id uuid.UUID, newSecretHash, newPrefix, newEncryptedSecret string) error {
@@ -197,7 +205,7 @@ func (s *PGWebhookStore) RotateSecret(ctx context.Context, id uuid.UUID, newSecr
 	if err != nil {
 		return err
 	}
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE webhooks SET secret_hash = $1, secret_prefix = $2, encrypted_secret = $3, updated_at = $4
 		 WHERE id = $5 AND tenant_id = $6`,
 		newSecretHash, newPrefix, newEncryptedSecret, time.Now(), id, tid,
@@ -217,7 +225,7 @@ func (s *PGWebhookStore) Revoke(ctx context.Context, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE webhooks SET revoked = true, updated_at = $1
 		 WHERE id = $2 AND tenant_id = $3`,
 		time.Now(), id, tid,
@@ -233,7 +241,7 @@ func (s *PGWebhookStore) Revoke(ctx context.Context, id uuid.UUID) error {
 }
 
 func (s *PGWebhookStore) TouchLastUsed(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE webhooks SET last_used_at = $1 WHERE id = $2`,
 		time.Now(), id,
 	)

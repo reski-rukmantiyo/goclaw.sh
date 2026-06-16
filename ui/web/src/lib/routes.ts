@@ -1,3 +1,12 @@
+/**
+ * Build a tenant-scoped route path.
+ * All app routes live under `/t/:slug/` to enforce tenant context.
+ * Example: `route("master", ROUTES.OVERVIEW)` → `/t/master/overview`
+ */
+export function route(slug: string, path: string): string {
+  return `/t/${slug}${path}`;
+}
+
 export const ROUTES = {
   LOGIN: "/login",
   OVERVIEW: "/overview",
@@ -14,6 +23,7 @@ export const ROUTES = {
   CRON: "/cron",
   CRON_DETAIL: "/cron/:id",
   CONFIG: "/config",
+  AUTHENTICATION: "/authentication",
   TRACES: "/traces",
   TRACE_DETAIL: "/traces/:id",
   EVENTS: "/events",
@@ -51,4 +61,11 @@ export const ROUTES = {
   HOOK_DETAIL: "/hooks/:id",
   WORKSTATIONS: "/workstations",
   WORKSTATION_DETAIL: "/workstations/:id",
+  USER_MGMT: "/admin/users",
+  USER_MGMT_DETAIL: "/admin/users/:id",
+  GROUPS: "/admin/groups",
+  GROUP_DETAIL: "/admin/groups/:id",
+  AUDIT_LOG: "/admin/audit",
+  ROLE_MGMT: "/admin/roles",
+  PROFILE: "/profile",
 } as const;

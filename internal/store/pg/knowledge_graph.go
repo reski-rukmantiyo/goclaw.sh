@@ -42,6 +42,14 @@ func NewPGKnowledgeGraphStore(db *sql.DB) *PGKnowledgeGraphStore {
 	return &PGKnowledgeGraphStore{db: db}
 }
 
+func (s *PGKnowledgeGraphStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 // SetEmbeddingProvider configures the embedding provider for semantic search.
 func (s *PGKnowledgeGraphStore) SetEmbeddingProvider(provider store.EmbeddingProvider) {
 	s.embProvider = provider
@@ -60,7 +68,7 @@ func (s *PGKnowledgeGraphStore) UpsertEntity(ctx context.Context, entity *store.
 	id := uuid.Must(uuid.NewV7())
 	tid := tenantIDForInsert(ctx)
 	var actualID uuid.UUID
-	if err = s.db.QueryRowContext(ctx, `
+	if err = s.dbFor(ctx).QueryRowContext(ctx, `
 		INSERT INTO kg_entities
 			(id, agent_id, user_id, external_id, name, entity_type, description, properties, source_id, confidence, tenant_id, created_at, updated_at, event_time)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, $13)
@@ -105,7 +113,7 @@ func (s *PGKnowledgeGraphStore) GetEntity(ctx context.Context, agentID, userID, 
 	args = append(args, tcArgs...)
 
 	var row entityRow
-	err = pkgSqlxDB.GetContext(ctx, &row, `
+	err = SqlxDBFor(ctx).GetContext(ctx, &row, `
 		SELECT id, agent_id, user_id, external_id, name, entity_type, description,
 		       properties, source_id, confidence, created_at, updated_at, event_time
 		FROM kg_entities WHERE id = $1 AND agent_id = $2`+userWhere+tc,
@@ -134,7 +142,7 @@ func (s *PGKnowledgeGraphStore) DeleteEntity(ctx context.Context, agentID, userI
 		return err
 	}
 	args = append(args, tcArgs...)
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM kg_entities WHERE id = $1 AND agent_id = $2`+userWhere+tc,
 		args...,
 	)
@@ -166,7 +174,7 @@ func (s *PGKnowledgeGraphStore) DeleteEntities(ctx context.Context, agentID, use
 	args := append([]any{pgIDs, aid}, userArgs...)
 	args = append(args, tcArgs...)
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -249,7 +257,7 @@ func (s *PGKnowledgeGraphStore) ListEntities(ctx context.Context, agentID, userI
 		ORDER BY updated_at DESC LIMIT $%d OFFSET $%d`, where, idx, idx+1)
 
 	var rows []entityRow
-	if err = pkgSqlxDB.SelectContext(ctx, &rows, query, args...); err != nil {
+	if err = SqlxDBFor(ctx).SelectContext(ctx, &rows, query, args...); err != nil {
 		return nil, err
 	}
 	entities := make([]store.Entity, len(rows))
@@ -391,7 +399,7 @@ func (s *PGKnowledgeGraphStore) ftsSearch(ctx context.Context, agentID uuid.UUID
 		ORDER BY score DESC, updated_at DESC LIMIT $%d`, combinedTsv, tsqueryExpr, 0.5, where, idx)
 
 	var sRows []scoredEntityRow
-	if err = pkgSqlxDB.SelectContext(ctx, &sRows, q, args...); err != nil {
+	if err = SqlxDBFor(ctx).SelectContext(ctx, &sRows, q, args...); err != nil {
 		return nil, err
 	}
 	results := make([]scoredEntity, len(sRows))
@@ -432,7 +440,7 @@ func (s *PGKnowledgeGraphStore) vectorSearchEntities(ctx context.Context, embedd
 		ORDER BY embedding <=> $%d::vector, updated_at DESC LIMIT $%d`, idx, where, idx, idx+1)
 
 	var sRows []scoredEntityRow
-	if err = pkgSqlxDB.SelectContext(ctx, &sRows, q, args...); err != nil {
+	if err = SqlxDBFor(ctx).SelectContext(ctx, &sRows, q, args...); err != nil {
 		return nil, err
 	}
 	results := make([]scoredEntity, len(sRows))

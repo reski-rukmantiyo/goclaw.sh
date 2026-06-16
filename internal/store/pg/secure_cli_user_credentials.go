@@ -20,7 +20,7 @@ func (s *PGSecureCLIStore) GetUserCredentials(ctx context.Context, binaryID uuid
 	}
 	var uc store.SecureCLIUserCredential
 	var env []byte
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT id, binary_id, user_id, encrypted_env, metadata, created_at, updated_at
 		 FROM secure_cli_user_credentials
 		 WHERE binary_id = $1 AND user_id = $2 AND tenant_id = $3`,
@@ -61,7 +61,7 @@ func (s *PGSecureCLIStore) SetUserCredentials(ctx context.Context, binaryID uuid
 	}
 
 	now := time.Now()
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO secure_cli_user_credentials (binary_id, user_id, encrypted_env, metadata, tenant_id, created_at, updated_at)
 		 VALUES ($1, $2, $3, '{}', $4, $5, $5)
 		 ON CONFLICT (binary_id, user_id, tenant_id) DO UPDATE SET
@@ -77,7 +77,7 @@ func (s *PGSecureCLIStore) DeleteUserCredentials(ctx context.Context, binaryID u
 	if tid == uuid.Nil {
 		tid = store.MasterTenantID
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM secure_cli_user_credentials WHERE binary_id = $1 AND user_id = $2 AND tenant_id = $3`,
 		binaryID, userID, tid,
 	)
@@ -89,7 +89,7 @@ func (s *PGSecureCLIStore) ListUserCredentials(ctx context.Context, binaryID uui
 	if tid == uuid.Nil {
 		tid = store.MasterTenantID
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT id, binary_id, user_id, encrypted_env, metadata, created_at, updated_at
 		 FROM secure_cli_user_credentials
 		 WHERE binary_id = $1 AND tenant_id = $2

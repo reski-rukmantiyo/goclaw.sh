@@ -28,6 +28,10 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           timeout: 30000, // 30s for large audio responses
         },
+        "/auth": {
+          target: `http://${backendHost}:${backendPort}`,
+          changeOrigin: true,
+        },
         "/health": {
           target: `http://${backendHost}:${backendPort}`,
           changeOrigin: true,

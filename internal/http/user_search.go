@@ -92,14 +92,38 @@ func (h *ChannelInstancesHandler) handleSearchUsers(w http.ResponseWriter, r *ht
 			if len(results) >= limit {
 				break
 			}
-			role := u.Role
 			results = append(results, UserSearchResult{
 				ID:          u.UserID,
 				UUID:        u.ID.String(),
 				DisplayName: u.DisplayName,
 				Source:      "tenant_user",
-				Role:        &role,
 			})
+		}
+	}
+
+	// 3. Search users table (auth users from OIDC/local auth)
+	if h.userStore != nil && tid != uuid.Nil && source != "contact" {
+		userResult, err := h.userStore.List(ctx, tid, store.UserListParams{Search: q, Limit: limit})
+		if err != nil {
+			slog.Warn("user_search.users", "error", err)
+		} else if userResult != nil {
+			for _, u := range userResult.Users {
+				if len(results) >= limit {
+					break
+				}
+				if u.Status != "active" {
+					continue
+				}
+				displayName := u.DisplayName
+				role := "member"
+				results = append(results, UserSearchResult{
+					ID:          u.Email,
+					UUID:        u.ID.String(),
+					DisplayName: &displayName,
+					Source:      "tenant_user",
+					Role:        &role,
+				})
+			}
 		}
 	}
 

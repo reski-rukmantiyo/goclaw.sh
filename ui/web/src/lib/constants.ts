@@ -1,6 +1,6 @@
 // Barrel re-exports for backward compatibility.
 // Import directly from sub-modules for new code.
-export { ROUTES } from "./routes";
+export { ROUTES, route } from "./routes";
 export {
   TIMEZONE_OPTIONS,
   getAllIanaTimezones,
@@ -10,7 +10,6 @@ export {
 export const LOCAL_STORAGE_KEYS = {
   TOKEN: "goclaw:token",
   USER_ID: "goclaw:userId",
-  SENDER_ID: "goclaw:senderID",
   TENANT_ID: "goclaw:tenant_id",
   TENANT_HINT: "goclaw:tenant_hint",
   SETUP_SKIPPED: "goclaw:setup_skipped",

@@ -34,25 +34,28 @@ func (s *PGCronStore) GetDueJobs(now time.Time) []store.CronJob {
 	return due
 }
 
-// refreshJobCache reloads all enabled jobs from DB. Must be called with mu held.
+// refreshJobCache reloads all enabled jobs from master DB and all tenant DBs.
+// Must be called with mu held.
 func (s *PGCronStore) refreshJobCache() {
-	rows, err := s.db.QueryContext(s.baseCtx,
-		`SELECT id, tenant_id, agent_id, user_id, name, enabled, schedule_kind, cron_expression, run_at, timezone,
-		 interval_ms, payload, delete_after_run, stateless, deliver, deliver_channel, deliver_to, wake_heartbeat,
-		 next_run_at, last_run_at, last_status, last_error,
-		 created_at, updated_at FROM cron_jobs WHERE enabled = true`)
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-
 	s.jobCache = nil
-	for rows.Next() {
-		job, err := scanCronRow(rows)
+	for _, db := range s.allDBs() {
+		rows, err := db.QueryContext(s.baseCtx,
+			`SELECT id, tenant_id, agent_id, user_id, name, enabled, schedule_kind, cron_expression, run_at, timezone,
+			 interval_ms, payload, delete_after_run, stateless, deliver, deliver_channel, deliver_to, wake_heartbeat,
+			 next_run_at, last_run_at, last_status, last_error,
+			 created_at, updated_at FROM cron_jobs WHERE enabled = true`)
 		if err != nil {
+			slog.Warn("cron: failed to refresh job cache from db", "error", err)
 			continue
 		}
-		s.jobCache = append(s.jobCache, *job)
+		for rows.Next() {
+			job, err := scanCronRow(rows)
+			if err != nil {
+				continue
+			}
+			s.jobCache = append(s.jobCache, *job)
+		}
+		rows.Close()
 	}
 	s.cacheLoaded = true
 	s.cacheTime = time.Now()
@@ -65,15 +68,19 @@ func (s *PGCronStore) InvalidateCache() {
 	s.mu.Unlock()
 }
 
-// recomputeStaleJobs fixes enabled jobs on startup:
-//   - Resets any jobs stuck in 'running' state from a previous crash.
-//   - Recomputes next_run_at for jobs where it is NULL (crashed mid-execution).
-//   - Advances past-due jobs (next_run_at < now) to their next future run time,
-//     preventing a flood of all missed jobs firing simultaneously after downtime.
+// recomputeStaleJobs fixes enabled jobs on startup across master and all tenant DBs.
 func (s *PGCronStore) recomputeStaleJobs() {
+	now := time.Now()
+	for _, db := range s.allDBs() {
+		s.recomputeStaleJobsOnDB(db, now)
+	}
+}
+
+// recomputeStaleJobsOnDB fixes enabled jobs on a single DB.
+func (s *PGCronStore) recomputeStaleJobsOnDB(db *sql.DB, now time.Time) {
 	// Reset stale 'running' status — jobs that were mid-execution when the server
 	// crashed will never self-recover, so mark them as interrupted on startup.
-	if res, err := s.db.ExecContext(s.baseCtx,
+	if res, err := db.ExecContext(s.baseCtx,
 		`UPDATE cron_jobs SET last_status = 'interrupted' WHERE last_status = 'running'`); err != nil {
 		slog.Warn("cron: failed to reset stale running jobs on startup", "error", err)
 	} else if n, _ := res.RowsAffected(); n > 0 {
@@ -81,14 +88,7 @@ func (s *PGCronStore) recomputeStaleJobs() {
 	}
 
 	// Fix jobs with NULL next_run_at OR past-due next_run_at.
-	// Past-due jobs happen when the server was down and their scheduled time passed.
-	// Without this, ALL past-due jobs would fire simultaneously on the first tick.
-	// NOTE: After prolonged downtime, all past-due "every" jobs with the same interval
-	// will synchronize (all get next_run_at = now + interval). This is inherent because
-	// the original schedule anchor is not persisted. After the first execution cycle,
-	// anchor-based scheduling in executeOneJob preserves spacing going forward.
-	now := time.Now()
-	rows, err := s.db.QueryContext(s.baseCtx,
+	rows, err := db.QueryContext(s.baseCtx,
 		`SELECT id, schedule_kind, cron_expression, run_at, timezone, interval_ms
 		 FROM cron_jobs WHERE enabled = true AND (next_run_at IS NULL OR next_run_at < $1)`, now)
 	if err != nil {
@@ -127,14 +127,14 @@ func (s *PGCronStore) recomputeStaleJobs() {
 		next := computeNextRun(&schedule, now, s.defaultTZ)
 		if next == nil {
 			if scheduleKind == "at" {
-				if _, err := s.db.ExecContext(s.baseCtx, "UPDATE cron_jobs SET enabled = false, updated_at = $1 WHERE id = $2", now, id); err != nil {
+				if _, err := db.ExecContext(s.baseCtx, "UPDATE cron_jobs SET enabled = false, updated_at = $1 WHERE id = $2", now, id); err != nil {
 					slog.Warn("cron: failed to disable one-shot job", "id", id, "error", err)
 				}
 			}
 			continue
 		}
 
-		if _, err := s.db.ExecContext(s.baseCtx, "UPDATE cron_jobs SET next_run_at = $1, updated_at = $2 WHERE id = $3", *next, now, id); err != nil {
+		if _, err := db.ExecContext(s.baseCtx, "UPDATE cron_jobs SET next_run_at = $1, updated_at = $2 WHERE id = $3", *next, now, id); err != nil {
 			slog.Warn("cron: failed to advance stale job", "id", id, "error", err)
 		}
 		fixed++
@@ -189,7 +189,7 @@ func (s *PGCronStore) checkAndRunDueJobs() {
 	now := time.Now()
 	var claimedJobs []store.CronJob
 	for _, job := range dueJobs {
-		if id, parseErr := uuid.Parse(job.ID); parseErr == nil && s.claimDueJob(id, now) {
+		if id, parseErr := uuid.Parse(job.ID); parseErr == nil && s.claimDueJob(id, job.TenantID, now) {
 			claimedJobs = append(claimedJobs, job)
 		}
 	}
@@ -230,7 +230,7 @@ func (s *PGCronStore) executeOneJob(job store.CronJob, handler func(job *store.C
 
 	if reloadClaimed {
 		if id, parseErr := uuid.Parse(job.ID); parseErr == nil {
-			freshJob, ok := s.loadClaimedJob(id)
+			freshJob, ok := s.loadClaimedJob(id, job.TenantID)
 			if !ok {
 				slog.Info("cron job skipped after claim state changed", "id", job.ID)
 				return
@@ -278,6 +278,7 @@ func (s *PGCronStore) executeOneJob(job store.CronJob, handler func(job *store.C
 	}
 
 	// Log run
+	ctx := s.tenantCtx(job.TenantID)
 	logID := uuid.Must(uuid.NewV7())
 	var summary *string
 	if err == nil {
@@ -289,7 +290,7 @@ func (s *PGCronStore) executeOneJob(job store.CronJob, handler func(job *store.C
 		if aid, aidErr := uuid.Parse(job.AgentID); aidErr == nil {
 			agentUUID = &aid
 		}
-		if _, err := s.db.ExecContext(s.baseCtx,
+		if _, err := s.dbFor(ctx).ExecContext(ctx,
 			`INSERT INTO cron_run_logs (id, job_id, agent_id, status, error, summary, duration_ms, input_tokens, output_tokens, ran_at)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 			logID, id, agentUUID, status, lastError, summary, durationMS, inputTokens, outputTokens, now,
@@ -301,7 +302,7 @@ func (s *PGCronStore) executeOneJob(job store.CronJob, handler func(job *store.C
 	// Recompute next run or delete
 	if job.DeleteAfterRun {
 		if id, parseErr := uuid.Parse(job.ID); parseErr == nil {
-			if _, err := s.db.ExecContext(s.baseCtx, "DELETE FROM cron_jobs WHERE id = $1", id); err != nil {
+			if _, err := s.dbFor(ctx).ExecContext(ctx, "DELETE FROM cron_jobs WHERE id = $1", id); err != nil {
 				slog.Warn("cron: failed to delete one-shot job", "job_id", job.ID, "error", err)
 			}
 		}
@@ -329,7 +330,7 @@ func (s *PGCronStore) executeOneJob(job store.CronJob, handler func(job *store.C
 			}
 		}
 
-		if _, err := s.db.ExecContext(s.baseCtx,
+		if _, err := s.dbFor(ctx).ExecContext(ctx,
 			`UPDATE cron_jobs SET
 			 last_run_at = $1, last_status = $2, last_error = $3, updated_at = $4,
 			 next_run_at = CASE WHEN enabled = true AND next_run_at IS NULL THEN $5 ELSE next_run_at END
@@ -349,9 +350,10 @@ func (s *PGCronStore) executeOneJob(job store.CronJob, handler func(job *store.C
 	s.emitEvent(evt)
 }
 
-func (s *PGCronStore) claimDueJob(id uuid.UUID, now time.Time) bool {
-	res, err := s.db.ExecContext(
-		s.baseCtx,
+func (s *PGCronStore) claimDueJob(id, tenantID uuid.UUID, now time.Time) bool {
+	ctx := s.tenantCtx(tenantID)
+	res, err := s.dbFor(ctx).ExecContext(
+		ctx,
 		`UPDATE cron_jobs
 		 SET next_run_at = NULL
 		 WHERE id = $1 AND enabled = true AND next_run_at IS NOT NULL AND next_run_at <= $2`,
@@ -367,9 +369,10 @@ func (s *PGCronStore) claimDueJob(id uuid.UUID, now time.Time) bool {
 	return n == 1
 }
 
-func (s *PGCronStore) loadClaimedJob(id uuid.UUID) (*store.CronJob, bool) {
-	row := s.db.QueryRowContext(
-		s.baseCtx,
+func (s *PGCronStore) loadClaimedJob(id, tenantID uuid.UUID) (*store.CronJob, bool) {
+	ctx := s.tenantCtx(tenantID)
+	row := s.dbFor(ctx).QueryRowContext(
+		ctx,
 		`SELECT id, tenant_id, agent_id, user_id, name, enabled, schedule_kind, cron_expression, run_at, timezone,
 		 interval_ms, payload, delete_after_run, stateless, deliver, deliver_channel, deliver_to, wake_heartbeat,
 		 next_run_at, last_run_at, last_status, last_error,

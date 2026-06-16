@@ -48,6 +48,14 @@ func NewPGVaultStore(db *sql.DB) *PGVaultStore {
 	return &PGVaultStore{db: db}
 }
 
+func (s *PGVaultStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGVaultStore) SetEmbeddingProvider(provider store.EmbeddingProvider) {
 	s.embProvider = provider
 }
@@ -119,7 +127,7 @@ func (s *PGVaultStore) UpsertDocument(ctx context.Context, doc *store.VaultDocum
 		chatID = &c
 	}
 
-	err = s.db.QueryRowContext(ctx, `
+	err = s.dbFor(ctx).QueryRowContext(ctx, `
 		INSERT INTO vault_documents
 			(id, tenant_id, agent_id, team_id, chat_id, scope, custom_scope, path, title, doc_type, content_hash, summary, embedding, metadata, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
@@ -184,7 +192,7 @@ func (s *PGVaultStore) GetDocument(ctx context.Context, tenantID, agentID, path 
 	var row vaultDocRow
 	// Scan order MUST match SELECT order above: 15 columns including
 	// path_basename (generated column added in migration 000047).
-	err = s.db.QueryRowContext(ctx, q, args...).Scan(
+	err = s.dbFor(ctx).QueryRowContext(ctx, q, args...).Scan(
 		&row.ID, &row.TenantID, &row.AgentID, &row.TeamID, &row.ChatID, &row.Scope, &row.CustomScope,
 		&row.Path, &row.PathBasename, &row.Title, &row.DocType, &row.ContentHash, &row.Summary,
 		&row.MetaJSON, &row.CreatedAt, &row.UpdatedAt)
@@ -206,7 +214,7 @@ func (s *PGVaultStore) GetDocumentByID(ctx context.Context, tenantID, id string)
 		return nil, fmt.Errorf("vault get document by id: tenant: %w", err)
 	}
 	var row vaultDocRow
-	err = s.db.QueryRowContext(ctx, `
+	err = s.dbFor(ctx).QueryRowContext(ctx, `
 		SELECT id, tenant_id, agent_id, team_id, chat_id, scope, custom_scope, path, path_basename, title, doc_type, content_hash, summary, metadata, created_at, updated_at
 		FROM vault_documents WHERE id = $1 AND tenant_id = $2`, uid, tid,
 	).Scan(&row.ID, &row.TenantID, &row.AgentID, &row.TeamID, &row.ChatID, &row.Scope, &row.CustomScope,
@@ -234,7 +242,7 @@ func (s *PGVaultStore) GetDocumentsByIDs(ctx context.Context, tenantID string, d
 	for start := 0; start < len(docIDs); start += chunkSize {
 		end := min(start+chunkSize, len(docIDs))
 		var scanned []vaultDocRow
-		if err := pkgSqlxDB.SelectContext(ctx, &scanned,
+		if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned,
 			`SELECT id, tenant_id, agent_id, team_id, chat_id, scope, custom_scope, path, path_basename, title, doc_type, content_hash, summary, metadata, created_at, updated_at
 			 FROM vault_documents WHERE id = ANY($1) AND tenant_id = $2`,
 			pqStringArray(docIDs[start:end]), tid); err != nil {
@@ -271,7 +279,7 @@ func (s *PGVaultStore) GetDocumentByBasename(ctx context.Context, tenantID, agen
 	var row vaultDocRow
 	// Scan order MUST match SELECT order above: 15 columns including
 	// path_basename (generated column added in migration 000047).
-	err = s.db.QueryRowContext(ctx, q, args...).Scan(
+	err = s.dbFor(ctx).QueryRowContext(ctx, q, args...).Scan(
 		&row.ID, &row.TenantID, &row.AgentID, &row.TeamID, &row.ChatID, &row.Scope, &row.CustomScope,
 		&row.Path, &row.PathBasename, &row.Title, &row.DocType, &row.ContentHash, &row.Summary,
 		&row.MetaJSON, &row.CreatedAt, &row.UpdatedAt)
@@ -318,7 +326,7 @@ func (s *PGVaultStore) DeleteDocument(ctx context.Context, tenantID, agentID, pa
 		}
 	}
 
-	_, err = s.db.ExecContext(ctx, q, args...)
+	_, err = s.dbFor(ctx).ExecContext(ctx, q, args...)
 	return err
 }
 
@@ -372,7 +380,7 @@ func (s *PGVaultStore) ListDocuments(ctx context.Context, tenantID, agentID stri
 	}
 
 	var scanned []vaultDocRow
-	if err := pkgSqlxDB.SelectContext(ctx, &scanned, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned, q, args...); err != nil {
 		return nil, err
 	}
 
@@ -415,7 +423,7 @@ func (s *PGVaultStore) CountDocuments(ctx context.Context, tenantID, agentID str
 	}
 
 	var count int
-	if err := s.db.QueryRowContext(ctx, q, args...).Scan(&count); err != nil {
+	if err := s.dbFor(ctx).QueryRowContext(ctx, q, args...).Scan(&count); err != nil {
 		return 0, fmt.Errorf("vault count documents: %w", err)
 	}
 	return count, nil
@@ -431,7 +439,7 @@ func (s *PGVaultStore) UpdateHash(ctx context.Context, tenantID, id, newHash str
 	if err != nil {
 		return fmt.Errorf("vault update hash: tenant: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE vault_documents SET content_hash = $1, updated_at = $2 WHERE id = $3 AND tenant_id = $4`,
 		newHash, time.Now().UTC(), uid, tid)
 	return err
@@ -601,7 +609,7 @@ func (s *PGVaultStore) ftsSearch(ctx context.Context, query string, tenantID uui
 	args = append(args, limit)
 
 	var scanned []vaultSearchRow
-	if err := pkgSqlxDB.SelectContext(ctx, &scanned, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned, q, args...); err != nil {
 		return nil, err
 	}
 	return vaultSearchRowsToResults(scanned, "vault"), nil
@@ -640,7 +648,7 @@ func (s *PGVaultStore) vectorSearch(ctx context.Context, embedding []float32, te
 	args = append(args, limit)
 
 	var scanned []vaultSearchRow
-	if err := pkgSqlxDB.SelectContext(ctx, &scanned, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned, q, args...); err != nil {
 		return nil, err
 	}
 	return vaultSearchRowsToResults(scanned, "vault"), nil

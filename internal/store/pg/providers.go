@@ -28,6 +28,13 @@ func NewPGProviderStore(db *sql.DB, encryptionKey string) *PGProviderStore {
 	return &PGProviderStore{db: db, encKey: encryptionKey}
 }
 
+func (s *PGProviderStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
 func (s *PGProviderStore) CreateProvider(ctx context.Context, p *store.LLMProviderData) error {
 	if p.ID == uuid.Nil {
 		p.ID = store.GenNewID()
@@ -55,7 +62,7 @@ func (s *PGProviderStore) CreateProvider(ctx context.Context, p *store.LLMProvid
 	// UPSERT: if provider with same (tenant_id, name) exists, update it and return its ID.
 	// This handles orphaned providers left after agent deletion (#295).
 	var actualID uuid.UUID
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		`INSERT INTO llm_providers (id, name, display_name, provider_type, api_base, api_key, enabled, settings, created_at, updated_at, tenant_id)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		 ON CONFLICT (tenant_id, name) DO UPDATE SET
@@ -77,7 +84,7 @@ func (s *PGProviderStore) GetProvider(ctx context.Context, id uuid.UUID) (*store
 		return nil, err
 	}
 	var p store.LLMProviderData
-	err = pkgSqlxDB.GetContext(ctx, &p,
+	err = SqlxDBFor(ctx).GetContext(ctx, &p,
 		`SELECT id, name, display_name, provider_type, api_base, api_key, enabled, settings, created_at, updated_at, tenant_id
 		 FROM llm_providers WHERE id = $1`+tClause,
 		append([]any{id}, tArgs...)...,
@@ -95,7 +102,7 @@ func (s *PGProviderStore) GetProviderByName(ctx context.Context, name string) (*
 		return nil, err
 	}
 	var p store.LLMProviderData
-	err = pkgSqlxDB.GetContext(ctx, &p,
+	err = SqlxDBFor(ctx).GetContext(ctx, &p,
 		`SELECT id, name, display_name, provider_type, api_base, api_key, enabled, settings, created_at, updated_at, tenant_id
 		 FROM llm_providers WHERE name = $1`+tClause,
 		append([]any{name}, tArgs...)...,
@@ -113,7 +120,7 @@ func (s *PGProviderStore) ListProviders(ctx context.Context) ([]store.LLMProvide
 		return nil, err
 	}
 	var result []store.LLMProviderData
-	err = pkgSqlxDB.SelectContext(ctx, &result,
+	err = SqlxDBFor(ctx).SelectContext(ctx, &result,
 		`SELECT id, name, display_name, provider_type, api_base, api_key, enabled, settings, created_at, updated_at, tenant_id
 		 FROM llm_providers WHERE true`+tClause+` ORDER BY name`, tArgs...)
 	if err != nil {
@@ -128,7 +135,7 @@ func (s *PGProviderStore) ListProviders(ctx context.Context) ([]store.LLMProvide
 // ListAllProviders returns all providers across all tenants. Server-internal only.
 func (s *PGProviderStore) ListAllProviders(ctx context.Context) ([]store.LLMProviderData, error) {
 	var result []store.LLMProviderData
-	err := pkgSqlxDB.SelectContext(ctx, &result,
+	err := SqlxDBFor(ctx).SelectContext(ctx, &result,
 		`SELECT id, name, display_name, provider_type, api_base, api_key, enabled, settings, created_at, updated_at, tenant_id
 		 FROM llm_providers WHERE true ORDER BY name`)
 	if err != nil {
@@ -151,13 +158,13 @@ func (s *PGProviderStore) UpdateProvider(ctx context.Context, id uuid.UUID, upda
 		}
 	}
 	if store.IsCrossTenant(ctx) {
-		return execMapUpdate(ctx, s.db, "llm_providers", id, updates)
+		return execMapUpdate(ctx, s.dbFor(ctx), "llm_providers", id, updates)
 	}
 	tid := store.TenantIDFromContext(ctx)
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required")
 	}
-	return execMapUpdateWhereTenant(ctx, s.db, "llm_providers", updates, id, tid)
+	return execMapUpdateWhereTenant(ctx, s.dbFor(ctx), "llm_providers", updates, id, tid)
 }
 
 func (s *PGProviderStore) DeleteProvider(ctx context.Context, id uuid.UUID) error {
@@ -165,7 +172,7 @@ func (s *PGProviderStore) DeleteProvider(ctx context.Context, id uuid.UUID) erro
 	if err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}

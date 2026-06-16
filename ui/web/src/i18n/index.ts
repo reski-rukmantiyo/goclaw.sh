@@ -44,6 +44,10 @@ import enV3Capabilities from "./locales/en/v3-capabilities.json";
 import enBackup from "./locales/en/backup.json";
 import enHooks from "./locales/en/hooks.json";
 import enWorkstations from "./locales/en/workstations.json";
+import enUsersAdmin from "./locales/en/users-admin.json";
+import enGroupsAdmin from "./locales/en/groups-admin.json";
+import enRoleManagement from "./locales/en/role-management.json";
+import enAudit from "./locales/en/audit.json";
 
 // --- VI namespaces ---
 import viCommon from "./locales/vi/common.json";
@@ -88,6 +92,10 @@ import viV3Capabilities from "./locales/vi/v3-capabilities.json";
 import viBackup from "./locales/vi/backup.json";
 import viHooks from "./locales/vi/hooks.json";
 import viWorkstations from "./locales/vi/workstations.json";
+import viUsersAdmin from "./locales/vi/users-admin.json";
+import viGroupsAdmin from "./locales/vi/groups-admin.json";
+import viRoleManagement from "./locales/vi/role-management.json";
+import viAudit from "./locales/vi/audit.json";
 
 // --- ZH namespaces ---
 import zhCommon from "./locales/zh/common.json";
@@ -132,6 +140,10 @@ import zhV3Capabilities from "./locales/zh/v3-capabilities.json";
 import zhBackup from "./locales/zh/backup.json";
 import zhHooks from "./locales/zh/hooks.json";
 import zhWorkstations from "./locales/zh/workstations.json";
+import zhUsersAdmin from "./locales/zh/users-admin.json";
+import zhGroupsAdmin from "./locales/zh/groups-admin.json";
+import zhRoleManagement from "./locales/zh/role-management.json";
+import zhAudit from "./locales/zh/audit.json";
 
 const STORAGE_KEY = "goclaw:language";
 
@@ -155,6 +167,10 @@ const ns = [
   "backup",
   "hooks",
   "workstations",
+  "users-admin",
+  "groups-admin",
+  "roleManagement",
+  "audit",
 ] as const;
 
 i18n.use(initReactI18next).init({
@@ -180,6 +196,10 @@ i18n.use(initReactI18next).init({
       backup: enBackup,
       hooks: enHooks,
       workstations: enWorkstations,
+      "users-admin": enUsersAdmin,
+      "groups-admin": enGroupsAdmin,
+      roleManagement: enRoleManagement,
+      audit: enAudit,
     },
     vi: {
       common: viCommon, sidebar: viSidebar, topbar: viTopbar, login: viLogin,
@@ -202,6 +222,10 @@ i18n.use(initReactI18next).init({
       backup: viBackup,
       hooks: viHooks,
       workstations: viWorkstations,
+      "users-admin": viUsersAdmin,
+      "groups-admin": viGroupsAdmin,
+      roleManagement: viRoleManagement,
+      audit: viAudit,
     },
     zh: {
       common: zhCommon, sidebar: zhSidebar, topbar: zhTopbar, login: zhLogin,
@@ -224,6 +248,10 @@ i18n.use(initReactI18next).init({
       backup: zhBackup,
       hooks: zhHooks,
       workstations: zhWorkstations,
+      "users-admin": zhUsersAdmin,
+      "groups-admin": zhGroupsAdmin,
+      roleManagement: zhRoleManagement,
+      audit: zhAudit,
     },
   },
   ns: [...ns],

@@ -28,6 +28,11 @@ func (c *Config) ApplySystemConfigs(configs map[string]string) {
 			*dst = &b
 		}
 	}
+	boolDirect := func(key string, dst *bool) {
+		if v, ok := configs[key]; ok && v != "" {
+			*dst = v == "true" || v == "1"
+		}
+	}
 
 	// Embedding
 	if c.Agents.Defaults.Memory == nil {
@@ -99,4 +104,31 @@ func (c *Config) ApplySystemConfigs(configs map[string]string) {
 			c.Agents.Defaults.AllowedPaths = paths
 		}
 	}
+
+	// Auth providers
+	if _, ok := configs["auth.local.enabled"]; ok && c.Auth.Providers.Local == nil {
+		c.Auth.Providers.Local = &LocalAuthConfig{}
+	}
+	if c.Auth.Providers.Local != nil {
+		boolDirect("auth.local.enabled", &c.Auth.Providers.Local.Enabled)
+	}
+	if _, ok := configs["auth.entra_id.enabled"]; ok && c.Auth.Providers.EntraID == nil {
+		c.Auth.Providers.EntraID = &EntraIDAuthConfig{}
+	}
+	if c.Auth.Providers.EntraID != nil {
+		boolDirect("auth.entra_id.enabled", &c.Auth.Providers.EntraID.Enabled)
+		str("auth.entra_id.client_id", &c.Auth.Providers.EntraID.ClientID)
+		str("auth.entra_id.redirect_uri", &c.Auth.Providers.EntraID.RedirectURI)
+		str("auth.entra_id.tenant_id", &c.Auth.Providers.EntraID.TenantID)
+	}
+	if _, ok := configs["auth.google.enabled"]; ok && c.Auth.Providers.Google == nil {
+		c.Auth.Providers.Google = &GoogleAuthConfig{}
+	}
+	if c.Auth.Providers.Google != nil {
+		boolDirect("auth.google.enabled", &c.Auth.Providers.Google.Enabled)
+		str("auth.google.client_id", &c.Auth.Providers.Google.ClientID)
+		str("auth.google.redirect_uri", &c.Auth.Providers.Google.RedirectURI)
+	}
+	integer("auth.session.timeout_minutes", &c.Auth.Session.TimeoutMinutes)
+	boolDirect("auth.session.refresh_enabled", &c.Auth.Session.RefreshEnabled)
 }

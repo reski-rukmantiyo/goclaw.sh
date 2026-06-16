@@ -74,9 +74,9 @@ func (h *TracesHandler) handleList(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Non-admin callers may only see their own traces.
+	// Non-member callers (viewers) may only see their own traces.
 	auth := resolveAuth(r)
-	if !permissions.HasMinRole(auth.Role, permissions.RoleAdmin) {
+	if !permissions.HasMinRole(auth.Role, permissions.RoleMember) {
 		callerID := store.UserIDFromContext(r.Context())
 		opts.UserID = callerID
 	}
@@ -113,9 +113,9 @@ func (h *TracesHandler) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Non-admin callers may only access their own traces.
+	// Non-member callers (viewers) may only access their own traces.
 	auth := resolveAuth(r)
-	if !permissions.HasMinRole(auth.Role, permissions.RoleAdmin) {
+	if !permissions.HasMinRole(auth.Role, permissions.RoleMember) {
 		callerID := store.UserIDFromContext(r.Context())
 		if trace.UserID != callerID {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": i18n.T(locale, i18n.MsgNotFound, "trace", traceIDStr)})
@@ -187,7 +187,7 @@ func (h *TracesHandler) handleExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	authExport := resolveAuth(r)
-	if !permissions.HasMinRole(authExport.Role, permissions.RoleAdmin) {
+	if !permissions.HasMinRole(authExport.Role, permissions.RoleMember) {
 		callerID := store.UserIDFromContext(r.Context())
 		if rootTrace.UserID != callerID {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": i18n.T(locale, i18n.MsgNotFound, "trace", traceID.String())})

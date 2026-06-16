@@ -1,0 +1,22 @@
+{
+  "title": "Audit Log",
+  "description": "View system activity and compliance trail",
+  "time": "Time",
+  "actor": "Actor",
+  "action": "Action",
+  "resourceType": "Resource Type",
+  "resourceId": "Resource ID",
+  "group": "Group",
+  "ipAddress": "IP Address",
+  "detail": "Detail",
+  "viewDetail": "View",
+  "export": "Export",
+  "filterAction": "Filter by action...",
+  "allTypes": "All Types",
+  "user": "User",
+  "group": "Group",
+  "membership": "Membership",
+  "permission": "Permission",
+  "system": "System",
+  "noEntries": "No audit entries found"
+}

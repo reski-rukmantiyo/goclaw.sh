@@ -21,7 +21,7 @@ func (s *PGMemoryStore) ListAllDocumentsGlobal(ctx context.Context) ([]store.Doc
 	}
 
 	var rows []documentInfoRow
-	if err := pkgSqlxDB.SelectContext(ctx, &rows,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows,
 		`SELECT agent_id, path, hash, user_id, updated_at
 		 FROM memory_documents `+whereClause+`
 		 ORDER BY updated_at DESC`, args...); err != nil {
@@ -46,7 +46,7 @@ func (s *PGMemoryStore) ListAllDocuments(ctx context.Context, agentID string) ([
 	}
 
 	var rows []documentInfoRow
-	if err := pkgSqlxDB.SelectContext(ctx, &rows,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows,
 		`SELECT agent_id, path, hash, user_id, updated_at
 		 FROM memory_documents WHERE agent_id = $1`+tc+`
 		 ORDER BY updated_at DESC`, append([]any{aid}, tcArgs...)...); err != nil {
@@ -97,7 +97,7 @@ func (s *PGMemoryStore) GetDocumentDetail(ctx context.Context, agentID, userID, 
 	}
 
 	var row documentDetailRow
-	if err := pkgSqlxDB.GetContext(ctx, &row, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).GetContext(ctx, &row, q, args...); err != nil {
 		return nil, err
 	}
 	detail := row.toDocumentDetail()
@@ -142,7 +142,7 @@ func (s *PGMemoryStore) ListChunks(ctx context.Context, agentID, userID, path st
 	}
 
 	var rows []chunkInfoRow
-	if err := pkgSqlxDB.SelectContext(ctx, &rows, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows, q, args...); err != nil {
 		return nil, err
 	}
 	result := make([]store.ChunkInfo, len(rows))

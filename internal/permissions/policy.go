@@ -25,7 +25,7 @@ type Role string
 const (
 	RoleOwner    Role = "owner"    // Tenant management + full access (superset of admin)
 	RoleAdmin    Role = "admin"    // Full access to all methods
-	RoleOperator Role = "operator" // Read + write access (no admin operations)
+	RoleMember   Role = "member"   // Read + write access (no admin operations)
 	RoleViewer   Role = "viewer"   // Read-only access
 
 	// RoleNone is a sentinel returned by MethodRole for methods that have no
@@ -132,7 +132,7 @@ func RoleFromScopes(scopes []Scope) Role {
 	if slices.Contains(scopes, ScopeWrite) ||
 		slices.Contains(scopes, ScopeApprovals) ||
 		slices.Contains(scopes, ScopePairing) {
-		return RoleOperator
+		return RoleMember
 	}
 	if slices.Contains(scopes, ScopeRead) {
 		return RoleViewer
@@ -160,7 +160,7 @@ func MethodRole(method string) Role {
 
 	// Write methods (require operator or above)
 	if isWriteMethod(method) {
-		return RoleOperator
+		return RoleMember
 	}
 
 	// Read-only methods (viewer and above)
@@ -191,10 +191,10 @@ func MethodScopes(method string) []Scope {
 		return []Scope{ScopeAdmin}
 	}
 	if strings.HasPrefix(method, "approvals.") {
-		return []Scope{ScopeApprovals, ScopeAdmin}
+		return []Scope{ScopeApprovals, ScopeWrite, ScopeAdmin}
 	}
 	if strings.HasPrefix(method, "pairing.") || strings.HasPrefix(method, "device.pair") {
-		return []Scope{ScopePairing, ScopeAdmin}
+		return []Scope{ScopePairing, ScopeWrite, ScopeAdmin}
 	}
 	if isWriteMethod(method) {
 		return []Scope{ScopeWrite, ScopeAdmin}
@@ -229,11 +229,7 @@ func isAdminMethod(method string) bool {
 		protocol.MethodChannelInstancesUpdate,
 		protocol.MethodChannelInstancesDelete,
 
-		// Pairing management (approve/revoke/list/deny require admin).
-		protocol.MethodPairingApprove,
-		protocol.MethodPairingDeny,
-		protocol.MethodPairingList,
-		protocol.MethodPairingRevoke,
+		// Pairing management moved to isWriteMethod() — member+ can approve/deny/list/revoke.
 
 		// Teams — create/delete/update/member management.
 		protocol.MethodTeamsCreate,
@@ -249,11 +245,11 @@ func isAdminMethod(method string) bool {
 		"tenants.update",
 		"tenants.users.add",
 		"tenants.users.remove",
+		"tenants.users.updateRole",
+		"tenants.delete",
+		"tenant.auth.patch",
 
-		// API keys expose secret material — gate list + mutations as admin.
-		protocol.MethodAPIKeysList,
-		protocol.MethodAPIKeysCreate,
-		protocol.MethodAPIKeysRevoke,
+		// API keys moved to isWriteMethod() — member+ can list/create/revoke.
 
 		// Skills (can rewrite agent behavior).
 		protocol.MethodSkillsUpdate,
@@ -264,8 +260,8 @@ func isAdminMethod(method string) bool {
 		protocol.MethodHeartbeatTest,
 		protocol.MethodHeartbeatChecklistSet,
 
-		// Live server logs — data exfiltration risk (closes CVE #866 step 3).
-		protocol.MethodLogsTail,
+		// Live server logs moved to isWriteMethod() — member+ with tenant isolation
+		// providing defense-in-depth against cross-tenant log exfiltration.
 
 		// Hooks mutations (the handler middleware also enforces this).
 		protocol.MethodHooksCreate,
@@ -332,6 +328,10 @@ func isWriteMethod(method string) bool {
 		protocol.MethodTeamsWorkspaceDelete,
 		protocol.MethodHooksTest,
 		protocol.MethodPairingRequest,
+		protocol.MethodPairingApprove,
+		protocol.MethodPairingDeny,
+		protocol.MethodPairingList,
+		protocol.MethodPairingRevoke,
 		protocol.MethodApprovalsApprove,
 		protocol.MethodApprovalsDeny,
 
@@ -347,6 +347,14 @@ func isWriteMethod(method string) bool {
 
 		// Workstations — connection test invokes SSH side-effects.
 		protocol.MethodWorkstationsTest,
+
+		// API keys — member+ can list/create/revoke within tenant scope.
+		protocol.MethodAPIKeysList,
+		protocol.MethodAPIKeysCreate,
+		protocol.MethodAPIKeysRevoke,
+
+		// Live server logs — member+ with tenant isolation.
+		protocol.MethodLogsTail,
 	}
 	return slices.Contains(writeExact, method)
 }
@@ -409,6 +417,7 @@ func isReadMethod(method string) bool {
 		"tenants.get",
 		"tenants.users.list",
 		"tenants.mine",
+		"tenant.auth.get",
 
 		// Teams read
 		protocol.MethodTeamsList,
@@ -467,7 +476,7 @@ func roleLevel(r Role) int {
 		return 4
 	case RoleAdmin:
 		return 3
-	case RoleOperator:
+	case RoleMember:
 		return 2
 	case RoleViewer:
 		return 1

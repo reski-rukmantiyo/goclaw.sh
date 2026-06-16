@@ -196,6 +196,21 @@ func wireChannelEventSubscribers(
 		})
 	}
 
+	// Agent cache invalidation: refresh per-channel agent_key→UUID caches so renamed/recreated
+	// agents used by group agent_id overrides resolve without a full channel reload.
+	if channelMgr != nil {
+		msgBus.Subscribe(bus.TopicCacheAgent, func(event bus.Event) {
+			if event.Name != protocol.EventCacheInvalidate {
+				return
+			}
+			payload, ok := event.Payload.(bus.CacheInvalidatePayload)
+			if !ok || payload.Kind != bus.CacheKindAgent {
+				return
+			}
+			go refreshChannelGroupAgentCaches(context.Background(), channelMgr)
+		})
+	}
+
 	// Reload session clear schedules when channel instances change.
 	if clearScheduler != nil {
 		msgBus.Subscribe(bus.TopicCacheChannelInstances+":session_clear", func(event bus.Event) {
@@ -285,6 +300,27 @@ func wireChannelEventSubscribers(
 				}
 			}()
 		})
+	}
+}
+
+// groupAgentCacheRefresher is implemented by channels (currently WhatsApp) that cache a
+// per-group agent_key → UUID mapping for listen-only message scoping.
+type groupAgentCacheRefresher interface {
+	RefreshGroupAgentCache(context.Context)
+}
+
+// refreshChannelGroupAgentCaches rebuilds each loaded channel's group-agent override cache.
+// Triggered on CacheKindAgent invalidation so a renamed/recreated agent resolves on the next
+// inbound listen-only message without requiring a full channel reload.
+func refreshChannelGroupAgentCaches(ctx context.Context, channelMgr *channels.Manager) {
+	for _, name := range channelMgr.GetEnabledChannels() {
+		ch, ok := channelMgr.GetChannel(name)
+		if !ok {
+			continue
+		}
+		if r, ok := ch.(groupAgentCacheRefresher); ok {
+			r.RefreshGroupAgentCache(ctx)
+		}
 	}
 }
 

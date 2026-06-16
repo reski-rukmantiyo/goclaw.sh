@@ -7,34 +7,48 @@
   "noAccess": "No Access",
   "noAccessDescription": "You don't have access to any tenant. Contact your administrator.",
   "tabs": {
-    "token": "Token",
-    "pairing": "Pairing"
+    "token": "By Token",
+    "email": "By Email"
+  },
+  "email": {
+    "email": "Email",
+    "emailPlaceholder": "you@example.com",
+    "password": "Password",
+    "passwordPlaceholder": "Your password",
+    "forgotPassword": "Forgot password?",
+    "signIn": "Sign In",
+    "signingIn": "Signing in...",
+    "signInWith": "Sign in with {{provider}}",
+    "orContinueWith": "or continue with",
+    "errorInvalidCredentials": "Invalid email or password.",
+    "errorServer": "Server returned {{status}}. Please try again.",
+    "errorCannotConnect": "Cannot connect to server. Check if the gateway is running."
+  },
+  "passwordChange": {
+    "title": "Change Password",
+    "description": "Enter your current password and choose a new one.",
+    "currentPassword": "Current Password",
+    "newPassword": "New Password",
+    "confirmPassword": "Confirm New Password",
+    "cancel": "Cancel",
+    "change": "Change Password",
+    "changing": "Changing...",
+    "successTitle": "Password Changed",
+    "successMessage": "Your password has been updated successfully.",
+    "errorTitle": "Password Change Failed",
+    "errorNetwork": "Cannot connect to server."
   },
   "token": {
     "userId": "User ID",
     "userIdPlaceholder": "your-user-id",
     "userIdHint": "Use \"system\" for full system access",
-    "gatewayToken": "Gateway Token",
+    "gatewayToken": "Gateway Auth Token",
     "tokenPlaceholder": "Bearer token",
     "connect": "Connect",
     "connecting": "Connecting...",
     "errorInvalidCredentials": "Invalid credentials. Check your token and user ID.",
     "errorServer": "Server returned {{status}}. Please try again.",
     "errorCannotConnect": "Cannot connect to gateway. Check if the server is running."
-  },
-  "pairing": {
-    "userId": "User ID",
-    "userIdPlaceholder": "your-user-id",
-    "noTokenNeeded": "No token needed. A pairing code will be generated for an admin to approve.",
-    "requestAccess": "Request Access",
-    "connecting": "Connecting...",
-    "errorConnectionLost": "Connection lost. Please try again.",
-    "errorCannotConnect": "Could not connect to gateway.",
-    "askAdmin": "Ask an admin to approve this code:",
-    "orRun": "Or run:",
-    "waitingForApproval": "Waiting for approval...",
-    "cancel": "Cancel",
-    "approved": "Access approved! Redirecting..."
   },
   "noAccessHint": "Ask your administrator to add you to a tenant, or use a different account.",
   "logout": "Sign Out"

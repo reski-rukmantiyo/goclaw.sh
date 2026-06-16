@@ -4,7 +4,8 @@ import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ROUTES } from "@/lib/constants";
+import { ROUTES, route } from "@/lib/constants";
+import { useTenants } from "@/hooks/use-tenants";
 import { cn } from "@/lib/utils";
 import { strategyLabelKey } from "./agent-display-utils";
 import type { EffectiveChatGPTOAuthRoutingStrategy } from "@/types/agent";
@@ -41,6 +42,7 @@ export function CodexPoolPageHeader({
   onBack,
 }: CodexPoolPageHeaderProps) {
   const { t } = useTranslation("agents");
+  const { currentTenantSlug } = useTenants();
 
   return (
     <>
@@ -121,7 +123,7 @@ export function CodexPoolPageHeader({
               size="sm"
               className="h-8 shrink-0 self-start px-3 [@media(max-height:760px)]:h-7"
             >
-              <Link to={ROUTES.PROVIDERS}>
+              <Link to={route(currentTenantSlug, ROUTES.PROVIDERS)}>
                 {t("chatgptOAuthRouting.openProviders")}
               </Link>
             </Button>

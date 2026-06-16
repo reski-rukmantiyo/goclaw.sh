@@ -193,7 +193,14 @@ func init() {
 		MsgSkillNudge70Pct:      "[System] 您已使用 70% 的迭代预算。请考虑本次会话中的模式是否值得保存为技能。",
 		MsgSkillNudge90Pct:      "[System] 您已使用 90% 的迭代预算。如果本次会话涉及可重用的模式，请考虑在完成前将其保存为技能。",
 
-		MsgInvalidRole: "无效角色：允许的值为 owner、admin、operator、member、viewer",
+		MsgInvalidRole:           "无效角色：允许的值为 owner、admin、member、viewer",
+		MsgSlugImmutable:         "无法修改 slug",
+		MsgTenantDeleted:         "租户已删除",
+		MsgTenantDeleteFailed:    "删除租户失败：%s",
+
+		MsgTenantDBConnectionFailed: "无法连接租户数据库: %s",
+		MsgTenantDBProvisionFailed:  "无法配置租户数据库: %s",
+		MsgTenantDBNotFound:         "未找到租户数据库配置",
 
 		MsgContactIDsRequired:  "contact_ids 为必填项",
 		MsgMergeTargetRequired: "必须提供 tenant_user_id 或 create_user 其中之一",
@@ -274,5 +281,31 @@ func init() {
 
 		// Message tool cross-target forward notice
 		MessageCrossTargetForwarded: "📤 已按请求转发至 %s:%q",
+
+		// Multi-auth
+		MsgAuthInvalidCredentials:  "邮箱或密码无效",
+		MsgAuthAccountSuspended:    "账户已被暂停",
+		MsgAuthRefreshTokenInvalid: "刷新令牌无效或已过期",
+		MsgAuthPasswordMismatch:    "当前密码不正确",
+		MsgAuthPasswordTooShort:    "密码至少需要 %d 个字符",
+		MsgAuthPasswordComplexity:  "密码必须至少8个字符，包含至少1个大写字母、1个数字和1个特殊字符",
+		MsgUserHasGroups:           "用户是 %d 个组的成员，请先从组中移除",
+		MsgUserDeleteBlockedTenants: "用户已注册 %d 个租户，请先取消注册",
+		MsgAuthOIDCFailed:          "OIDC 认证失败：%s",
+		MsgAuthStateInvalid:        "无效或过期的 OAuth 状态",
+
+		// Roles
+		MsgRoleAssigned:               "已分配角色",
+		MsgRoleUnassigned:             "已取消分配角色",
+		MsgRoleDeleteBlocked:          "无法删除角色：已分配给 %d 个用户或组",
+		MsgGroupDeleteBlockedChildren: "无法删除组：包含 %d 个子组",
+
+		// Tenant User CRUD
+		MsgSelfDeleteBlocked:    "无法删除自己的账户",
+		MsgLastOwnerBlocked:     "无法移除租户的最后一位所有者",
+		MsgTargetRoleForbidden:  "权限不足，无法操作目标用户的角色",
+		MsgFieldNotUpdatable:    "字段 %s 不可更新",
+		MsgTenantNotActive:      "租户未激活",
+		MsgRoleNotPermitted:     "角色 %s 不允许执行此操作",
 	})
 }

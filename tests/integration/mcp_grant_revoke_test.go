@@ -48,6 +48,7 @@ func TestBridgeTool_Execute_RevokeAgentGrant_ReturnsError(t *testing.T) {
 		connected,
 		serverID,
 		grantChecker,
+		nil, nil, nil,
 	)
 
 	if err := mcpStore.RevokeFromAgent(ctx, serverID, agentID); err != nil {
@@ -94,6 +95,7 @@ func TestBridgeTool_Execute_RevokeUserGrant_ReturnsError(t *testing.T) {
 		connected,
 		serverID,
 		grantChecker,
+		nil, nil, nil,
 	)
 
 	if err := mcpStore.RevokeFromUser(ctx, serverID, userID); err != nil {

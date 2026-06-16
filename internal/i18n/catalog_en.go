@@ -193,7 +193,14 @@ func init() {
 		MsgSkillNudge70Pct:      "[System] You are at 70% of your iteration budget. Consider whether any patterns from this session would make a good skill.",
 		MsgSkillNudge90Pct:      "[System] You are at 90% of your iteration budget. If this session involved reusable patterns, consider saving them as a skill before completing.",
 
-		MsgInvalidRole: "invalid role: allowed values are owner, admin, operator, member, viewer",
+		MsgInvalidRole:           "invalid role: allowed values are owner, admin, member, viewer",
+		MsgSlugImmutable:         "slug cannot be modified",
+		MsgTenantDeleted:         "tenant deleted",
+		MsgTenantDeleteFailed:    "failed to delete tenant: %s",
+
+		MsgTenantDBConnectionFailed: "failed to connect to tenant database: %s",
+		MsgTenantDBProvisionFailed:  "failed to provision tenant database: %s",
+		MsgTenantDBNotFound:         "tenant database configuration not found",
 
 		MsgContactIDsRequired:  "contact_ids is required",
 		MsgMergeTargetRequired: "exactly one of tenant_user_id or create_user is required",
@@ -274,5 +281,31 @@ func init() {
 
 		// Message tool cross-target forward notice
 		MessageCrossTargetForwarded: "📤 Forwarded to %s as requested: %q",
+
+		// Multi-auth
+		MsgAuthInvalidCredentials:  "invalid email or password",
+		MsgAuthAccountSuspended:    "account is suspended",
+		MsgAuthRefreshTokenInvalid: "invalid or expired refresh token",
+		MsgAuthPasswordMismatch:    "current password is incorrect",
+		MsgAuthPasswordTooShort:    "password must be at least %d characters",
+		MsgAuthPasswordComplexity:  "password must be at least 8 characters with at least 1 uppercase letter, 1 number, and 1 symbol",
+		MsgUserHasGroups:           "user is a member of %d group(s), remove from groups first",
+		MsgUserDeleteBlockedTenants: "user is enrolled in %d tenant(s), unenroll first",
+		MsgAuthOIDCFailed:          "OIDC authentication failed: %s",
+		MsgAuthStateInvalid:        "invalid or expired OAuth state",
+
+		// Roles
+		MsgRoleAssigned:               "role assigned",
+		MsgRoleUnassigned:             "role unassigned",
+		MsgRoleDeleteBlocked:          "cannot delete role: assigned to %d user(s) or group(s)",
+		MsgGroupDeleteBlockedChildren: "cannot delete group: has %d child group(s)",
+
+		// Tenant User CRUD
+		MsgSelfDeleteBlocked:    "Cannot delete your own account",
+		MsgLastOwnerBlocked:     "Cannot remove the last owner of a tenant",
+		MsgTargetRoleForbidden:  "Insufficient permissions for target user's role",
+		MsgFieldNotUpdatable:    "Field %s is not updatable",
+		MsgTenantNotActive:      "Tenant is not active",
+		MsgRoleNotPermitted:     "Role %s is not permitted for this operation",
 	})
 }

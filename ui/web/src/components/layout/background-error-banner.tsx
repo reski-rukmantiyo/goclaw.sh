@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { AlertTriangle, X, Settings2 } from "lucide-react";
 import { useHttp } from "@/hooks/use-ws";
 import { useWsEvent } from "@/hooks/use-ws-event";
-import { useAuthStore } from "@/stores/use-auth-store";
+import { useRole } from "@/hooks/use-role";
 import { Button } from "@/components/ui/button";
 
 interface ProviderErrorPayload {
@@ -21,8 +21,7 @@ interface BackgroundErrorBannerProps {
 export function BackgroundErrorBanner({ settingsOpen, onOpenSettings }: BackgroundErrorBannerProps) {
   const { t } = useTranslation("system-settings");
   const http = useHttp();
-  const role = useAuthStore((s) => s.role);
-  const isAdmin = role === "admin" || role === "owner";
+  const { isAdmin } = useRole();
   const [error, setError] = useState<ProviderErrorPayload | null>(null);
   const [dismissed, setDismissed] = useState(false);
 

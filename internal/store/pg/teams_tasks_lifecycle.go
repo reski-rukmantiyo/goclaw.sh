@@ -15,7 +15,7 @@ func (s *PGTeamStore) ClaimTask(ctx context.Context, taskID, agentID, teamID uui
 	now := time.Now()
 	lockExpires := now.Add(taskLockDuration)
 	tid := tenantIDForInsert(ctx)
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE team_tasks SET status = $1, owner_agent_id = $2, locked_at = $3, lock_expires_at = $4, updated_at = $3
 		 WHERE id = $5 AND status = $6 AND owner_agent_id IS NULL AND team_id = $7 AND tenant_id = $8`,
 		store.TeamTaskStatusInProgress, agentID, now, lockExpires,
@@ -38,7 +38,7 @@ func (s *PGTeamStore) AssignTask(ctx context.Context, taskID, agentID, teamID uu
 	now := time.Now()
 	lockExpires := now.Add(taskLockDuration)
 	tid := tenantIDForInsert(ctx)
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE team_tasks SET status = $1, owner_agent_id = $2, locked_at = $3, lock_expires_at = $4, updated_at = $3
 		 WHERE id = $5 AND team_id = $6 AND status = $7 AND tenant_id = $8`,
 		store.TeamTaskStatusInProgress, agentID, now, lockExpires,
@@ -58,7 +58,7 @@ func (s *PGTeamStore) AssignTask(ctx context.Context, taskID, agentID, teamID uu
 }
 
 func (s *PGTeamStore) CompleteTask(ctx context.Context, taskID, teamID uuid.UUID, result string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func (s *PGTeamStore) CompleteTask(ctx context.Context, taskID, teamID uuid.UUID
 }
 
 func (s *PGTeamStore) CancelTask(ctx context.Context, taskID, teamID uuid.UUID, reason string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -127,7 +127,7 @@ func (s *PGTeamStore) CancelTask(ctx context.Context, taskID, teamID uuid.UUID, 
 }
 
 func (s *PGTeamStore) FailTask(ctx context.Context, taskID, teamID uuid.UUID, errMsg string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -163,7 +163,7 @@ func (s *PGTeamStore) FailTask(ctx context.Context, taskID, teamID uuid.UUID, er
 
 // FailPendingTask marks a pending or blocked task as failed (post-turn validation).
 func (s *PGTeamStore) FailPendingTask(ctx context.Context, taskID, teamID uuid.UUID, errMsg string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -213,7 +213,7 @@ func unblockDependentTasks(ctx context.Context, tx *sql.Tx, taskID uuid.UUID) er
 
 func (s *PGTeamStore) ReviewTask(ctx context.Context, taskID, teamID uuid.UUID) error {
 	tid := tenantIDForInsert(ctx)
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE team_tasks SET status = $1, updated_at = $2
 		 WHERE id = $3 AND status = $4 AND team_id = $5 AND tenant_id = $6`,
 		store.TeamTaskStatusInReview, time.Now(),
@@ -233,7 +233,7 @@ func (s *PGTeamStore) ReviewTask(ctx context.Context, taskID, teamID uuid.UUID) 
 }
 
 func (s *PGTeamStore) ApproveTask(ctx context.Context, taskID, teamID uuid.UUID, comment string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -268,7 +268,7 @@ func (s *PGTeamStore) ApproveTask(ctx context.Context, taskID, teamID uuid.UUID,
 }
 
 func (s *PGTeamStore) RejectTask(ctx context.Context, taskID, teamID uuid.UUID, reason string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}

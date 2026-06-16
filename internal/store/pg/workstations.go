@@ -32,6 +32,14 @@ func NewPGWorkstationStore(db *sql.DB, encryptionKey string) *PGWorkstationStore
 	return &PGWorkstationStore{db: db, encKey: encryptionKey}
 }
 
+func (s *PGWorkstationStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 // SetPermStore wires the permission store so Create can seed defaults atomically.
 // Call this after both stores are initialised (avoids circular construction).
 func (s *PGWorkstationStore) SetPermStore(ps store.WorkstationPermissionStore) {
@@ -95,7 +103,7 @@ func (s *PGWorkstationStore) Create(ctx context.Context, ws *store.Workstation) 
 	ws.CreatedAt = now
 	ws.UpdatedAt = now
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("workstation create begin tx: %w", err)
 	}
@@ -147,7 +155,7 @@ func (s *PGWorkstationStore) GetByID(ctx context.Context, id uuid.UUID) (*store.
 	if tid == uuid.Nil {
 		return nil, sql.ErrNoRows
 	}
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT `+workstationSelectCols+` FROM workstations WHERE id = $1 AND tenant_id = $2`,
 		id, tid)
 	return s.scanRow(row)
@@ -158,7 +166,7 @@ func (s *PGWorkstationStore) GetByKey(ctx context.Context, key string) (*store.W
 	if tid == uuid.Nil {
 		return nil, sql.ErrNoRows
 	}
-	row := s.db.QueryRowContext(ctx,
+	row := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT `+workstationSelectCols+` FROM workstations WHERE workstation_key = $1 AND tenant_id = $2`,
 		key, tid)
 	return s.scanRow(row)
@@ -169,7 +177,7 @@ func (s *PGWorkstationStore) List(ctx context.Context) ([]store.Workstation, err
 	if tid == uuid.Nil {
 		return nil, nil
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.dbFor(ctx).QueryContext(ctx,
 		`SELECT `+workstationSelectCols+` FROM workstations WHERE tenant_id = $1 ORDER BY name`,
 		tid)
 	if err != nil {
@@ -213,7 +221,7 @@ func (s *PGWorkstationStore) Update(ctx context.Context, id uuid.UUID, updates m
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required for update")
 	}
-	return execMapUpdateWhereTenant(ctx, s.db, "workstations", updates, id, tid)
+	return execMapUpdateWhereTenant(ctx, s.dbFor(ctx), "workstations", updates, id, tid)
 }
 
 func (s *PGWorkstationStore) SetActive(ctx context.Context, id uuid.UUID, active bool) error {
@@ -225,7 +233,7 @@ func (s *PGWorkstationStore) Delete(ctx context.Context, id uuid.UUID) error {
 	if tid == uuid.Nil {
 		return fmt.Errorf("tenant_id required")
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM workstations WHERE id = $1 AND tenant_id = $2`, id, tid)
 	return err
 }

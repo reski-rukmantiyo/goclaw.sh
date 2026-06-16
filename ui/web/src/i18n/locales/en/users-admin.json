@@ -1,0 +1,68 @@
+{
+  "title": "Users",
+  "description": "Manage users and their access",
+  "addUser": "Add User",
+  "password": "Password",
+  "passwordPlaceholder": "Min. 8 characters",
+  "passwordHint": "Must be at least 8 characters with 1 uppercase letter, 1 number, and 1 symbol",
+  "searchPlaceholder": "Search users...",
+  "emptyTitle": "No users found",
+  "emptyDescription": "Add a user to get started",
+  "never": "Never",
+  "selectRole": "Select Role",
+  "lastOwnerTooltip": "Cannot delete the last owner of a tenant",
+  "columns": {
+    "displayName": "Display Name",
+    "email": "Email",
+    "role": "Role",
+    "provider": "Provider",
+    "status": "Status",
+    "lastLogin": "Last Login",
+    "phone": "Phone",
+    "actions": "Actions"
+  },
+  "status": {
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "role": {
+    "owner": "Owner",
+    "admin": "Admin",
+    "member": "Member",
+    "viewer": "Viewer"
+  },
+  "actions": {
+    "edit": "Edit",
+    "changeRole": "Change Role",
+    "changePassword": "Change Password",
+    "delete": "Delete"
+  },
+  "editUser": {
+    "title": "Edit User"
+  },
+  "changeRole": {
+    "title": "Change Role",
+    "description": "Change role for {{name}}"
+  },
+  "changePassword": {
+    "title": "Change Password",
+    "description": "Set a new password for {{name}}",
+    "newPassword": "New Password"
+  },
+  "delete": {
+    "title": "Delete User",
+    "description": "Are you sure you want to delete {{name}}? This action cannot be undone."
+  },
+  "toast": {
+    "created": "User created",
+    "failedCreate": "Failed to create user",
+    "userUpdated": "User updated",
+    "updateUserFailed": "Failed to update user",
+    "userDeleted": "User deleted",
+    "failedDeleteUser": "Failed to delete user",
+    "roleChanged": "Role changed",
+    "failedRoleChange": "Failed to change role",
+    "passwordChanged": "Password changed",
+    "failedPasswordChange": "Failed to change password"
+  }
+}

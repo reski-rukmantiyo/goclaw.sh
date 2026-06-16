@@ -21,12 +21,20 @@ func NewPGActivityStore(db *sql.DB) *PGActivityStore {
 	return &PGActivityStore{db: db}
 }
 
+func (s *PGActivityStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGActivityStore) Log(ctx context.Context, entry *store.ActivityLog) error {
 	tenantID := store.TenantIDFromContext(ctx)
 	if tenantID == uuid.Nil {
 		tenantID = store.MasterTenantID
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO activity_logs (actor_type, actor_id, action, entity_type, entity_id, details, ip_address, tenant_id)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 		entry.ActorType, entry.ActorID, entry.Action,
@@ -49,7 +57,7 @@ func (s *PGActivityStore) List(ctx context.Context, opts store.ActivityListOpts)
 		where, len(args)-1, len(args),
 	)
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +79,7 @@ func (s *PGActivityStore) Count(ctx context.Context, opts store.ActivityListOpts
 	query := fmt.Sprintf("SELECT COUNT(*) FROM activity_logs %s", where)
 
 	var count int
-	err := s.db.QueryRowContext(ctx, query, args...).Scan(&count)
+	err := s.dbFor(ctx).QueryRowContext(ctx, query, args...).Scan(&count)
 	return count, err
 }
 

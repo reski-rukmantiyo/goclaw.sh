@@ -52,6 +52,14 @@ func NewPGSkillStore(db *sql.DB, baseDir string) *PGSkillStore {
 	}
 }
 
+func (s *PGSkillStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGSkillStore) Version() int64 { return s.version.Load() }
 func (s *PGSkillStore) BumpVersion()   { s.version.Store(time.Now().UnixMilli()) }
 func (s *PGSkillStore) Dirs() []string { return []string{s.baseDir} }
@@ -77,7 +85,7 @@ func (s *PGSkillStore) ListSkills(ctx context.Context) []store.SkillInfo {
 	// so admins can see missing deps and re-activate after installing them.
 	// Tenant filter: system skills visible globally, custom skills scoped to tenant.
 	var scanned []skillInfoRowWithFrontmatter
-	if err := pkgSqlxDB.SelectContext(ctx, &scanned,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned,
 		`SELECT id, name, slug, description, visibility, owner_id, tags, version, is_system, status, enabled, deps, frontmatter, file_path
 		 FROM skills WHERE (status IN ('active', 'archived') OR is_system = true) AND (is_system = true OR tenant_id = $1)
 		 ORDER BY name`, tid); err != nil {
@@ -103,7 +111,7 @@ func (s *PGSkillStore) ListSkills(ctx context.Context) []store.SkillInfo {
 func (s *PGSkillStore) ListAllSkills(ctx context.Context) []store.SkillInfo {
 	var scanned []skillInfoRow
 	if store.IsCrossTenant(ctx) {
-		if err := pkgSqlxDB.SelectContext(ctx, &scanned,
+		if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned,
 			`SELECT id, tenant_id, name, slug, description, visibility, owner_id, tags, version, is_system, status, enabled, deps, file_path
 			 FROM skills WHERE enabled = true AND status != 'deleted'
 			 ORDER BY name`); err != nil {
@@ -114,7 +122,7 @@ func (s *PGSkillStore) ListAllSkills(ctx context.Context) []store.SkillInfo {
 		if tid == uuid.Nil {
 			tid = store.MasterTenantID
 		}
-		if err := pkgSqlxDB.SelectContext(ctx, &scanned,
+		if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned,
 			`SELECT id, tenant_id, name, slug, description, visibility, owner_id, tags, version, is_system, status, enabled, deps, file_path
 			 FROM skills WHERE enabled = true AND status != 'deleted' AND (is_system = true OR tenant_id = $1)
 			 ORDER BY name`, tid); err != nil {
@@ -128,7 +136,7 @@ func (s *PGSkillStore) ListAllSkills(ctx context.Context) []store.SkillInfo {
 // No tenant filter — system skills belong to MasterTenantID and are globally visible.
 func (s *PGSkillStore) ListAllSystemSkills(ctx context.Context) []store.SkillInfo {
 	var scanned []skillInfoRow
-	if err := pkgSqlxDB.SelectContext(ctx, &scanned,
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &scanned,
 		`SELECT id, tenant_id, name, slug, description, visibility, owner_id, tags, version, is_system, status, enabled, deps, file_path
 		 FROM skills WHERE is_system = true AND enabled = true AND status != 'deleted'
 		 ORDER BY name`); err != nil {
@@ -155,7 +163,7 @@ func (s *PGSkillStore) StoreMissingDeps(ctx context.Context, id uuid.UUID, missi
 		return err
 	}
 	tid := tenantIDForInsert(ctx)
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE skills SET deps = $1, updated_at = NOW() WHERE id = $2 AND (is_system = true OR tenant_id = $3)`,
 		encoded, id, tid,
 	)

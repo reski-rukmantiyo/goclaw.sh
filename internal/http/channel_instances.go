@@ -24,13 +24,14 @@ type ChannelInstancesHandler struct {
 	configPermStore store.ConfigPermissionStore
 	contactStore    store.ContactStore
 	tenantStore     store.TenantStore
+	userStore       store.UserStore
 	msgBus          *bus.MessageBus
 	memberResolver  channels.MemberResolver // optional — enriches file_writer metadata on addwriter
 }
 
 // NewChannelInstancesHandler creates a handler for channel instance management endpoints.
-func NewChannelInstancesHandler(s store.ChannelInstanceStore, agentStore store.AgentStore, configPermStore store.ConfigPermissionStore, contactStore store.ContactStore, tenantStore store.TenantStore, msgBus *bus.MessageBus) *ChannelInstancesHandler {
-	return &ChannelInstancesHandler{store: s, agentStore: agentStore, configPermStore: configPermStore, contactStore: contactStore, tenantStore: tenantStore, msgBus: msgBus}
+func NewChannelInstancesHandler(s store.ChannelInstanceStore, agentStore store.AgentStore, configPermStore store.ConfigPermissionStore, contactStore store.ContactStore, tenantStore store.TenantStore, userStore store.UserStore, msgBus *bus.MessageBus) *ChannelInstancesHandler {
+	return &ChannelInstancesHandler{store: s, agentStore: agentStore, configPermStore: configPermStore, contactStore: contactStore, tenantStore: tenantStore, userStore: userStore, msgBus: msgBus}
 }
 
 // SetMemberResolver wires a channel member resolver so addwriter can auto-fill

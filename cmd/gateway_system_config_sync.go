@@ -149,4 +149,22 @@ func seedConfigForContext(ctx context.Context, sc store.SystemConfigStore, cfg *
 			set("allowed_paths", string(b))
 		}
 	}
+
+	// Auth providers (tenant-scoped; secrets excluded — entered per-tenant via UI)
+	if cfg.Auth.Providers.Local != nil {
+		setBool("auth.local.enabled", &cfg.Auth.Providers.Local.Enabled)
+	}
+	if cfg.Auth.Providers.EntraID != nil {
+		setBool("auth.entra_id.enabled", &cfg.Auth.Providers.EntraID.Enabled)
+		set("auth.entra_id.client_id", cfg.Auth.Providers.EntraID.ClientID)
+		set("auth.entra_id.redirect_uri", cfg.Auth.Providers.EntraID.RedirectURI)
+		set("auth.entra_id.tenant_id", cfg.Auth.Providers.EntraID.TenantID)
+	}
+	if cfg.Auth.Providers.Google != nil {
+		setBool("auth.google.enabled", &cfg.Auth.Providers.Google.Enabled)
+		set("auth.google.client_id", cfg.Auth.Providers.Google.ClientID)
+		set("auth.google.redirect_uri", cfg.Auth.Providers.Google.RedirectURI)
+	}
+	setInt("auth.session.timeout_minutes", cfg.Auth.Session.TimeoutMinutes)
+	setBool("auth.session.refresh_enabled", &cfg.Auth.Session.RefreshEnabled)
 }

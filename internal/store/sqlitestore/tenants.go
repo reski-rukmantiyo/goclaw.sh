@@ -7,12 +7,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/store/base"
 )
 
 // SQLiteTenantStore implements store.TenantStore backed by SQLite.
@@ -115,25 +117,122 @@ func (s *SQLiteTenantStore) GetTenantsByIDs(ctx context.Context, ids []uuid.UUID
 }
 
 func (s *SQLiteTenantStore) UpdateTenant(ctx context.Context, id uuid.UUID, updates map[string]any) error {
+	if _, ok := updates["slug"]; ok {
+		return errors.New("slug cannot be modified")
+	}
 	return execMapUpdate(ctx, s.db, "tenants", id, updates)
+}
+
+func (s *SQLiteTenantStore) DeleteTenant(ctx context.Context, id uuid.UUID) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	deleteStmts := []string{
+		`DELETE FROM team_task_comments WHERE tenant_id = ?`,
+		`DELETE FROM team_task_events WHERE tenant_id = ?`,
+		`DELETE FROM team_task_attachments WHERE tenant_id = ?`,
+		`DELETE FROM webhook_calls WHERE tenant_id = ?`,
+		`DELETE FROM hook_executions WHERE hook_id IN (SELECT id FROM hooks WHERE tenant_id = ?)`,
+		`DELETE FROM hook_agents WHERE hook_id IN (SELECT id FROM hooks WHERE tenant_id = ?)`,
+		`DELETE FROM agent_workstation_links WHERE tenant_id = ?`,
+		`DELETE FROM workstation_permissions WHERE tenant_id = ?`,
+		`DELETE FROM workstation_activity WHERE tenant_id = ?`,
+		`DELETE FROM workstation_group_permissions WHERE tenant_id = ?`,
+		`DELETE FROM memory_chunks WHERE tenant_id = ?`,
+		`DELETE FROM kg_relations WHERE tenant_id = ?`,
+		`DELETE FROM kg_dedup_candidates WHERE tenant_id = ?`,
+		`DELETE FROM vault_links WHERE from_doc_id IN (SELECT id FROM vault_documents WHERE tenant_id = ?)`,
+		`DELETE FROM agent_config_permissions WHERE tenant_id = ?`,
+		`DELETE FROM agent_context_files WHERE tenant_id = ?`,
+		`DELETE FROM user_context_files WHERE tenant_id = ?`,
+		`DELETE FROM user_agent_profiles WHERE tenant_id = ?`,
+		`DELETE FROM user_agent_overrides WHERE tenant_id = ?`,
+		`DELETE FROM agent_shares WHERE tenant_id = ?`,
+		`DELETE FROM agent_links WHERE tenant_id = ?`,
+		`DELETE FROM episodic_summaries WHERE tenant_id = ?`,
+		`DELETE FROM agent_evolution_metrics WHERE tenant_id = ?`,
+		`DELETE FROM agent_evolution_suggestions WHERE tenant_id = ?`,
+		`DELETE FROM channel_contacts WHERE tenant_id = ?`,
+		`DELETE FROM channel_pending_messages WHERE tenant_id = ?`,
+		`DELETE FROM pairing_requests WHERE tenant_id = ?`,
+		`DELETE FROM paired_devices WHERE tenant_id = ?`,
+		`DELETE FROM traces WHERE tenant_id = ?`,
+		`DELETE FROM spans WHERE tenant_id = ?`,
+		`DELETE FROM activity_logs WHERE tenant_id = ?`,
+		`DELETE FROM usage_snapshots WHERE tenant_id = ?`,
+		`DELETE FROM embedding_cache WHERE tenant_id = ?`,
+		`DELETE FROM listen_raw_messages WHERE tenant_id = ?`,
+		`DELETE FROM raw_message_chunks WHERE tenant_id = ?`,
+		`DELETE FROM system_configs WHERE tenant_id = ?`,
+		`DELETE FROM builtin_tool_tenant_configs WHERE tenant_id = ?`,
+		`DELETE FROM skill_tenant_configs WHERE tenant_id = ?`,
+		`DELETE FROM subagent_tasks WHERE tenant_id = ?`,
+		`DELETE FROM tenant_hook_budget WHERE tenant_id = ?`,
+		`DELETE FROM cron_jobs WHERE tenant_id = ?`,
+		`DELETE FROM webhooks WHERE tenant_id = ?`,
+		`DELETE FROM hooks WHERE tenant_id = ?`,
+		`DELETE FROM team_tasks WHERE tenant_id = ?`,
+		`DELETE FROM team_user_grants WHERE tenant_id = ?`,
+		`DELETE FROM skill_agent_grants WHERE tenant_id = ?`,
+		`DELETE FROM skill_user_grants WHERE tenant_id = ?`,
+		`DELETE FROM mcp_agent_grants WHERE tenant_id = ?`,
+		`DELETE FROM mcp_user_grants WHERE tenant_id = ?`,
+		`DELETE FROM mcp_access_requests WHERE tenant_id = ?`,
+		`DELETE FROM mcp_user_credentials WHERE tenant_id = ?`,
+		`DELETE FROM secure_cli_agent_grants WHERE tenant_id = ?`,
+		`DELETE FROM secure_cli_user_credentials WHERE tenant_id = ?`,
+		`DELETE FROM agent_team_members WHERE tenant_id = ?`,
+		`DELETE FROM memory_documents WHERE tenant_id = ?`,
+		`DELETE FROM kg_entities WHERE tenant_id = ?`,
+		`DELETE FROM vault_documents WHERE tenant_id = ?`,
+		`DELETE FROM tenant_users WHERE tenant_id = ?`,
+		`DELETE FROM sessions WHERE tenant_id = ?`,
+		`DELETE FROM api_keys WHERE tenant_id = ?`,
+		`DELETE FROM config_secrets WHERE tenant_id = ?`,
+		`DELETE FROM skills WHERE tenant_id = ?`,
+		`DELETE FROM mcp_servers WHERE tenant_id = ?`,
+		`DELETE FROM secure_cli_binaries WHERE tenant_id = ?`,
+		`DELETE FROM channel_instances WHERE tenant_id = ?`,
+		`DELETE FROM agent_teams WHERE tenant_id = ?`,
+		`DELETE FROM llm_providers WHERE tenant_id = ?`,
+		`DELETE FROM workstations WHERE tenant_id = ?`,
+		`DELETE FROM agents WHERE tenant_id = ?`,
+		`DELETE FROM tenant_db_connections WHERE tenant_id = ?`,
+		`DELETE FROM tenants WHERE id = ?`,
+	}
+
+	for _, stmt := range deleteStmts {
+		if _, err := tx.ExecContext(ctx, stmt, id); err != nil {
+			return fmt.Errorf("delete tenant data: %w", err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 // ============================================================
 // Tenant-user membership
 // ============================================================
 
-func (s *SQLiteTenantStore) AddUser(ctx context.Context, tenantID uuid.UUID, userID, role string) error {
+func (s *SQLiteTenantStore) AddUser(ctx context.Context, tenantID uuid.UUID, userID string, isOwner bool) error {
+	normalized, err := base.NormalizeUserID(ctx, s.db, userID)
+	if err != nil {
+		return fmt.Errorf("normalize user_id: %w", err)
+	}
 	now := time.Now()
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO tenant_users (id, tenant_id, user_id, role, created_at, updated_at)
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO tenant_users (id, tenant_id, user_id, is_owner, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?)
-		 ON CONFLICT (tenant_id, user_id) DO UPDATE SET role = excluded.role, updated_at = excluded.updated_at`,
-		store.GenNewID(), tenantID, userID, role, now, now,
+		 ON CONFLICT (tenant_id, user_id) DO UPDATE SET is_owner = excluded.is_owner, updated_at = excluded.updated_at`,
+		store.GenNewID(), tenantID, normalized, isOwner, now, now,
 	)
 	return err
 }
 
-const tenantUserSelectCols = `id, tenant_id, user_id, display_name, role, metadata, created_at, updated_at`
+const tenantUserSelectCols = `id, tenant_id, user_id, display_name, is_owner, metadata, created_at, updated_at`
 
 func (s *SQLiteTenantStore) GetTenantUser(ctx context.Context, id uuid.UUID) (*store.TenantUserData, error) {
 	var row tenantUserRow
@@ -146,7 +245,11 @@ func (s *SQLiteTenantStore) GetTenantUser(ctx context.Context, id uuid.UUID) (*s
 	return &d, nil
 }
 
-func (s *SQLiteTenantStore) CreateTenantUserReturning(ctx context.Context, tenantID uuid.UUID, userID, displayName, role string) (*store.TenantUserData, error) {
+func (s *SQLiteTenantStore) CreateTenantUserReturning(ctx context.Context, tenantID uuid.UUID, userID, displayName string) (*store.TenantUserData, error) {
+	normalized, err := base.NormalizeUserID(ctx, s.db, userID)
+	if err != nil {
+		return nil, fmt.Errorf("normalize user_id: %w", err)
+	}
 	now := time.Now()
 	var dn *string
 	if displayName != "" {
@@ -154,17 +257,17 @@ func (s *SQLiteTenantStore) CreateTenantUserReturning(ctx context.Context, tenan
 	}
 	// SQLite 3.35+ supports RETURNING.
 	row := s.db.QueryRowContext(ctx,
-		`INSERT INTO tenant_users (id, tenant_id, user_id, display_name, role, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO tenant_users (id, tenant_id, user_id, display_name, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?)
 		 ON CONFLICT (tenant_id, user_id) DO UPDATE SET
 		   display_name = COALESCE(excluded.display_name, tenant_users.display_name),
 		   updated_at = excluded.updated_at
-		 RETURNING id, tenant_id, user_id, display_name, role, metadata, created_at, updated_at`,
-		store.GenNewID(), tenantID, userID, dn, role, now, now,
+		 RETURNING id, tenant_id, user_id, display_name, is_owner, metadata, created_at, updated_at`,
+		store.GenNewID(), tenantID, normalized, dn, now, now,
 	)
 	var d store.TenantUserData
 	createdAt, updatedAt := scanTimePair()
-	if err := row.Scan(&d.ID, &d.TenantID, &d.UserID, &d.DisplayName, &d.Role, &d.Metadata, createdAt, updatedAt); err != nil {
+	if err := row.Scan(&d.ID, &d.TenantID, &d.UserID, &d.DisplayName, &d.IsOwner, &d.Metadata, createdAt, updatedAt); err != nil {
 		return nil, err
 	}
 	d.CreatedAt = createdAt.Time
@@ -180,16 +283,19 @@ func (s *SQLiteTenantStore) RemoveUser(ctx context.Context, tenantID uuid.UUID, 
 	return err
 }
 
-func (s *SQLiteTenantStore) GetUserRole(ctx context.Context, tenantID uuid.UUID, userID string) (string, error) {
-	var role string
+func (s *SQLiteTenantStore) IsOwner(ctx context.Context, tenantID uuid.UUID, userID string) (bool, error) {
+	var isOwner bool
 	err := s.db.QueryRowContext(ctx,
-		`SELECT role FROM tenant_users WHERE tenant_id = ? AND user_id = ?`,
-		tenantID, userID,
-	).Scan(&role)
+		`SELECT is_owner FROM tenant_users tu
+		 LEFT JOIN users u ON u.email = tu.user_id
+		 WHERE tu.tenant_id = ? AND (tu.user_id = ? OR u.id = ?)
+		 LIMIT 1`,
+		tenantID, userID, userID,
+	).Scan(&isOwner)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
+		return false, nil
 	}
-	return role, err
+	return isOwner, err
 }
 
 func (s *SQLiteTenantStore) ListUsers(ctx context.Context, tenantID uuid.UUID) ([]store.TenantUserData, error) {
@@ -205,7 +311,10 @@ func (s *SQLiteTenantStore) ListUsers(ctx context.Context, tenantID uuid.UUID) (
 func (s *SQLiteTenantStore) ListUserTenants(ctx context.Context, userID string) ([]store.TenantUserData, error) {
 	var rows []tenantUserRow
 	err := pkgSqlxDB.SelectContext(ctx, &rows,
-		`SELECT `+tenantUserSelectCols+` FROM tenant_users WHERE user_id = ? ORDER BY created_at`, userID)
+		`SELECT `+tenantUserSelectCols+` FROM tenant_users tu
+		 LEFT JOIN users u ON u.email = tu.user_id
+		 WHERE tu.user_id = ? OR u.id = ?
+		 ORDER BY tu.created_at`, userID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -214,9 +323,13 @@ func (s *SQLiteTenantStore) ListUserTenants(ctx context.Context, userID string) 
 
 func (s *SQLiteTenantStore) ResolveUserTenant(ctx context.Context, userID string) (uuid.UUID, error) {
 	var tenantID uuid.UUID
+	// Prefer non-Master tenants — same logic as PG implementation.
 	err := s.db.QueryRowContext(ctx,
-		`SELECT tenant_id FROM tenant_users WHERE user_id = ? ORDER BY created_at LIMIT 1`,
-		userID,
+		`SELECT tu.tenant_id FROM tenant_users tu
+		 LEFT JOIN users u ON u.email = tu.user_id
+		 WHERE tu.user_id = ? OR u.id = ?
+		 ORDER BY (tu.tenant_id = ?) ASC, tu.created_at ASC LIMIT 1`,
+		userID, userID, store.MasterTenantID,
 	).Scan(&tenantID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.MasterTenantID, nil
@@ -225,6 +338,41 @@ func (s *SQLiteTenantStore) ResolveUserTenant(ctx context.Context, userID string
 		return uuid.Nil, err
 	}
 	return tenantID, nil
+}
+
+func (s *SQLiteTenantStore) CountOwners(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM tenant_users WHERE tenant_id = ? AND is_owner = 1`, tenantID.String(),
+	).Scan(&count)
+	return count, err
+}
+
+func (s *SQLiteTenantStore) GetTenantUserByUser(ctx context.Context, tenantID uuid.UUID, userID string) (*store.TenantUserData, error) {
+	var r tenantUserRow
+	err := pkgSqlxDB.GetContext(ctx, &r,
+		`SELECT `+tenantUserSelectCols+` FROM tenant_users WHERE tenant_id = ? AND user_id = ?`,
+		tenantID.String(), userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	d := r.toTenantUserData()
+	return &d, nil
+}
+
+func (s *SQLiteTenantStore) UpdateOwnerFlag(ctx context.Context, tenantID uuid.UUID, userID string, isOwner bool) error {
+	isOwnerInt := 0
+	if isOwner {
+		isOwnerInt = 1
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE tenant_users SET is_owner = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE tenant_id = ? AND user_id = ?`,
+		isOwnerInt, tenantID.String(), userID,
+	)
+	return err
 }
 
 // ============================================================

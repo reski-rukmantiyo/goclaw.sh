@@ -11,8 +11,8 @@ import (
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
 
-// INVARIANT: Admin-only operations MUST reject Operator role.
-func TestPermission_AdminOnlyRejectsOperator(t *testing.T) {
+// INVARIANT: Admin-only operations MUST reject Member role.
+func TestPermission_AdminOnlyRejectsMember(t *testing.T) {
 	pe := permissions.NewPolicyEngine(nil)
 
 	adminMethods := []string{
@@ -29,9 +29,9 @@ func TestPermission_AdminOnlyRejectsOperator(t *testing.T) {
 
 	for _, method := range adminMethods {
 		t.Run(method, func(t *testing.T) {
-			// INVARIANT: Operator MUST NOT access admin methods
-			if pe.CanAccess(permissions.RoleOperator, method) {
-				t.Errorf("INVARIANT VIOLATION: Operator can access admin method %s", method)
+			// INVARIANT: Member MUST NOT access admin methods
+			if pe.CanAccess(permissions.RoleMember, method) {
+				t.Errorf("INVARIANT VIOLATION: Member can access admin method %s", method)
 			}
 
 			// INVARIANT: Viewer MUST NOT access admin methods
@@ -71,9 +71,9 @@ func TestPermission_WriteRejectsViewer(t *testing.T) {
 				t.Errorf("INVARIANT VIOLATION: Viewer can access write method %s", method)
 			}
 
-			// Operator, Admin, and Owner should have access
-			if !pe.CanAccess(permissions.RoleOperator, method) {
-				t.Errorf("Operator should access %s", method)
+			// Member, Admin, and Owner should have access
+			if !pe.CanAccess(permissions.RoleMember, method) {
+				t.Errorf("Member should access %s", method)
 			}
 		})
 	}
@@ -114,7 +114,7 @@ func TestPermission_OwnerSupersetOfAdmin(t *testing.T) {
 	}
 }
 
-// INVARIANT: Role hierarchy MUST be strictly ordered: Owner > Admin > Operator > Viewer.
+// INVARIANT: Role hierarchy MUST be strictly ordered: Owner > Admin > Member > Viewer.
 func TestPermission_RoleHierarchy(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -123,8 +123,8 @@ func TestPermission_RoleHierarchy(t *testing.T) {
 		required permissions.Role
 	}{
 		{"owner_beats_admin", permissions.RoleOwner, permissions.RoleAdmin, permissions.RoleAdmin},
-		{"admin_beats_operator", permissions.RoleAdmin, permissions.RoleOperator, permissions.RoleAdmin},
-		{"operator_beats_viewer", permissions.RoleOperator, permissions.RoleViewer, permissions.RoleOperator},
+		{"admin_beats_member", permissions.RoleAdmin, permissions.RoleMember, permissions.RoleAdmin},
+		{"member_beats_viewer", permissions.RoleMember, permissions.RoleViewer, permissions.RoleMember},
 	}
 
 	for _, tt := range tests {
@@ -149,7 +149,7 @@ func TestPermission_ScopesToRoleMapping(t *testing.T) {
 		expected permissions.Role
 	}{
 		{"admin_scope_is_admin", []permissions.Scope{permissions.ScopeAdmin}, permissions.RoleAdmin},
-		{"write_scope_is_operator", []permissions.Scope{permissions.ScopeWrite}, permissions.RoleOperator},
+		{"write_scope_is_member", []permissions.Scope{permissions.ScopeWrite}, permissions.RoleMember},
 		{"read_scope_is_viewer", []permissions.Scope{permissions.ScopeRead}, permissions.RoleViewer},
 		{"empty_scope_is_viewer", []permissions.Scope{}, permissions.RoleViewer},
 	}

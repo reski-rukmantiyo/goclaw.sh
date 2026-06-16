@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
-	"github.com/nextlevelbuilder/goclaw/internal/store"
+
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
 
@@ -108,11 +108,11 @@ func (h *TenantBackupHandler) authorised(r *http.Request, userID string, tenantI
 	if h.tenants == nil {
 		return false
 	}
-	role, err := h.tenants.GetUserRole(r.Context(), tenantID, userID)
+	isOwner, err := h.tenants.IsOwner(r.Context(), tenantID, userID)
 	if err != nil {
 		return false
 	}
-	return role == store.TenantRoleOwner || role == store.TenantRoleAdmin
+	return isOwner
 }
 
 // isOwnerUser returns true if userID is a configured system owner.

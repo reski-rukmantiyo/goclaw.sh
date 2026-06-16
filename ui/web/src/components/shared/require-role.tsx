@@ -1,27 +1,29 @@
 import { Navigate } from "react-router";
 import { useAuthStore } from "@/stores/use-auth-store";
-import { ROUTES } from "@/lib/constants";
+import { ROUTES, route } from "@/lib/constants";
 
-/** Check if role meets minimum level. Owner > Admin > Operator > Viewer. */
+/** Check if role meets minimum level. Owner > Admin > Member > Viewer. */
 function hasMinRole(role: string, minRole: string): boolean {
-  const levels: Record<string, number> = { owner: 4, admin: 3, operator: 2, viewer: 1 };
+  const levels: Record<string, number> = { owner: 4, admin: 3, member: 2, viewer: 1 };
   return (levels[role] ?? 0) >= (levels[minRole] ?? 0);
 }
 
 /** Renders children only if user has admin role or higher. Redirects to overview otherwise. */
 export function RequireAdmin({ children }: { children: React.ReactNode }) {
   const role = useAuthStore((s) => s.role);
+  const slug = useAuthStore((s) => s.tenantSlug);
   if (!hasMinRole(role, "admin")) {
-    return <Navigate to={ROUTES.OVERVIEW} replace />;
+    return <Navigate to={route(slug, ROUTES.OVERVIEW)} replace />;
   }
   return <>{children}</>;
 }
 
-/** Renders children only if user has admin or operator role or higher. */
-export function RequireOperator({ children }: { children: React.ReactNode }) {
+/** Renders children only if user has member role or higher. */
+export function RequireMember({ children }: { children: React.ReactNode }) {
   const role = useAuthStore((s) => s.role);
-  if (!hasMinRole(role, "operator")) {
-    return <Navigate to={ROUTES.OVERVIEW} replace />;
+  const slug = useAuthStore((s) => s.tenantSlug);
+  if (!hasMinRole(role, "member")) {
+    return <Navigate to={route(slug, ROUTES.OVERVIEW)} replace />;
   }
   return <>{children}</>;
 }
@@ -29,8 +31,9 @@ export function RequireOperator({ children }: { children: React.ReactNode }) {
 /** Renders children only if user is the system owner. */
 export function RequireOwner({ children }: { children: React.ReactNode }) {
   const isOwner = useAuthStore((s) => s.isOwner);
+  const slug = useAuthStore((s) => s.tenantSlug);
   if (!isOwner) {
-    return <Navigate to={ROUTES.OVERVIEW} replace />;
+    return <Navigate to={route(slug, ROUTES.OVERVIEW)} replace />;
   }
   return <>{children}</>;
 }

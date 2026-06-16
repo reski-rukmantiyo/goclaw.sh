@@ -24,6 +24,14 @@ func NewPGEpisodicStore(db *sql.DB) *PGEpisodicStore {
 	return &PGEpisodicStore{db: db}
 }
 
+func (s *PGEpisodicStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 func (s *PGEpisodicStore) SetEmbeddingProvider(p store.EmbeddingProvider) { s.embProvider = p }
 func (s *PGEpisodicStore) Close() error                                  { return nil }
 
@@ -46,7 +54,7 @@ func (s *PGEpisodicStore) Create(ctx context.Context, ep *store.EpisodicSummary)
 		}
 	}
 
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.dbFor(ctx).ExecContext(ctx, `
 		INSERT INTO episodic_summaries
 			(id, tenant_id, agent_id, user_id, session_key, summary, key_topics,
 			 turn_count, token_count, embedding, l0_abstract, source_id,
@@ -65,7 +73,7 @@ func (s *PGEpisodicStore) Create(ctx context.Context, ep *store.EpisodicSummary)
 
 // Get retrieves an episodic summary by ID.
 func (s *PGEpisodicStore) Get(ctx context.Context, id string) (*store.EpisodicSummary, error) {
-	row := s.db.QueryRowContext(ctx, `
+	row := s.dbFor(ctx).QueryRowContext(ctx, `
 		SELECT id, tenant_id, agent_id, user_id, session_key, summary, key_topics,
 		       turn_count, token_count, l0_abstract, source_id, source_type,
 		       created_at, expires_at, recall_count, recall_score, last_recalled_at
@@ -76,7 +84,7 @@ func (s *PGEpisodicStore) Get(ctx context.Context, id string) (*store.EpisodicSu
 
 // Delete removes an episodic summary.
 func (s *PGEpisodicStore) Delete(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM episodic_summaries WHERE id = $1 AND tenant_id = $2`,
+	_, err := s.dbFor(ctx).ExecContext(ctx, `DELETE FROM episodic_summaries WHERE id = $1 AND tenant_id = $2`,
 		id, store.TenantIDFromContext(ctx))
 	return err
 }
@@ -112,7 +120,7 @@ func (s *PGEpisodicStore) List(ctx context.Context, agentID, userID string, limi
 	}
 
 	var rows []episodicSummaryRow
-	if err := pkgSqlxDB.SelectContext(ctx, &rows, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows, q, args...); err != nil {
 		return nil, err
 	}
 	results := make([]store.EpisodicSummary, len(rows))
@@ -173,7 +181,7 @@ func (s *PGEpisodicStore) Search(ctx context.Context, query, agentID, userID str
 // ExistsBySourceID checks if an episodic summary with the given source_id exists (idempotency).
 func (s *PGEpisodicStore) ExistsBySourceID(ctx context.Context, agentID, userID, sourceID string) (bool, error) {
 	var exists bool
-	err := s.db.QueryRowContext(ctx, `
+	err := s.dbFor(ctx).QueryRowContext(ctx, `
 		SELECT EXISTS(SELECT 1 FROM episodic_summaries
 		WHERE agent_id = $1 AND user_id = $2 AND source_id = $3 AND tenant_id = $4)`,
 		agentID, userID, sourceID, store.TenantIDFromContext(ctx)).Scan(&exists)
@@ -183,7 +191,7 @@ func (s *PGEpisodicStore) ExistsBySourceID(ctx context.Context, agentID, userID,
 // PruneExpired deletes episodic summaries past their expiry within the caller's tenant.
 func (s *PGEpisodicStore) PruneExpired(ctx context.Context) (int, error) {
 	tenantID := store.TenantIDFromContext(ctx)
-	res, err := s.db.ExecContext(ctx, `
+	res, err := s.dbFor(ctx).ExecContext(ctx, `
 		DELETE FROM episodic_summaries
 		WHERE expires_at IS NOT NULL AND expires_at < NOW() AND tenant_id = $1`, tenantID)
 	if err != nil {
@@ -223,7 +231,7 @@ func (s *PGEpisodicStore) listUnpromoted(ctx context.Context, agentID, userID st
 		FROM episodic_summaries
 		WHERE agent_id = $1 AND user_id = $2 AND tenant_id = $3 AND promoted_at IS NULL
 		ORDER BY ` + orderBy + ` LIMIT $4`
-	err := pkgSqlxDB.SelectContext(ctx, &rows, query, agentID, userID, tenantID, limit)
+	err := SqlxDBFor(ctx).SelectContext(ctx, &rows, query, agentID, userID, tenantID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("episodic list_unpromoted: %w", err)
 	}
@@ -252,7 +260,7 @@ func (s *PGEpisodicStore) RecordRecall(ctx context.Context, id string, score flo
 		score = 1
 	}
 	tenantID := store.TenantIDFromContext(ctx)
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.dbFor(ctx).ExecContext(ctx, `
 		UPDATE episodic_summaries
 		SET recall_count = recall_count + 1,
 		    recall_score = (recall_score * recall_count + $1) / (recall_count + 1),
@@ -272,7 +280,7 @@ func (s *PGEpisodicStore) MarkPromoted(ctx context.Context, ids []string) error 
 		return nil
 	}
 	tenantID := store.TenantIDFromContext(ctx)
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.dbFor(ctx).ExecContext(ctx, `
 		UPDATE episodic_summaries SET promoted_at = NOW()
 		WHERE id = ANY($1) AND tenant_id = $2`,
 		pq.Array(ids), tenantID)
@@ -286,7 +294,7 @@ func (s *PGEpisodicStore) MarkPromoted(ctx context.Context, ids []string) error 
 func (s *PGEpisodicStore) CountUnpromoted(ctx context.Context, agentID, userID string) (int, error) {
 	tenantID := store.TenantIDFromContext(ctx)
 	var count int
-	err := s.db.QueryRowContext(ctx, `
+	err := s.dbFor(ctx).QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM episodic_summaries
 		WHERE agent_id = $1 AND user_id = $2 AND tenant_id = $3 AND promoted_at IS NULL`,
 		agentID, userID, tenantID).Scan(&count)

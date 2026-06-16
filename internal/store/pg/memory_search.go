@@ -132,7 +132,7 @@ func (s *PGMemoryStore) ftsSearch(ctx context.Context, query string, agentID any
 	}
 
 	var rows []scoredChunkRow
-	if err := pkgSqlxDB.SelectContext(ctx, &rows, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows, q, args...); err != nil {
 		return nil, err
 	}
 	results := make([]scoredChunk, len(rows))
@@ -198,7 +198,7 @@ func (s *PGMemoryStore) vectorSearch(ctx context.Context, embedding []float32, a
 	}
 
 	var rows []scoredChunkRow
-	if err := pkgSqlxDB.SelectContext(ctx, &rows, q, args...); err != nil {
+	if err := SqlxDBFor(ctx).SelectContext(ctx, &rows, q, args...); err != nil {
 		return nil, err
 	}
 	results := make([]scoredChunk, len(rows))

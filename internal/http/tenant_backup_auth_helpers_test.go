@@ -20,6 +20,7 @@ type fakeTenantStore struct {
 }
 
 func (f fakeTenantStore) CreateTenant(context.Context, *store.TenantData) error { return nil }
+func (f fakeTenantStore) DeleteTenant(context.Context, uuid.UUID) error { return nil }
 func (f fakeTenantStore) GetTenant(context.Context, uuid.UUID) (*store.TenantData, error) {
 	return f.tenant, f.err
 }
@@ -28,7 +29,7 @@ func (f fakeTenantStore) GetTenantBySlug(context.Context, string) (*store.Tenant
 }
 func (f fakeTenantStore) ListTenants(context.Context) ([]store.TenantData, error)       { return nil, nil }
 func (f fakeTenantStore) UpdateTenant(context.Context, uuid.UUID, map[string]any) error { return nil }
-func (f fakeTenantStore) AddUser(context.Context, uuid.UUID, string, string) error      { return nil }
+func (f fakeTenantStore) AddUser(context.Context, uuid.UUID, string, bool) error         { return nil }
 func (f fakeTenantStore) RemoveUser(context.Context, uuid.UUID, string) error           { return nil }
 func (f fakeTenantStore) GetUserRole(context.Context, uuid.UUID, string) (string, error) {
 	return "", nil
@@ -48,9 +49,15 @@ func (f fakeTenantStore) ResolveUserTenant(context.Context, string) (uuid.UUID, 
 func (f fakeTenantStore) GetTenantUser(context.Context, uuid.UUID) (*store.TenantUserData, error) {
 	return nil, nil
 }
-func (f fakeTenantStore) CreateTenantUserReturning(context.Context, uuid.UUID, string, string, string) (*store.TenantUserData, error) {
+func (f fakeTenantStore) CreateTenantUserReturning(context.Context, uuid.UUID, string, string) (*store.TenantUserData, error) {
 	return nil, nil
 }
+func (f fakeTenantStore) IsOwner(context.Context, uuid.UUID, string) (bool, error) { return false, nil }
+func (f fakeTenantStore) CountOwners(context.Context, uuid.UUID) (int, error)      { return 0, nil }
+func (f fakeTenantStore) GetTenantUserByUser(context.Context, uuid.UUID, string) (*store.TenantUserData, error) {
+	return nil, nil
+}
+func (f fakeTenantStore) UpdateOwnerFlag(context.Context, uuid.UUID, string, bool) error { return nil }
 
 func TestResolveTenantLooksUpSlugForTenantID(t *testing.T) {
 	tenantID := uuid.New()

@@ -37,7 +37,7 @@ LIMIT $4`
 
 // ListCodexPoolSpans returns recent LLM call spans for agents using Codex OAuth pool providers.
 func (s *PGTracingStore) ListCodexPoolSpans(ctx context.Context, agentID, tenantID uuid.UUID, poolProviders []string, limit int) ([]store.CodexPoolSpan, error) {
-	rows, err := s.db.QueryContext(ctx, listCodexPoolSpansQuery, agentID, tenantID, pq.Array(poolProviders), limit)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, listCodexPoolSpansQuery, agentID, tenantID, pq.Array(poolProviders), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ LIMIT $3`
 
 // ListCodexPoolSpansByProviders returns recent LLM call spans across all agents for the given pool providers.
 func (s *PGTracingStore) ListCodexPoolSpansByProviders(ctx context.Context, tenantID uuid.UUID, poolProviders []string, limit int) ([]store.CodexPoolProviderSpan, error) {
-	rows, err := s.db.QueryContext(ctx, listCodexPoolSpansByProvidersQuery, tenantID, pq.Array(poolProviders), limit)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, listCodexPoolSpansByProvidersQuery, tenantID, pq.Array(poolProviders), limit)
 	if err != nil {
 		return nil, err
 	}

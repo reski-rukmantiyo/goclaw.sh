@@ -15,15 +15,17 @@ export function useAgentResolver() {
   const http = useHttp();
   const connected = useAuthStore((s) => s.connected);
 
+  const tenantId = useAuthStore((s) => s.tenantId);
+
   const { data: agents } = useQuery({
-    queryKey: queryKeys.agents.all,
+    queryKey: queryKeys.agents.list(tenantId),
     queryFn: async () => {
       const res = await http.get<{ agents: AgentData[] }>("/v1/agents");
       return res.agents ?? [];
     },
     enabled: connected,
     staleTime: 60_000,
-    initialData: () => queryClient.getQueryData<AgentData[]>(queryKeys.agents.all),
+    initialData: () => queryClient.getQueryData<AgentData[]>(queryKeys.agents.list(tenantId)),
   });
 
   const { byKey, byId } = useMemo(() => {

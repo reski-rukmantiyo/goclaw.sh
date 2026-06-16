@@ -6,6 +6,25 @@ PostgreSQL multi-tenant AI agent gateway with WebSocket RPC + HTTP API.
 
 Always respond in the same language as the user's prompt. If the user writes in Vietnamese, respond in Vietnamese. If in English, respond in English. Match the user's language naturally.
 
+## SRS Documentation (Read First)
+
+Files in `docs/srs/` follow a fixed naming convention:
+
+- `NNN-feat-<slug>.md` — a feature to be developed/implemented (e.g. `001-feat-tenant-user-crud.md`, `002-feat-multi-auth-module-srs.md`).
+- `NNN-bugfix-<slug>.md` — a defect to be fixed (e.g. `003-bugfix-whatsapp-group-graph-agent-mismatch.md`).
+- `CLAUDE.md` (a.k.a. `AGENTS.md`) — SRS template + structure rules. Not a feat/bugfix doc.
+
+The `NNN` prefix is a three-digit sequence number that defines **chronological order**. Read files in ascending `NNN` order so prior context lands before later context.
+
+Why: `docs/srs/` holds canonical requirements. Conclusions made without reading it risk duplicating scope, contradicting an existing FR, or re-investigating a bug already documented + partially fixed. Every later feature or bugfix builds on earlier ones — skipping them breaks traceability.
+
+How to apply:
+- At the start of ANY feature or bugfix task, `ls docs/srs/` and read ALL existing files in `NNN` order — every prior `feat-*` and `bugfix-*` must be read before executing new work, regardless of whether it seems related.
+- Cross-reference new work against existing SRS scope and FR traceability before proposing changes; an FR, data model, or error code you plan to introduce may already be owned by an earlier doc.
+- Before starting a bugfix, read every prior `bugfix-*` doc and its status header — the defect may already be code-fixed (live verification may still be pending), or the root cause may trace back to an earlier fix.
+- Before starting a feature, read every prior `feat-*` doc so the new feature composes with existing modules (auth, RBAC, tenant scoping, etc.) instead of duplicating or conflicting with them.
+- Creating/updating an SRS doc: pick the next free `NNN`, name it `NNN-feat-<slug>.md` or `NNN-bugfix-<slug>.md`, and follow the full template in `docs/srs/CLAUDE.md` (required sections, acceptance-criteria checklists, canonical error codes).
+
 ## Tech Stack
 
 **Backend:** Go 1.26, Cobra CLI, gorilla/websocket, pgx/v5 (database/sql, no ORM), golang-migrate, go-rod/rod, telego (Telegram)

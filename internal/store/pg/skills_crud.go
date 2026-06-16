@@ -27,13 +27,13 @@ func (s *PGSkillStore) CreateSkill(name, slug string, description *string, owner
 func (s *PGSkillStore) UpdateSkill(ctx context.Context, id uuid.UUID, updates map[string]any) error {
 	var err error
 	if store.IsCrossTenant(ctx) {
-		err = execMapUpdate(ctx, s.db, "skills", id, updates)
+		err = execMapUpdate(ctx, s.dbFor(ctx), "skills", id, updates)
 	} else {
 		tid := store.TenantIDFromContext(ctx)
 		if tid == uuid.Nil {
 			return fmt.Errorf("tenant_id required for update")
 		} else {
-			err = execMapUpdateWhereTenant(ctx, s.db, "skills", updates, id, tid)
+			err = execMapUpdateWhereTenant(ctx, s.dbFor(ctx), "skills", updates, id, tid)
 		}
 	}
 	if err != nil {
@@ -46,7 +46,7 @@ func (s *PGSkillStore) UpdateSkill(ctx context.Context, id uuid.UUID, updates ma
 func (s *PGSkillStore) DeleteSkill(ctx context.Context, id uuid.UUID) error {
 	// Reject deletion of system skills
 	var isSystem bool
-	if err := s.db.QueryRowContext(ctx, "SELECT is_system FROM skills WHERE id = $1", id).Scan(&isSystem); err != nil {
+	if err := s.dbFor(ctx).QueryRowContext(ctx, "SELECT is_system FROM skills WHERE id = $1", id).Scan(&isSystem); err != nil {
 		return fmt.Errorf("check skill: %w", err)
 	}
 	if isSystem {
@@ -60,7 +60,7 @@ func (s *PGSkillStore) DeleteSkill(ctx context.Context, id uuid.UUID) error {
 			return fmt.Errorf("tenant_id required")
 		}
 		var skillTenantID uuid.UUID
-		if err := s.db.QueryRowContext(ctx, "SELECT tenant_id FROM skills WHERE id = $1", id).Scan(&skillTenantID); err != nil {
+		if err := s.dbFor(ctx).QueryRowContext(ctx, "SELECT tenant_id FROM skills WHERE id = $1", id).Scan(&skillTenantID); err != nil {
 			return fmt.Errorf("skill not found")
 		}
 		if skillTenantID != tid {
@@ -68,7 +68,7 @@ func (s *PGSkillStore) DeleteSkill(ctx context.Context, id uuid.UUID) error {
 		}
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -132,7 +132,7 @@ func (s *PGSkillStore) CreateSkillManaged(ctx context.Context, p store.SkillCrea
 		status = "active"
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("begin tx: %w", err)
 	}
@@ -206,7 +206,7 @@ func (s *PGSkillStore) GetSkillFilePath(ctx context.Context, id uuid.UUID) (file
 		q += " AND (is_system = true OR tenant_id = $2)"
 		args = append(args, tid)
 	}
-	err := s.db.QueryRowContext(ctx, q, args...).Scan(&filePath, &slug, &version, &isSystem)
+	err := s.dbFor(ctx).QueryRowContext(ctx, q, args...).Scan(&filePath, &slug, &version, &isSystem)
 	return filePath, slug, version, isSystem, err == nil
 }
 
@@ -218,7 +218,7 @@ func (s *PGSkillStore) GetSkillFilePath(ctx context.Context, id uuid.UUID) (file
 func (s *PGSkillStore) GetNextVersion(ctx context.Context, slug string) int {
 	tid := tenantIDForInsert(ctx)
 	var maxVersion int
-	s.db.QueryRowContext(ctx, "SELECT COALESCE(MAX(version), 0) FROM skills WHERE slug = $1 AND tenant_id = $2", slug, tid).Scan(&maxVersion)
+	s.dbFor(ctx).QueryRowContext(ctx, "SELECT COALESCE(MAX(version), 0) FROM skills WHERE slug = $1 AND tenant_id = $2", slug, tid).Scan(&maxVersion)
 	return maxVersion + 1
 }
 
@@ -229,7 +229,7 @@ func (s *PGSkillStore) GetSkillHashBySlug(ctx context.Context, slug string) (str
 	tid := tenantIDForInsert(ctx)
 	var hash string
 	var version int
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT COALESCE(file_hash, ''), version FROM skills
 		 WHERE slug = $1 AND tenant_id = $2 AND status != 'deleted'
 		 ORDER BY version DESC LIMIT 1`,
@@ -243,7 +243,7 @@ func (s *PGSkillStore) GetSkillHashBySlug(ctx context.Context, slug string) (str
 // that MUST be called to release the lock (commits the transaction).
 func (s *PGSkillStore) GetNextVersionLocked(ctx context.Context, slug string) (int, func() error, error) {
 	tenantID := tenantIDForInsert(ctx)
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.dbFor(ctx).BeginTx(ctx, nil)
 	if err != nil {
 		return 0, nil, fmt.Errorf("begin tx: %w", err)
 	}
@@ -274,7 +274,7 @@ func (s *PGSkillStore) ToggleSkill(ctx context.Context, id uuid.UUID, enabled bo
 		}
 	}
 
-	_, err := s.db.ExecContext(ctx, q, args...)
+	_, err := s.dbFor(ctx).ExecContext(ctx, q, args...)
 	if err == nil {
 		s.BumpVersion()
 	}

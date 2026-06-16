@@ -19,13 +19,12 @@ const (
 	TenantStatusArchived  = "archived"
 )
 
-// Tenant role constants (hierarchy: owner > admin > operator > member > viewer).
+// Tenant role constants (hierarchy: owner > admin > member > viewer).
 const (
-	TenantRoleOwner    = "owner"
-	TenantRoleAdmin    = "admin"
-	TenantRoleOperator = "operator"
-	TenantRoleMember   = "member"
-	TenantRoleViewer   = "viewer"
+	TenantRoleOwner  = "owner"
+	TenantRoleAdmin  = "admin"
+	TenantRoleMember = "member"
+	TenantRoleViewer = "viewer"
 )
 
 // TenantData represents a tenant in the database.
@@ -45,7 +44,7 @@ type TenantUserData struct {
 	TenantID    uuid.UUID       `json:"tenant_id" db:"tenant_id"`
 	UserID      string          `json:"user_id" db:"user_id"`
 	DisplayName *string         `json:"display_name,omitempty" db:"display_name"`
-	Role        string          `json:"role" db:"role"`
+	IsOwner     bool            `json:"is_owner" db:"is_owner"`
 	Metadata    json.RawMessage `json:"metadata,omitempty" db:"metadata"`
 	CreatedAt   time.Time       `json:"created_at" db:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at" db:"updated_at"`
@@ -60,10 +59,13 @@ type TenantStore interface {
 	ListTenants(ctx context.Context) ([]TenantData, error)
 	UpdateTenant(ctx context.Context, id uuid.UUID, updates map[string]any) error
 
+	// DeleteTenant removes a tenant and all its data.
+	DeleteTenant(ctx context.Context, id uuid.UUID) error
+
 	// Tenant-user membership
-	AddUser(ctx context.Context, tenantID uuid.UUID, userID, role string) error
+	AddUser(ctx context.Context, tenantID uuid.UUID, userID string, isOwner bool) error
 	RemoveUser(ctx context.Context, tenantID uuid.UUID, userID string) error
-	GetUserRole(ctx context.Context, tenantID uuid.UUID, userID string) (string, error)
+	IsOwner(ctx context.Context, tenantID uuid.UUID, userID string) (bool, error)
 	ListUsers(ctx context.Context, tenantID uuid.UUID) ([]TenantUserData, error)
 	ListUserTenants(ctx context.Context, userID string) ([]TenantUserData, error)
 
@@ -79,6 +81,15 @@ type TenantStore interface {
 	GetTenantUser(ctx context.Context, id uuid.UUID) (*TenantUserData, error)
 
 	// CreateTenantUserReturning creates a tenant_user and returns the row.
-	// On conflict (tenant_id, user_id), updates role/display_name and returns existing row.
-	CreateTenantUserReturning(ctx context.Context, tenantID uuid.UUID, userID, displayName, role string) (*TenantUserData, error)
+	// On conflict (tenant_id, user_id), updates display_name and returns existing row.
+	CreateTenantUserReturning(ctx context.Context, tenantID uuid.UUID, userID, displayName string) (*TenantUserData, error)
+
+	// CountOwners returns the number of tenant_users with is_owner=true for a tenant.
+	CountOwners(ctx context.Context, tenantID uuid.UUID) (int, error)
+
+	// GetTenantUserByUser returns the tenant_user record for a specific (tenantID, userID) pair.
+	GetTenantUserByUser(ctx context.Context, tenantID uuid.UUID, userID string) (*TenantUserData, error)
+
+	// UpdateOwnerFlag sets or clears the is_owner flag for a tenant_user membership.
+	UpdateOwnerFlag(ctx context.Context, tenantID uuid.UUID, userID string, isOwner bool) error
 }

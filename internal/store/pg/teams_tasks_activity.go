@@ -25,7 +25,7 @@ func (s *PGTeamStore) AddTaskComment(ctx context.Context, comment *store.TeamTas
 	if commentType == "" {
 		commentType = "note"
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO team_task_comments (id, task_id, agent_id, user_id, content, comment_type, created_at, tenant_id)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 		comment.ID, comment.TaskID, comment.AgentID,
@@ -36,7 +36,7 @@ func (s *PGTeamStore) AddTaskComment(ctx context.Context, comment *store.TeamTas
 		return err
 	}
 	// Increment denormalized comment count.
-	_, _ = s.db.ExecContext(ctx,
+	_, _ = s.dbFor(ctx).ExecContext(ctx,
 		`UPDATE team_tasks SET comment_count = comment_count + 1 WHERE id = $1 AND tenant_id = $2`, comment.TaskID, tenantIDForInsert(ctx))
 	return nil
 }
@@ -67,7 +67,7 @@ func (r taskCommentRow) toCommentData() store.TeamTaskCommentData {
 func (s *PGTeamStore) ListTaskComments(ctx context.Context, taskID uuid.UUID) ([]store.TeamTaskCommentData, error) {
 	tid := tenantIDForInsert(ctx)
 	var rows []taskCommentRow
-	err := pkgSqlxDB.SelectContext(ctx, &rows,
+	err := SqlxDBFor(ctx).SelectContext(ctx, &rows,
 		`SELECT c.id, c.task_id, c.agent_id, c.user_id, c.content, c.comment_type, c.created_at,
 		 COALESCE(a.agent_key, '') AS agent_key
 		 FROM team_task_comments c
@@ -89,7 +89,7 @@ func (s *PGTeamStore) ListTaskComments(ctx context.Context, taskID uuid.UUID) ([
 func (s *PGTeamStore) ListRecentTaskComments(ctx context.Context, taskID uuid.UUID, limit int) ([]store.TeamTaskCommentData, error) {
 	tid := tenantIDForInsert(ctx)
 	var rows []taskCommentRow
-	err := pkgSqlxDB.SelectContext(ctx, &rows,
+	err := SqlxDBFor(ctx).SelectContext(ctx, &rows,
 		`SELECT c.id, c.task_id, c.agent_id, c.user_id, c.content, c.comment_type, c.created_at,
 		 COALESCE(a.agent_key, '') AS agent_key
 		 FROM team_task_comments c
@@ -120,7 +120,7 @@ func (s *PGTeamStore) RecordTaskEvent(ctx context.Context, event *store.TeamTask
 		event.ID = store.GenNewID()
 	}
 	event.CreatedAt = time.Now()
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO team_task_events (id, task_id, event_type, actor_type, actor_id, data, created_at, tenant_id)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 		event.ID, event.TaskID, event.EventType, event.ActorType, event.ActorID, event.Data, event.CreatedAt, tenantIDForInsert(ctx),
@@ -131,7 +131,7 @@ func (s *PGTeamStore) RecordTaskEvent(ctx context.Context, event *store.TeamTask
 func (s *PGTeamStore) ListTaskEvents(ctx context.Context, taskID uuid.UUID) ([]store.TeamTaskEventData, error) {
 	tid := tenantIDForInsert(ctx)
 	var events []store.TeamTaskEventData
-	err := pkgSqlxDB.SelectContext(ctx, &events,
+	err := SqlxDBFor(ctx).SelectContext(ctx, &events,
 		`SELECT id, task_id, event_type, actor_type, actor_id, COALESCE(data, '{}') AS data, created_at
 		 FROM team_task_events
 		 WHERE task_id = $1 AND tenant_id = $2
@@ -145,7 +145,7 @@ func (s *PGTeamStore) ListTeamEvents(ctx context.Context, teamID uuid.UUID, limi
 	}
 	tid := tenantIDForInsert(ctx)
 	var events []store.TeamTaskEventData
-	err := pkgSqlxDB.SelectContext(ctx, &events,
+	err := SqlxDBFor(ctx).SelectContext(ctx, &events,
 		`SELECT e.id, e.task_id, e.event_type, e.actor_type, e.actor_id, COALESCE(e.data, '{}') AS data, e.created_at
 		 FROM team_task_events e
 		 JOIN team_tasks t ON t.id = e.task_id
@@ -168,7 +168,7 @@ func (s *PGTeamStore) AttachFileToTask(ctx context.Context, att *store.TeamTaskA
 	if len(att.Metadata) == 0 {
 		att.Metadata = json.RawMessage(`{}`)
 	}
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO team_task_attachments (id, task_id, team_id, chat_id, path, file_size, mime_type, created_by_agent_id, created_by_sender_id, metadata, created_at, tenant_id)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		 ON CONFLICT (task_id, path) DO NOTHING`,
@@ -182,7 +182,7 @@ func (s *PGTeamStore) AttachFileToTask(ctx context.Context, att *store.TeamTaskA
 	}
 	// Increment denormalized count only if a row was actually inserted (not conflict).
 	if n, _ := res.RowsAffected(); n > 0 {
-		_, _ = s.db.ExecContext(ctx,
+		_, _ = s.dbFor(ctx).ExecContext(ctx,
 			`UPDATE team_tasks SET attachment_count = attachment_count + 1 WHERE id = $1 AND tenant_id = $2`, att.TaskID, tenantIDForInsert(ctx))
 	}
 	return nil
@@ -194,7 +194,7 @@ func (s *PGTeamStore) GetAttachment(ctx context.Context, attachmentID uuid.UUID)
 	var senderID sql.NullString
 	var metadata json.RawMessage
 	tid := tenantIDForInsert(ctx)
-	err := s.db.QueryRowContext(ctx,
+	err := s.dbFor(ctx).QueryRowContext(ctx,
 		`SELECT id, task_id, team_id, chat_id, path, file_size, mime_type,
 		        created_by_agent_id, created_by_sender_id, metadata, created_at
 		 FROM team_task_attachments WHERE id = $1 AND tenant_id = $2`, attachmentID, tid,
@@ -241,7 +241,7 @@ func (r taskAttachmentRow) toAttachmentData() store.TeamTaskAttachmentData {
 func (s *PGTeamStore) ListTaskAttachments(ctx context.Context, taskID uuid.UUID) ([]store.TeamTaskAttachmentData, error) {
 	tid := tenantIDForInsert(ctx)
 	var rows []taskAttachmentRow
-	err := pkgSqlxDB.SelectContext(ctx, &rows,
+	err := SqlxDBFor(ctx).SelectContext(ctx, &rows,
 		`SELECT id, task_id, team_id, COALESCE(chat_id,'') AS chat_id, path, file_size, COALESCE(mime_type,'') AS mime_type,
 		        created_by_agent_id, created_by_sender_id, COALESCE(metadata,'{}') AS metadata, created_at
 		 FROM team_task_attachments
@@ -259,7 +259,7 @@ func (s *PGTeamStore) ListTaskAttachments(ctx context.Context, taskID uuid.UUID)
 
 func (s *PGTeamStore) DetachFileFromTask(ctx context.Context, taskID uuid.UUID, path string) error {
 	tid := tenantIDForInsert(ctx)
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.dbFor(ctx).ExecContext(ctx,
 		`DELETE FROM team_task_attachments WHERE task_id = $1 AND path = $2 AND tenant_id = $3`,
 		taskID, path, tid,
 	)
@@ -268,14 +268,14 @@ func (s *PGTeamStore) DetachFileFromTask(ctx context.Context, taskID uuid.UUID, 
 	}
 	// Decrement denormalized count only if a row was actually deleted.
 	if n, _ := res.RowsAffected(); n > 0 {
-		_, _ = s.db.ExecContext(ctx,
+		_, _ = s.dbFor(ctx).ExecContext(ctx,
 			`UPDATE team_tasks SET attachment_count = GREATEST(attachment_count - 1, 0) WHERE id = $1 AND tenant_id = $2`, taskID, tid)
 
 		// Phase 04: clean up Phase 2.5 auto-links sourced from this task.
 		// Scoped DELETE via source key — broader than the single detached
 		// basename, but the task's auto-link group is meaningful as a whole.
 		source := "task:" + taskID.String()
-		if delRes, derr := s.db.ExecContext(ctx, `
+		if delRes, derr := s.dbFor(ctx).ExecContext(ctx, `
 			DELETE FROM vault_links vl
 			USING vault_documents vd
 			WHERE vl.metadata->>'source' = $1

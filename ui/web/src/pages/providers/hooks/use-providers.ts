@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import i18next from "i18next";
 import { useHttp } from "@/hooks/use-ws";
+import { useAuthStore } from "@/stores/use-auth-store";
 import { queryKeys } from "@/lib/query-keys";
 import { toast } from "@/stores/use-toast-store";
 import type { ProviderData, ProviderInput } from "@/types/provider";
@@ -11,9 +12,10 @@ export type { ProviderData, ProviderInput };
 export function useProviders(enabled = true) {
   const http = useHttp();
   const queryClient = useQueryClient();
+  const tenantId = useAuthStore((s) => s.tenantId);
 
   const { data: providers = [], isLoading: loading } = useQuery({
-    queryKey: queryKeys.providers.all,
+    queryKey: queryKeys.providers.list(tenantId),
     enabled,
     queryFn: async () => {
       const res = await http.get<{ providers: ProviderData[] }>("/v1/providers");

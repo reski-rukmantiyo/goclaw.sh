@@ -1,0 +1,68 @@
+{
+  "title": "Người dùng",
+  "description": "Quản lý người dùng và quyền truy cập",
+  "addUser": "Thêm người dùng",
+  "password": "Mật khẩu",
+  "passwordPlaceholder": "Tối thiểu 8 ký tự",
+  "passwordHint": "Ít nhất 8 ký tự, bao gồm 1 chữ hoa, 1 số và 1 ký tự đặc biệt",
+  "searchPlaceholder": "Tìm kiếm người dùng...",
+  "emptyTitle": "Không tìm thấy người dùng",
+  "emptyDescription": "Thêm người dùng để bắt đầu",
+  "never": "Chưa đăng nhập",
+  "selectRole": "Chọn vai trò",
+  "lastOwnerTooltip": "Không thể xóa chủ sở hữu cuối cùng của tổ chức",
+  "columns": {
+    "displayName": "Tên hiển thị",
+    "email": "Email",
+    "role": "Vai trò",
+    "provider": "Nhà cung cấp",
+    "status": "Trạng thái",
+    "lastLogin": "Đăng nhập cuối",
+    "phone": "Số điện thoại",
+    "actions": "Thao tác"
+  },
+  "status": {
+    "active": "Hoạt động",
+    "inactive": "Không hoạt động"
+  },
+  "role": {
+    "owner": "Chủ sở hữu",
+    "admin": "Quản trị viên",
+    "member": "Thành viên",
+    "viewer": "Người xem"
+  },
+  "actions": {
+    "edit": "Sửa",
+    "changeRole": "Đổi vai trò",
+    "changePassword": "Đổi mật khẩu",
+    "delete": "Xóa"
+  },
+  "editUser": {
+    "title": "Sửa người dùng"
+  },
+  "changeRole": {
+    "title": "Đổi vai trò",
+    "description": "Đổi vai trò cho {{name}}"
+  },
+  "changePassword": {
+    "title": "Đổi mật khẩu",
+    "description": "Đặt mật khẩu mới cho {{name}}",
+    "newPassword": "Mật khẩu mới"
+  },
+  "delete": {
+    "title": "Xóa người dùng",
+    "description": "Bạn có chắc muốn xóa {{name}}? Hành động này không thể hoàn tác."
+  },
+  "toast": {
+    "created": "Đã tạo người dùng",
+    "failedCreate": "Không thể tạo người dùng",
+    "userUpdated": "Đã cập nhật người dùng",
+    "updateUserFailed": "Không thể cập nhật người dùng",
+    "userDeleted": "Đã xóa người dùng",
+    "failedDeleteUser": "Không thể xóa người dùng",
+    "roleChanged": "Đã đổi vai trò",
+    "failedRoleChange": "Không thể đổi vai trò",
+    "passwordChanged": "Đã đổi mật khẩu",
+    "failedPasswordChange": "Không thể đổi mật khẩu"
+  }
+}

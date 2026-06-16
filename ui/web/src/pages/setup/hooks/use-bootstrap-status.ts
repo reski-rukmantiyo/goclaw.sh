@@ -13,14 +13,22 @@ export function useBootstrapStatus() {
   const tenantId = useAuthStore((s) => s.tenantId);
   const tenantSlug = useAuthStore((s) => s.tenantSlug);
   const { providers, loading: providersLoading } = useProviders();
-  const { statuses: oauthStatuses, isLoading: oauthStatusesLoading } = useChatGPTOAuthProviderStatuses(providers);
+  const { statuses: oauthStatuses, isPending: oauthStatusesPending } = useChatGPTOAuthProviderStatuses(providers);
   const { agents, loading: agentsLoading } = useAgents();
+
+  // React Query v5: disabled queries stay in isPending. Only count loading when
+  // there are actually ChatGPT OAuth providers to check.
+  const hasChatGPTOAuth = providers.some((p) => p.provider_type === "chatgpt_oauth");
+  const oauthStatusesLoading = hasChatGPTOAuth && oauthStatusesPending;
 
   // Wait for WS to connect before considering agents loaded
   const loading = providersLoading || agentsLoading || oauthStatusesLoading || !connected;
 
   const { needsSetup, currentStep } = useMemo(() => {
-    if (loading) return { needsSetup: false, currentStep: "complete" as SetupStep };
+    // While loading we don't know the real step; return 1 as a safe neutral value.
+    // Returning "complete" here creates a race where SetupPage can redirect before
+    // fresh tenant data arrives.
+    if (loading) return { needsSetup: false, currentStep: 1 as SetupStep };
 
     const readyOAuthProviders = new Set(
       oauthStatuses
@@ -29,6 +37,7 @@ export function useBootstrapStatus() {
     );
     const hasProvider = providers.some((provider) => provider.enabled && (
       provider.api_key === "***"
+      || provider.api_key?.length > 0
       || provider.provider_type === "claude_cli"
       || provider.provider_type === "ollama"
       || (provider.provider_type === "chatgpt_oauth" && readyOAuthProviders.has(provider.name))

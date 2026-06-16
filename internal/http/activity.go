@@ -40,9 +40,9 @@ func (h *ActivityHandler) handleList(w http.ResponseWriter, r *http.Request) {
 		opts.ActorID = v
 	}
 
-	// Non-admin callers may only see their own activity logs.
+	// Non-member callers (viewers) may only see their own activity logs.
 	auth := resolveAuth(r)
-	if !permissions.HasMinRole(auth.Role, permissions.RoleAdmin) {
+	if !permissions.HasMinRole(auth.Role, permissions.RoleMember) {
 		callerID := store.UserIDFromContext(r.Context())
 		opts.ActorID = callerID
 	}

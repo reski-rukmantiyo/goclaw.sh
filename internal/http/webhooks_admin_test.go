@@ -166,6 +166,7 @@ func (a *adminTenantStore) GetUserRole(_ context.Context, tid uuid.UUID, uid str
 
 // Remaining store.TenantStore methods — no-op stubs.
 func (a *adminTenantStore) CreateTenant(context.Context, *store.TenantData) error { return nil }
+func (a *adminTenantStore) DeleteTenant(context.Context, uuid.UUID) error { return nil }
 func (a *adminTenantStore) GetTenant(_ context.Context, _ uuid.UUID) (*store.TenantData, error) {
 	return nil, sql.ErrNoRows
 }
@@ -176,7 +177,7 @@ func (a *adminTenantStore) ListTenants(context.Context) ([]store.TenantData, err
 func (a *adminTenantStore) UpdateTenant(context.Context, uuid.UUID, map[string]any) error {
 	return nil
 }
-func (a *adminTenantStore) AddUser(context.Context, uuid.UUID, string, string) error { return nil }
+func (a *adminTenantStore) AddUser(context.Context, uuid.UUID, string, bool) error { return nil }
 func (a *adminTenantStore) RemoveUser(context.Context, uuid.UUID, string) error      { return nil }
 func (a *adminTenantStore) ListUsers(context.Context, uuid.UUID) ([]store.TenantUserData, error) {
 	return nil, nil
@@ -193,9 +194,15 @@ func (a *adminTenantStore) ResolveUserTenant(context.Context, string) (uuid.UUID
 func (a *adminTenantStore) GetTenantUser(context.Context, uuid.UUID) (*store.TenantUserData, error) {
 	return nil, sql.ErrNoRows
 }
-func (a *adminTenantStore) CreateTenantUserReturning(context.Context, uuid.UUID, string, string, string) (*store.TenantUserData, error) {
+func (a *adminTenantStore) CreateTenantUserReturning(context.Context, uuid.UUID, string, string) (*store.TenantUserData, error) {
 	return nil, nil
 }
+func (a *adminTenantStore) IsOwner(context.Context, uuid.UUID, string) (bool, error) { return false, nil }
+func (a *adminTenantStore) CountOwners(context.Context, uuid.UUID) (int, error)      { return 0, nil }
+func (a *adminTenantStore) GetTenantUserByUser(context.Context, uuid.UUID, string) (*store.TenantUserData, error) {
+	return nil, nil
+}
+func (a *adminTenantStore) UpdateOwnerFlag(context.Context, uuid.UUID, string, bool) error { return nil }
 
 // ---- helpers ----
 

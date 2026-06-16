@@ -142,8 +142,8 @@ func TestClientCanReceiveEvent_UnscopedEvent_OnlyOwnerReceives(t *testing.T) {
 // ---- User-scoped events (agent, chat) ----
 
 func TestClientCanReceiveEvent_AgentEvent_FilteredByUserID(t *testing.T) {
-	userA := makeClient(permissions.RoleOperator, "user-a", masterTenant)
-	userB := makeClient(permissions.RoleOperator, "user-b", masterTenant)
+	userA := makeClient(permissions.RoleMember, "user-a", masterTenant)
+	userB := makeClient(permissions.RoleMember, "user-b", masterTenant)
 
 	evt := makeEvent(protocol.EventAgent, masterTenant, map[string]any{"userId": "user-a"})
 
@@ -166,7 +166,7 @@ func TestClientCanReceiveEvent_AgentEvent_AdminSeesAll(t *testing.T) {
 // ---- Team events ----
 
 func TestClientCanReceiveEvent_TeamEvent_FilteredByTeamID(t *testing.T) {
-	c := makeClient(permissions.RoleOperator, "user", masterTenant)
+	c := makeClient(permissions.RoleMember, "user", masterTenant)
 	c.SetTeamAccess([]string{"team-1"})
 
 	evtMyTeam := makeEvent("team.task.created", masterTenant, map[string]any{"team_id": "team-1"})
@@ -183,7 +183,7 @@ func TestClientCanReceiveEvent_TeamEvent_FilteredByTeamID(t *testing.T) {
 // ---- Admin-only events ----
 
 func TestClientCanReceiveEvent_AdminOnlyEvent_BlockedForNonAdmin(t *testing.T) {
-	c := makeClient(permissions.RoleOperator, "user", masterTenant)
+	c := makeClient(permissions.RoleMember, "user", masterTenant)
 	// Admin-only events land in the default deny path for non-admin.
 	evt := makeEvent(protocol.EventNodePairRequested, masterTenant, nil)
 	if clientCanReceiveEvent(c, evt) {
@@ -206,8 +206,8 @@ func TestClientCanReceiveEvent_SkillEvent_BroadcastToTenantClients(t *testing.T)
 // ---- Tenant access revocation ----
 
 func TestClientCanReceiveEvent_TenantAccessRevoked_DeliveredToCorrectUser(t *testing.T) {
-	userA := makeClient(permissions.RoleOperator, "user-a", masterTenant)
-	userB := makeClient(permissions.RoleOperator, "user-b", masterTenant)
+	userA := makeClient(permissions.RoleMember, "user-a", masterTenant)
+	userB := makeClient(permissions.RoleMember, "user-b", masterTenant)
 
 	evt := makeEvent(protocol.EventTenantAccessRevoked, masterTenant, map[string]any{"user_id": "user-a"})
 

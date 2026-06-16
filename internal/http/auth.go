@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nextlevelbuilder/goclaw/internal/auth"
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/crypto"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
@@ -82,7 +83,9 @@ var pkgGatewayToken string
 var pkgAPIKeyCache *apiKeyCache
 var pkgPairingStore store.PairingStore
 var pkgTenantCache *tenantCache
+var pkgTenantDBManager store.TenantDBManager
 var pkgOwnerIDs []string
+var pkgJWTManager *auth.JWTManager
 
 // InitGatewayToken sets the gateway bearer token for HTTP auth.
 // Must be called once during server startup before handling requests.
@@ -113,6 +116,16 @@ func InitPairingAuth(ps store.PairingStore) {
 // Owners get RoleOwner with gateway token; others get RoleAdmin scoped to their tenant.
 func InitOwnerIDs(ids []string) {
 	pkgOwnerIDs = ids
+}
+
+// InitJWTManager sets the JWT manager for multi-auth session token validation.
+func InitJWTManager(m *auth.JWTManager) {
+	pkgJWTManager = m
+}
+
+// InitTenantDBManager sets the tenant DB manager for per-tenant database resolution.
+func InitTenantDBManager(mgr store.TenantDBManager) {
+	pkgTenantDBManager = mgr
 }
 
 // isHTTPOwnerID checks if the user ID is a configured owner.
@@ -157,6 +170,7 @@ type authResult struct {
 	KeyData       *store.APIKeyData // non-nil when authenticated via API key
 	TenantID      uuid.UUID         // resolved tenant; always concrete after resolution
 	TenantSlug    string            // resolved tenant slug for filesystem paths
+	UserID        string            // resolved user ID from multi-auth JWT (empty for other auth methods)
 }
 
 // resolveAuth determines the caller's role from the request.
@@ -182,15 +196,25 @@ func resolveAuthWithBearer(r *http.Request, bearer string) authResult {
 		tenantVal := r.Header.Get("X-GoClaw-Tenant-Id")
 		if isOwner {
 			res.TenantID = resolveScopedTenant(r.Context(), tenantVal)
+			if res.TenantID == uuid.Nil {
+				res.TenantID = store.MasterTenantID
+			}
 		} else {
-			tenantID, allowed := resolveTenantHint(r.Context(), tenantVal, userID)
+			var tenantID uuid.UUID
+			var allowed bool
+			if tenantVal != "" {
+				tenantID, allowed = resolveTenantHint(r.Context(), tenantVal, userID)
+			} else {
+				tenantID, allowed = resolveDefaultTenant(r.Context(), userID)
+			}
 			if !allowed {
 				return authResult{}
 			}
+			if tenantID == store.MasterTenantID {
+				slog.Warn("security.http_master_scope_denied_non_owner", "user", userID)
+				return authResult{}
+			}
 			res.TenantID = tenantID
-		}
-		if res.TenantID == uuid.Nil {
-			res.TenantID = store.MasterTenantID
 		}
 		res.TenantSlug = resolveTenantSlug(r.Context(), res.TenantID)
 		return res
@@ -212,16 +236,63 @@ func resolveAuthWithBearer(r *http.Request, bearer string) authResult {
 		}
 		return res
 	}
-	// Browser pairing → operator (via X-GoClaw-Sender-Id header)
+	// Multi-auth JWT session token
+	if pkgJWTManager != nil && bearer != "" {
+		if claims, err := pkgJWTManager.ValidateToken(bearer); err == nil {
+			tenantID, _ := uuid.Parse(claims.TID)
+			if tenantID == uuid.Nil || tenantID == store.MasterTenantID {
+				if isHTTPOwnerID(claims.Subject, pkgOwnerIDs) {
+					tenantID = store.MasterTenantID
+				} else {
+					var allowed bool
+					tenantID, allowed = resolveDefaultTenant(r.Context(), claims.Subject)
+					if !allowed {
+						return authResult{}
+					}
+				}
+			}
+
+			// Allow explicit tenant override via header (same as gateway token path)
+			requestedScope := r.Header.Get("X-GoClaw-Tenant-Id")
+			if requestedScope != "" && pkgTenantCache != nil {
+				if t, tErr := pkgTenantCache.GetTenantBySlug(r.Context(), requestedScope); tErr == nil && t != nil {
+					if _, allowed := resolveTenantHint(r.Context(), requestedScope, claims.Subject); allowed {
+						tenantID = t.ID
+					}
+				} else if tid, pErr := uuid.Parse(requestedScope); pErr == nil {
+					if _, allowed := resolveTenantHint(r.Context(), requestedScope, claims.Subject); allowed {
+						tenantID = tid
+					}
+				}
+			}
+
+			role := resolveJWTRole(r.Context(), claims.Subject, tenantID)
+			return authResult{
+				Role:          role,
+				Authenticated: true,
+				TenantID:      tenantID,
+				TenantSlug:    resolveTenantSlug(r.Context(), tenantID),
+				UserID:        claims.Subject,
+			}
+		}
+	}
+	// Browser pairing → member (via X-GoClaw-Sender-Id header)
 	if senderID := r.Header.Get("X-GoClaw-Sender-Id"); senderID != "" && pkgPairingStore != nil {
 		paired, err := pkgPairingStore.IsPaired(r.Context(), senderID, "browser")
 		if err == nil && paired {
-			tenantID, allowed := resolveTenantHint(r.Context(), r.Header.Get("X-GoClaw-Tenant-Id"), extractUserID(r))
-			if !allowed {
+			var tenantID uuid.UUID
+			var allowed bool
+			hint := r.Header.Get("X-GoClaw-Tenant-Id")
+			if hint != "" {
+				tenantID, allowed = resolveTenantHint(r.Context(), hint, extractUserID(r))
+			} else {
+				tenantID, allowed = resolveDefaultTenant(r.Context(), extractUserID(r))
+			}
+			if !allowed || tenantID == store.MasterTenantID {
 				return authResult{}
 			}
 			return authResult{
-				Role:          permissions.RoleOperator,
+				Role:          permissions.RoleMember,
 				Authenticated: true,
 				TenantID:      tenantID,
 				TenantSlug:    resolveTenantSlug(r.Context(), tenantID),
@@ -265,19 +336,53 @@ func resolveTenantSlug(ctx context.Context, tenantID uuid.UUID) string {
 	return ""
 }
 
+// resolveJWTRole derives a legacy role string for a JWT-authenticated user.
+// It checks is_owner first, then falls back to effective permissions.
+func resolveJWTRole(ctx context.Context, userID string, tenantID uuid.UUID) permissions.Role {
+	// Owner bypass
+	if pkgTenantCache != nil {
+		if isOwner, err := pkgTenantCache.store.IsOwner(ctx, tenantID, userID); err == nil && isOwner {
+			return permissions.RoleOwner
+		}
+	}
+	// Permission-based derivation
+	if pkgPermCache != nil {
+		perms, err := pkgPermCache.EffectivePermissions(ctx, userID, tenantID)
+		if err == nil && len(perms) > 0 {
+			if perms[string(permissions.PermSystemManageSettings)] {
+				return permissions.RoleAdmin
+			}
+			// Any write permission → member; otherwise viewer
+			hasWrite := false
+			for p := range perms {
+				if !permissions.IsReadOnlyPermission(p) {
+					hasWrite = true
+					break
+				}
+			}
+			if hasWrite {
+				return permissions.RoleMember
+			}
+			return permissions.RoleViewer
+		}
+	}
+	// Safe fallback when caches are unavailable — tenant membership exists (SRS §6.1.1 step 4).
+	return permissions.RoleMember
+}
+
 func resolveTenantHint(ctx context.Context, hint, userID string) (uuid.UUID, bool) {
 	if hint == "" || pkgTenantCache == nil {
-		return store.MasterTenantID, true
+		return uuid.Nil, false
 	}
 	tid := resolveScopedTenant(ctx, hint)
 	if tid == uuid.Nil {
-		return store.MasterTenantID, true
+		return uuid.Nil, false
 	}
 	if userID == "" {
 		slog.Warn("security.http_tenant_hint_denied_anonymous", "hint", hint, "tenant_id", tid)
 		return uuid.Nil, false
 	}
-	role, err := pkgTenantCache.store.GetUserRole(ctx, tid, userID)
+	memberships, err := pkgTenantCache.store.ListUserTenants(ctx, userID)
 	if err != nil {
 		slog.Warn("security.http_tenant_access_revoked",
 			"hint", hint,
@@ -288,7 +393,14 @@ func resolveTenantHint(ctx context.Context, hint, userID string) (uuid.UUID, boo
 		)
 		return uuid.Nil, false
 	}
-	if role == "" {
+	hasAccess := false
+	for _, m := range memberships {
+		if m.TenantID == tid {
+			hasAccess = true
+			break
+		}
+	}
+	if !hasAccess {
 		slog.Warn("security.http_tenant_no_membership",
 			"hint", hint,
 			"user", userID,
@@ -300,13 +412,35 @@ func resolveTenantHint(ctx context.Context, hint, userID string) (uuid.UUID, boo
 	return tid, true
 }
 
+// resolveDefaultTenant returns the first active tenant membership for a user.
+// Non-owner callers without an explicit tenant hint must be scoped to a real
+// tenant — master fallback is reserved for global owners.
+func resolveDefaultTenant(ctx context.Context, userID string) (uuid.UUID, bool) {
+	if userID == "" || pkgTenantCache == nil {
+		return uuid.Nil, false
+	}
+	memberships, err := pkgTenantCache.store.ListUserTenants(ctx, userID)
+	if err != nil {
+		slog.Warn("security.http_default_tenant_failed", "user", userID, "error", err)
+		return uuid.Nil, false
+	}
+	for _, m := range memberships {
+		if m.TenantID == store.MasterTenantID {
+			continue
+		}
+		return m.TenantID, true
+	}
+	slog.Warn("security.http_default_tenant_no_membership", "user", userID)
+	return uuid.Nil, false
+}
+
 // httpMinRole returns the minimum role required for an HTTP endpoint based on HTTP method.
 func httpMinRole(method string) permissions.Role {
 	switch method {
 	case http.MethodGet, http.MethodHead, http.MethodOptions:
 		return permissions.RoleViewer
 	default: // POST, PUT, PATCH, DELETE
-		return permissions.RoleOperator
+		return permissions.RoleMember
 	}
 }
 
@@ -335,6 +469,10 @@ func enrichContext(ctx context.Context, r *http.Request, auth authResult) contex
 		}
 		userID = auth.KeyData.OwnerID
 	}
+	// Multi-auth JWT provides user ID directly from token claims.
+	if auth.UserID != "" {
+		userID = auth.UserID
+	}
 	if userID != "" {
 		ctx = store.WithUserID(ctx, userID)
 	}
@@ -351,11 +489,19 @@ func enrichContext(ctx context.Context, r *http.Request, auth authResult) contex
 		"role", string(auth.Role),
 		"tenant_id", tenantID.String(),
 	)
+
+	// Resolve tenant DB if available (greenfield tenants with tenant_db_connection)
+	if pkgTenantDBManager != nil && tenantID != uuid.Nil && !store.IsMasterScope(ctx) {
+		if db, err := pkgTenantDBManager.GetPool(ctx, tenantID); err == nil && db != nil {
+			ctx = store.WithTenantDB(ctx, db)
+		}
+	}
+
 	return ctx
 }
 
 // requireAuth is a middleware that checks authentication and minimum role.
-// Pass "" for minRole to auto-detect from HTTP method (GET→Viewer, POST→Operator).
+// Pass "" for minRole to auto-detect from HTTP method (GET→Viewer, POST→Member).
 // Injects locale, role, userID and tenantID into request context.
 func requireAuth(minRole permissions.Role, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

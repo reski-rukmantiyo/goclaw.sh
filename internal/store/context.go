@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"strings"
 
@@ -43,7 +44,7 @@ const (
 	CrossTenantKey contextKey = "goclaw_cross_tenant"
 	// TenantSlugKey stores the tenant's URL-safe slug for filesystem paths.
 	TenantSlugKey contextKey = "goclaw_tenant_slug"
-	// RoleKey is the context key for the caller's permission role (e.g. "admin", "operator", "viewer").
+	// RoleKey is the context key for the caller's permission role (e.g. "admin", "member", "viewer").
 	RoleKey contextKey = "goclaw_role"
 	// CredentialUserIDKey holds the resolved tenant user identity for credential lookups.
 	// Falls back to UserIDFromContext if not set.
@@ -52,6 +53,12 @@ const (
 	SenderNameKey contextKey = "goclaw_sender_name"
 	// AgentAudioKey carries the immutable agent audio snapshot for TTS tool dispatch.
 	AgentAudioKey contextKey = "goclaw_agent_audio"
+	// GroupIDKey is the context key for the current group UUID (multi-auth module).
+	GroupIDKey contextKey = "goclaw_group_id"
+	// GroupRoleKey is the context key for the user's role in the current group.
+	GroupRoleKey contextKey = "goclaw_group_role"
+	// TenantDBKey is the context key for the tenant-specific *sql.DB pool.
+	TenantDBKey contextKey = "goclaw_tenant_db"
 )
 
 // AgentAudioSnapshot is an immutable snapshot of agent audio config carried through
@@ -424,6 +431,20 @@ func TenantSlugFromContext(ctx context.Context) string {
 	return ""
 }
 
+// WithTenantDB returns a new context with the tenant-specific *sql.DB pool.
+func WithTenantDB(ctx context.Context, db *sql.DB) context.Context {
+	return context.WithValue(ctx, TenantDBKey, db)
+}
+
+// TenantDBFromContext extracts the tenant-specific *sql.DB from context.
+// Returns nil if not set.
+func TenantDBFromContext(ctx context.Context) *sql.DB {
+	if v, ok := ctx.Value(TenantDBKey).(*sql.DB); ok && v != nil {
+		return v
+	}
+	return nil
+}
+
 // WithRole returns a new context with the caller's permission role.
 func WithRole(ctx context.Context, role string) context.Context {
 	return context.WithValue(ctx, RoleKey, role)
@@ -432,6 +453,32 @@ func WithRole(ctx context.Context, role string) context.Context {
 // RoleFromContext extracts the permission role from context. Returns "" if not set.
 func RoleFromContext(ctx context.Context) string {
 	if v, ok := ctx.Value(RoleKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// WithGroupID returns a new context with the current group UUID.
+func WithGroupID(ctx context.Context, id uuid.UUID) context.Context {
+	return context.WithValue(ctx, GroupIDKey, id)
+}
+
+// GroupIDFromContext extracts the group UUID from context. Returns uuid.Nil if not set.
+func GroupIDFromContext(ctx context.Context) uuid.UUID {
+	if v, ok := ctx.Value(GroupIDKey).(uuid.UUID); ok {
+		return v
+	}
+	return uuid.Nil
+}
+
+// WithGroupRole returns a new context with the user's role in the current group.
+func WithGroupRole(ctx context.Context, role string) context.Context {
+	return context.WithValue(ctx, GroupRoleKey, role)
+}
+
+// GroupRoleFromContext extracts the group role from context. Returns "" if not set.
+func GroupRoleFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(GroupRoleKey).(string); ok {
 		return v
 	}
 	return ""

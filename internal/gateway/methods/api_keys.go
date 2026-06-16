@@ -35,9 +35,9 @@ func (m *APIKeysMethods) Register(router *gateway.MethodRouter) {
 
 func (m *APIKeysMethods) handleList(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
 	locale := store.LocaleFromContext(ctx)
-	// Non-admin callers only see their own keys.
+	// Non-member callers (viewers) only see their own keys.
 	ownerID := ""
-	if !permissions.HasMinRole(client.Role(), permissions.RoleAdmin) {
+	if !permissions.HasMinRole(client.Role(), permissions.RoleMember) {
 		ownerID = client.UserID()
 	}
 	keys, err := m.apiKeys.List(ctx, ownerID)
@@ -86,9 +86,9 @@ func (m *APIKeysMethods) handleCreate(ctx context.Context, client *gateway.Clien
 		}
 	}
 
-	// Non-admin callers always bind the key to their own user_id.
+	// Non-member callers (viewers) always bind the key to their own user_id.
 	ownerID := params.OwnerID
-	if !permissions.HasMinRole(client.Role(), permissions.RoleAdmin) {
+	if !permissions.HasMinRole(client.Role(), permissions.RoleMember) {
 		ownerID = client.UserID()
 	}
 
@@ -190,14 +190,14 @@ func (m *APIKeysMethods) handleRevoke(ctx context.Context, client *gateway.Clien
 		return
 	}
 
-	// Non-admin callers can only revoke their own keys — personal-key path,
+	// Non-member callers (viewers) can only revoke their own keys — personal-key path,
 	// ownerID filter enforced by the store layer.
 	ownerID := ""
-	if !permissions.HasMinRole(client.Role(), permissions.RoleAdmin) {
+	if !permissions.HasMinRole(client.Role(), permissions.RoleMember) {
 		ownerID = client.UserID()
 	}
 
-	// Admin path: verify the target key belongs to the caller's tenant (or
+	// Admin/member path: verify the target key belongs to the caller's tenant (or
 	// caller is a system owner) before revoking. Personal-key path skips
 	// this because the ownerID filter already scopes to the caller.
 	//

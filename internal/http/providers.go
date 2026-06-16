@@ -120,15 +120,15 @@ func (h *ProvidersHandler) emitProviderCacheInvalidate(name string, tenantID uui
 
 // RegisterRoutes registers all provider management routes on the given mux.
 func (h *ProvidersHandler) RegisterRoutes(mux *http.ServeMux) {
-	// Provider CRUD
-	mux.HandleFunc("GET /v1/providers", h.auth(h.handleListProviders))
+	// Provider CRUD — reads are viewer+, writes are admin+
+	mux.HandleFunc("GET /v1/providers", h.viewerAuth(h.handleListProviders))
 	mux.HandleFunc("POST /v1/providers", h.auth(h.handleCreateProvider))
-	mux.HandleFunc("GET /v1/providers/{id}", h.auth(h.handleGetProvider))
+	mux.HandleFunc("GET /v1/providers/{id}", h.viewerAuth(h.handleGetProvider))
 	mux.HandleFunc("PUT /v1/providers/{id}", h.auth(h.handleUpdateProvider))
 	mux.HandleFunc("DELETE /v1/providers/{id}", h.auth(h.handleDeleteProvider))
 
 	// Model listing (proxied to upstream provider API)
-	mux.HandleFunc("GET /v1/providers/{id}/models", h.auth(h.handleListProviderModels))
+	mux.HandleFunc("GET /v1/providers/{id}/models", h.viewerAuth(h.handleListProviderModels))
 
 	// Provider + model verification (pre-flight check)
 	mux.HandleFunc("POST /v1/providers/{id}/verify", h.auth(h.handleVerifyProvider))
@@ -137,8 +137,8 @@ func (h *ProvidersHandler) RegisterRoutes(mux *http.ServeMux) {
 	// Provider-scoped Codex pool activity monitor
 	mux.HandleFunc("GET /v1/providers/{id}/codex-pool-activity", h.auth(h.handleProviderCodexPoolActivity))
 
-	// Embedding system status
-	mux.HandleFunc("GET /v1/embedding/status", h.auth(h.handleEmbeddingStatus))
+	// Embedding system status — member+ can view
+	mux.HandleFunc("GET /v1/embedding/status", requireAuth(permissions.RoleMember, h.handleEmbeddingStatus))
 
 	// Claude CLI auth status (global — not per-provider)
 	mux.HandleFunc("GET /v1/providers/claude-cli/auth-status", h.auth(h.handleClaudeCLIAuthStatus))
@@ -146,6 +146,11 @@ func (h *ProvidersHandler) RegisterRoutes(mux *http.ServeMux) {
 
 func (h *ProvidersHandler) auth(next http.HandlerFunc) http.HandlerFunc {
 	return requireAuth(permissions.RoleAdmin, next)
+}
+
+// viewerAuth allows read access to viewers+; writes still require admin.
+func (h *ProvidersHandler) viewerAuth(next http.HandlerFunc) http.HandlerFunc {
+	return requireAuth("", next)
 }
 
 // maskAPIKey replaces non-empty API keys with "***".
@@ -263,6 +268,18 @@ func (h *ProvidersHandler) registerInMemory(p *store.LLMProviderData) {
 			base = store.NovitaDefaultAPIBase
 		}
 		h.providerReg.RegisterForTenant(p.TenantID, providers.NewOpenAIProvider(p.Name, p.APIKey, base, store.NovitaDefaultModel))
+	case store.ProviderKimiCoding:
+		// Moonshot Kimi Coding requires a fixed User-Agent on every request.
+		base := apiBase
+		if base == "" {
+			base = store.KimiCodingDefaultAPIBase
+		}
+		prov := providers.NewOpenAIProvider(p.Name, p.APIKey, base, store.KimiCodingDefaultModel)
+		prov.WithProviderType(p.ProviderType)
+		prov.WithExtraHeaders(map[string]string{
+			"User-Agent": store.KimiCodingRequiredUserAgent,
+		})
+		h.providerReg.RegisterForTenant(p.TenantID, prov)
 	default:
 		prov := providers.NewOpenAIProvider(p.Name, p.APIKey, apiBase, "")
 		prov.WithProviderType(p.ProviderType)

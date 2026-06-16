@@ -193,7 +193,14 @@ func init() {
 		MsgSkillNudge70Pct:      "[System] Bạn đã dùng 70% ngân sách vòng lặp. Cân nhắc xem các mẫu trong phiên này có nên lưu thành kỹ năng không.",
 		MsgSkillNudge90Pct:      "[System] Bạn đã dùng 90% ngân sách vòng lặp. Nếu phiên này có quy trình tái sử dụng, hãy cân nhắc lưu thành kỹ năng trước khi hoàn thành.",
 
-		MsgInvalidRole: "vai trò không hợp lệ: giá trị cho phép là owner, admin, operator, member, viewer",
+		MsgInvalidRole:           "vai trò không hợp lệ: giá trị cho phép là owner, admin, member, viewer",
+		MsgSlugImmutable:         "không thể thay đổi slug",
+		MsgTenantDeleted:         "đã xóa tenant",
+		MsgTenantDeleteFailed:    "không thể xóa tenant: %s",
+
+		MsgTenantDBConnectionFailed: "không thể kết nối đến cơ sở dữ liệu tenant: %s",
+		MsgTenantDBProvisionFailed:  "không thể cấp phát cơ sở dữ liệu tenant: %s",
+		MsgTenantDBNotFound:         "không tìm thấy cấu hình cơ sở dữ liệu tenant",
 
 		MsgContactIDsRequired:  "contact_ids là bắt buộc",
 		MsgMergeTargetRequired: "cần chính xác một trong tenant_user_id hoặc create_user",
@@ -274,5 +281,31 @@ func init() {
 
 		// Message tool cross-target forward notice
 		MessageCrossTargetForwarded: "📤 Đã forward sang %s theo yêu cầu: %q",
+
+		// Multi-auth
+		MsgAuthInvalidCredentials:  "email hoặc mật khẩu không hợp lệ",
+		MsgAuthAccountSuspended:    "tài khoản đã bị tạm khóa",
+		MsgAuthRefreshTokenInvalid: "refresh token không hợp lệ hoặc đã hết hạn",
+		MsgAuthPasswordMismatch:    "mật khẩu hiện tại không chính xác",
+		MsgAuthPasswordTooShort:    "mật khẩu phải có ít nhất %d ký tự",
+		MsgAuthPasswordComplexity:  "mật khẩu phải có ít nhất 8 ký tự, bao gồm ít nhất 1 chữ hoa, 1 số và 1 ký tự đặc biệt",
+		MsgUserHasGroups:           "người dùng là thành viên của %d nhóm, vui lòng xóa khỏi nhóm trước",
+		MsgUserDeleteBlockedTenants: "người dùng đã đăng ký %d tenant, vui lòng hủy đăng ký trước",
+		MsgAuthOIDCFailed:          "xác thực OIDC thất bại: %s",
+		MsgAuthStateInvalid:        "OAuth state không hợp lệ hoặc đã hết hạn",
+
+		// Roles
+		MsgRoleAssigned:               "đã gán vai trò",
+		MsgRoleUnassigned:             "đã bỏ gán vai trò",
+		MsgRoleDeleteBlocked:          "không thể xóa vai trò: đã gán cho %d thành viên hoặc nhóm",
+		MsgGroupDeleteBlockedChildren: "không thể xóa nhóm: có %d nhóm con",
+
+		// Tenant User CRUD
+		MsgSelfDeleteBlocked:    "Không thể xóa tài khoản của chính bạn",
+		MsgLastOwnerBlocked:     "Không thể xóa chủ sở hữu cuối cùng của tenant",
+		MsgTargetRoleForbidden:  "Không đủ quyền đối với vai trò của người dùng mục tiêu",
+		MsgFieldNotUpdatable:    "Trường %s không thể cập nhật",
+		MsgTenantNotActive:      "Tenant không hoạt động",
+		MsgRoleNotPermitted:     "Vai trò %s không được phép cho thao tác này",
 	})
 }

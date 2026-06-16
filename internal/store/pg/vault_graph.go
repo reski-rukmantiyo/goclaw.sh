@@ -19,6 +19,14 @@ func NewPGVaultGraphStore(db *sql.DB) *PGVaultGraphStore {
 	return &PGVaultGraphStore{db: db}
 }
 
+func (s *PGVaultGraphStore) dbFor(ctx context.Context) *sql.DB {
+	if db := store.TenantDBFromContext(ctx); db != nil {
+		return db
+	}
+	return s.db
+}
+
+
 // ListGraphNodes returns lightweight vault nodes with pre-computed degree.
 func (s *PGVaultGraphStore) ListGraphNodes(ctx context.Context, tenantID, agentID string, opts store.VaultGraphListOptions) ([]store.GraphNode, int, error) {
 	tid := parseUUIDOrNil(tenantID)
@@ -60,7 +68,7 @@ func (s *PGVaultGraphStore) ListGraphNodes(ctx context.Context, tenantID, agentI
 	q += fmt.Sprintf(" LIMIT $%d", p)
 	args = append(args, limit)
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("vault graph nodes: %w", err)
 	}
@@ -120,7 +128,7 @@ func (s *PGVaultGraphStore) ListGraphEdges(ctx context.Context, tenantID, agentI
 		WHERE vl.from_doc_id IN (%s) AND vl.to_doc_id IN (%s)`, subQ, subQ)
 
 	// PG positional params ($1,$2..) are reused across both IN subqueries — no duplication needed.
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("vault graph edges: %w", err)
 	}
@@ -154,7 +162,7 @@ func (s *PGVaultGraphStore) countGraphNodes(ctx context.Context, tid any, agentI
 	q, args, _ = appendGraphTeamFilter(q, args, p, "", opts.TeamID, opts.TeamIDs)
 
 	var count int
-	if err := s.db.QueryRowContext(ctx, q, args...).Scan(&count); err != nil {
+	if err := s.dbFor(ctx).QueryRowContext(ctx, q, args...).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
