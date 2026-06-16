@@ -21,8 +21,8 @@ func (t *DateTimeTool) Name() string { return "datetime" }
 func (t *DateTimeTool) Description() string {
 	return `Get the current date and time. Use this when you need precise timestamps for scheduling (cron jobs), logging, or any time-sensitive operation.
 
-Returns current time in both UTC and the configured timezone.
-If no timezone is provided, uses the system default timezone.`
+Returns current time in both UTC and the user's timezone.
+If no timezone is provided, uses the user's timezone from context, then the system default.`
 }
 
 func (t *DateTimeTool) Parameters() map[string]any {
@@ -31,7 +31,7 @@ func (t *DateTimeTool) Parameters() map[string]any {
 		"properties": map[string]any{
 			"timezone": map[string]any{
 				"type":        "string",
-				"description": "IANA timezone name (e.g. 'Asia/Ho_Chi_Minh', 'America/New_York'). If omitted, uses the system default timezone.",
+				"description": "IANA timezone name (e.g. 'Asia/Ho_Chi_Minh', 'America/New_York'). If omitted, uses the user's timezone from context, then the system default.",
 			},
 		},
 	}
@@ -45,6 +45,10 @@ func (t *DateTimeTool) Execute(ctx context.Context, args map[string]any) *Result
 	}
 
 	tz, _ := args["timezone"].(string)
+	if tz == "" {
+		// Per-user timezone from the request context (WS connect / HTTP header / persisted users.timezone).
+		tz = store.TimezoneFromContext(ctx)
+	}
 	if tz == "" {
 		if rc := store.RunContextFromCtx(ctx); rc != nil && rc.DefaultTimezone != "" {
 			tz = rc.DefaultTimezone

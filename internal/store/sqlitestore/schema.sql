@@ -1932,6 +1932,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash    TEXT,
     status           VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'deactivated')),
     phone            TEXT,
+    timezone         TEXT,
     last_login_at    TEXT,
     created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))

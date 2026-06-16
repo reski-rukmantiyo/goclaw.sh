@@ -33,6 +33,9 @@ type PreviewDeps struct {
 		BuildSummary(ctx context.Context, allowList []string) string
 	}
 	DataDir string // for team workspace path construction
+	// DefaultTimezone is the optional system default IANA timezone for the preview
+	// time section. Zero value = UTC. Callers that have the system config may pass it.
+	DefaultTimezone string
 }
 
 // PreviewResult holds the output of BuildPreviewPrompt.
@@ -275,6 +278,8 @@ func BuildPreviewPrompt(ctx context.Context, ag *store.AgentData, mode PromptMod
 		TeamGuidance:         teamGuidance,
 		DelegateTargets:      delegateTargets,
 		OrchMode:             orchMode,
+		UserTimezone:         store.TimezoneFromContext(ctx),
+		DefaultTimezone:      deps.DefaultTimezone,
 		// Runtime-only fields left at zero: Channel, ChannelType, ChatTitle,
 		// PeerKind, OwnerIDs, ExtraPrompt, CredentialCLIContext, IsBootstrap,
 		// SandboxWorkspaceAccess

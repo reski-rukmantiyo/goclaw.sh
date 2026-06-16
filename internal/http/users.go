@@ -96,6 +96,7 @@ func (h *UsersHandler) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 
 	var input struct {
 		AvatarURL *string `json:"avatar_url"`
+		Timezone  *string `json:"timezone"`
 	}
 	if !bindJSON(w, r, locale, &input) {
 		return
@@ -103,6 +104,16 @@ func (h *UsersHandler) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 
 	if input.AvatarURL != nil {
 		user.AvatarURL = input.AvatarURL
+	}
+	if input.Timezone != nil {
+		// Validate IANA timezone; an empty string clears the stored value.
+		if *input.Timezone != "" {
+			if _, err := time.LoadLocation(*input.Timezone); err != nil {
+				writeError(w, http.StatusBadRequest, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgInvalidRequest, "timezone must be an IANA name (e.g. Asia/Ho_Chi_Minh)"))
+				return
+			}
+		}
+		user.Timezone = input.Timezone
 	}
 
 	if err := h.users.Update(ctx, user); err != nil {

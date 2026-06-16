@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -327,22 +328,74 @@ func buildUserIdentitySection(ownerIDs []string) []string {
 	}
 }
 
-func buildTimeSection(defaultTimezone string) []string {
+func buildTimeSection(userTimezone, defaultTimezone string) []string {
+	// Effective timezone: per-user (transport or USER.md-learned) wins, else system default.
+	tz := userTimezone
+	if tz == "" {
+		tz = defaultTimezone
+	}
 	now := time.Now()
 	utcNow := now.UTC()
 	dateLine := fmt.Sprintf("Current date/time: %s %s (UTC)", utcNow.Format("2006-01-02 Monday"), utcNow.Format("15:04"))
-	if defaultTimezone != "" {
-		if loc, err := time.LoadLocation(defaultTimezone); err == nil {
+	if tz != "" {
+		if loc, err := time.LoadLocation(tz); err == nil {
 			localNow := now.In(loc)
 			dateLine = fmt.Sprintf("Current date/time: %s %s (UTC) / %s %s (%s)",
 				utcNow.Format("2006-01-02 Monday"), utcNow.Format("15:04"),
 				localNow.Format("2006-01-02 Monday"), localNow.Format("15:04"),
-				defaultTimezone)
+				tz)
 		} else {
-			slog.Warn("agent.invalid_default_timezone", "tz", defaultTimezone, "err", err)
+			slog.Warn("agent.invalid_default_timezone", "tz", tz, "err", err)
 		}
 	}
-	return []string{dateLine, ""}
+	return []string{
+		dateLine,
+		"Interpret relative time references (today, yesterday, tomorrow, next/last <weekday>, in N hours, this morning/afternoon) in the timezone shown above, not UTC.",
+		"",
+	}
+}
+
+// resolveUserTimezone returns the effective per-turn IANA timezone:
+//  1. the transport/persisted tz from context (WS connect param, HTTP header, or auth backfill from users.timezone);
+//  2. else a "Timezone: <name>" line parsed from the loaded USER.md (channel-learned path).
+//
+// Empty when neither is present (caller falls back to the system default, then UTC).
+func resolveUserTimezone(ctx context.Context, contextFiles []bootstrap.ContextFile) string {
+	if tz := store.TimezoneFromContext(ctx); tz != "" {
+		return tz
+	}
+	for _, cf := range contextFiles {
+		if filepath.Base(cf.Path) != bootstrap.UserFile {
+			continue
+		}
+		if tz := parseTimezoneLine(cf.Content); tz != "" {
+			return tz
+		}
+	}
+	return ""
+}
+
+// parseTimezoneLine extracts a valid IANA timezone from a "Timezone: <name>" line.
+// Returns "" when the line is absent or the value is not a real IANA name.
+func parseTimezoneLine(content string) string {
+	for line := range strings.SplitSeq(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(strings.ToLower(trimmed), "timezone:") {
+			continue
+		}
+		parts := strings.SplitN(trimmed, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		tz := strings.TrimSpace(parts[1])
+		if tz == "" {
+			continue
+		}
+		if _, err := time.LoadLocation(tz); err == nil {
+			return tz
+		}
+	}
+	return ""
 }
 
 // buildProjectContextSection renders context files with an optional header.

@@ -28,6 +28,7 @@ type Client struct {
 	remoteAddr  string    // peer IP (extracted from proxy headers or RemoteAddr)
 
 	locale string              // user's preferred locale (e.g. "en", "vi", "zh")
+	timezone string            // user's IANA timezone (e.g. "Asia/Ho_Chi_Minh"); empty = unknown
 	scopes []permissions.Scope // API key scopes (empty = role-based auth, no scope restriction)
 
 	// Browser pairing state

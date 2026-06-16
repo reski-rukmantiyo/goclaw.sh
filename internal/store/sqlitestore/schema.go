@@ -16,7 +16,7 @@ var schemaSQL string
 
 // SchemaVersion is the current SQLite schema version.
 // Bump this when adding new migration steps below.
-const SchemaVersion = 47
+const SchemaVersion = 48
 
 // migrations maps version → SQL to apply when upgrading FROM that version.
 // schema.sql always represents the LATEST full schema (for fresh DBs).
@@ -1063,6 +1063,10 @@ WHERE name = 'Admin'
 		// Version 45 → 46: no-op placeholder (reserved).
 		// Version 46 → 47: add phone column to users table (mirrors PG migration 000088).
 		46: `ALTER TABLE users ADD COLUMN phone TEXT;`,
+
+	// Version 47 → 48: add timezone column to users (mirrors PG migration 000089).
+	// IANA name; nullable (NULL/'' = unknown -> system default then UTC).
+	47: `ALTER TABLE users ADD COLUMN timezone TEXT;`,
 }
 
 // addHooksTables is the SQLite incremental migration for schema v19 → v20.

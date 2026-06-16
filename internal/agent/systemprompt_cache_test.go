@@ -49,7 +49,7 @@ func TestTimeSectionWithTimezone(t *testing.T) {
 
 // TestTimeSectionWithoutTimezone verifies UTC-only format when no timezone is set.
 func TestTimeSectionWithoutTimezone(t *testing.T) {
-	lines := buildTimeSection("")
+	lines := buildTimeSection("", "")
 	if len(lines) == 0 {
 		t.Fatal("buildTimeSection returned empty")
 	}
@@ -63,9 +63,47 @@ func TestTimeSectionWithoutTimezone(t *testing.T) {
 	}
 }
 
+// TestTimeSectionUserTimezonePriority verifies the per-user timezone takes
+// priority over the system default in the rendered time section (SRS 007 FR-04).
+func TestTimeSectionUserTimezonePriority(t *testing.T) {
+	lines := buildTimeSection("Asia/Jakarta", "Asia/Ho_Chi_Minh")
+	if len(lines) == 0 {
+		t.Fatal("buildTimeSection returned empty")
+	}
+	dateLine := lines[0]
+	if !strings.Contains(dateLine, "Asia/Jakarta") {
+		t.Errorf("user timezone should win over system default: %s", dateLine)
+	}
+	if strings.Contains(dateLine, "Asia/Ho_Chi_Minh") {
+		t.Errorf("system default should not appear when user tz is set: %s", dateLine)
+	}
+}
+
+// TestParseTimezoneLine verifies the USER.md "Timezone:" parser (SRS 007 FR-05).
+func TestParseTimezoneLine(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{"present", "Name: Bob\nTimezone: Asia/Jakarta\n", "Asia/Jakarta"},
+		{"lowercase_key", "timezone: Europe/Berlin\n", "Europe/Berlin"},
+		{"invalid_iana", "Timezone: Not/A/Real/Zone\n", ""},
+		{"absent", "Name: Bob\n", ""},
+		{"empty_value", "Timezone: \n", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := parseTimezoneLine(c.content); got != c.want {
+				t.Errorf("parseTimezoneLine(%q) = %q, want %q", c.content, got, c.want)
+			}
+		})
+	}
+}
+
 // TestTimeSectionFormat verifies the time section includes HH:MM (not HH:MM:SS).
 func TestTimeSectionFormat(t *testing.T) {
-	lines := buildTimeSection("Asia/Ho_Chi_Minh")
+	lines := buildTimeSection("", "Asia/Ho_Chi_Minh")
 	if len(lines) == 0 {
 		t.Fatal("buildTimeSection returned empty")
 	}

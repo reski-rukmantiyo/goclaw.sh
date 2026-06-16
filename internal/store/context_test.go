@@ -91,3 +91,23 @@ func TestAgentAudioFromCtx_NilUUIDReturnsFalse(t *testing.T) {
 		t.Error("expected ok=false when AgentID is uuid.Nil")
 	}
 }
+
+// TestTimezoneContext verifies WithTimezone/TimezoneFromContext round-trip and the
+// empty default (SRS 007: empty = unknown -> fall back to system default then UTC).
+func TestTimezoneContext(t *testing.T) {
+	t.Parallel()
+	// Unset context returns "" (unknown).
+	if got := TimezoneFromContext(context.Background()); got != "" {
+		t.Errorf("unset context should return empty timezone, got %q", got)
+	}
+	// Set value round-trips.
+	ctx := WithTimezone(context.Background(), "Asia/Ho_Chi_Minh")
+	if got := TimezoneFromContext(ctx); got != "Asia/Ho_Chi_Minh" {
+		t.Errorf("expected Asia/Ho_Chi_Minh, got %q", got)
+	}
+	// Empty string is a valid set value and reads back as empty (unknown).
+	ctx = WithTimezone(context.Background(), "")
+	if got := TimezoneFromContext(ctx); got != "" {
+		t.Errorf("empty set value should read back as empty, got %q", got)
+	}
+}

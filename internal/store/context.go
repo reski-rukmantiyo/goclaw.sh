@@ -26,6 +26,9 @@ const (
 	SelfEvolveKey contextKey = "goclaw_self_evolve"
 	// LocaleKey is the context key for the user's preferred locale (e.g. "en", "vi", "zh").
 	LocaleKey contextKey = "goclaw_locale"
+	// TimezoneKey is the context key for the user's IANA timezone (e.g. "Asia/Ho_Chi_Minh").
+	// Empty = unknown -> fall back to system default then UTC. Unlike LocaleKey, no default value.
+	TimezoneKey contextKey = "goclaw_timezone"
 	// SharedMemoryKey indicates memory should be shared (no per-user scoping).
 	SharedMemoryKey contextKey = "goclaw_shared_memory"
 	// SharedKGKey indicates KG should be shared across all users of the agent (no per-user scoping).
@@ -356,6 +359,20 @@ func LocaleFromContext(ctx context.Context) string {
 		return v
 	}
 	return "en"
+}
+
+// WithTimezone returns a new context with the given IANA timezone (e.g. "Asia/Ho_Chi_Minh").
+// Empty string is valid and means "unknown".
+func WithTimezone(ctx context.Context, timezone string) context.Context {
+	return context.WithValue(ctx, TimezoneKey, timezone)
+}
+
+// TimezoneFromContext extracts the IANA timezone from context. Returns "" if not set (unknown).
+func TimezoneFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(TimezoneKey).(string); ok {
+		return v
+	}
+	return ""
 }
 
 // WithTenantID returns a new context with the given tenant UUID.

@@ -448,6 +448,7 @@ func httpMinRole(method string) permissions.Role {
 // Used by requireAuth middleware and ServeHTTP handlers that do their own auth checks.
 func enrichContext(ctx context.Context, r *http.Request, auth authResult) context.Context {
 	ctx = store.WithLocale(ctx, extractLocale(r))
+	ctx = store.WithTimezone(ctx, extractTimezone(r))
 	ctx = store.WithRole(ctx, string(auth.Role))
 	userID := extractUserID(r)
 	// Security: In dev mode (no gateway token configured), do not trust the
@@ -578,4 +579,10 @@ func extractLocale(r *http.Request) string {
 		}
 	}
 	return i18n.DefaultLocale
+}
+
+// extractTimezone returns the X-GoClaw-Timezone header value (IANA name) or "" if absent.
+// The raw value is returned; consumers validate via time.LoadLocation and fall back on invalid.
+func extractTimezone(r *http.Request) string {
+	return strings.TrimSpace(r.Header.Get("X-GoClaw-Timezone"))
 }

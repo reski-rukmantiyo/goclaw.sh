@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -103,6 +104,7 @@ func (r *MethodRouter) Handle(ctx context.Context, client *Client, req *protocol
 	// from WS handlers — without it, ctx-based permission helpers silently
 	// evaluate as non-owner. HTTP layer does the same via enrichContext.
 	ctx = store.WithLocale(ctx, i18n.Normalize(client.locale))
+	ctx = store.WithTimezone(ctx, client.timezone)
 	if client.TenantID() != uuid.Nil {
 		ctx = store.WithTenantID(ctx, client.TenantID())
 	}
@@ -144,6 +146,7 @@ func (r *MethodRouter) handleConnect(ctx context.Context, client *Client, req *p
 		UserID      string `json:"user_id"`
 		SenderID    string `json:"sender_id"`    // browser pairing: stored sender ID for reconnect
 		Locale      string `json:"locale"`       // user's preferred locale (en, vi, zh)
+		Timezone    string `json:"timezone"`     // user's IANA timezone (e.g. Asia/Ho_Chi_Minh) for the system prompt time section
 		TenantHint  string `json:"tenant_hint"`  // optional tenant slug for browser pairing multi-tenant
 		TenantID    string `json:"tenant_id"`    // cross-tenant admin: narrow scope to specific tenant (UUID or slug)
 		TenantScope string `json:"tenant_scope"` // deprecated: alias for tenant_id (backward compat)
@@ -154,6 +157,14 @@ func (r *MethodRouter) handleConnect(ctx context.Context, client *Client, req *p
 
 	// Set locale on client (persists across all requests for this connection)
 	client.locale = i18n.Normalize(params.Locale)
+	// Set timezone on client if it's a valid IANA name (persists across requests for this connection).
+	if tz := strings.TrimSpace(params.Timezone); tz != "" {
+		if _, err := time.LoadLocation(tz); err == nil {
+			client.timezone = tz
+		} else {
+			slog.Warn("gateway.invalid_connect_timezone", "timezone", tz, "err", err)
+		}
+	}
 
 	configToken := r.server.cfg.Gateway.Token
 

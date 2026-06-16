@@ -165,6 +165,12 @@ type SystemPromptConfig struct {
 	// Used to show local date/time alongside UTC in the time section.
 	DefaultTimezone string
 
+	// UserTimezone is the requesting user's IANA timezone (per-turn effective value).
+	// Takes priority over DefaultTimezone in the time section. Sourced from the
+	// request context (WS connect / HTTP header / persisted users.timezone) or, for
+	// channel users, a "Timezone:" line parsed from USER.md. Empty = unknown.
+	UserTimezone string
+
 	// SharedKGIDs lists the agent's knowledge graph scope IDs (e.g. "project-sovereign").
 	// Populated from WorkspaceSharingConfig when ShareKnowledgeGraph is enabled.
 	SharedKGIDs []string
@@ -313,8 +319,9 @@ func BuildSystemPrompt(cfg SystemPromptConfig) string {
 			"",
 			"BOOTSTRAP.md is loaded below. This is your FIRST interaction with this user.",
 			"",
-			"Your goal: have a short, warm conversation and learn their name, preferred language,",
-			"and timezone naturally. Ask at most 1-2 questions per turn — don't interrogate.",
+			"Your goal: have a short, warm conversation and learn their name and preferred language",
+			"naturally. Their timezone is already shown in the time section below — only confirm it if it seems wrong.",
+			"Ask at most 1-2 questions per turn — don't interrogate.",
 			"",
 			"Once you actually have this info FROM THE USER'S OWN WORDS, silently call write_file",
 			"for USER.md (their profile) and write_file for BOOTSTRAP.md with empty content (to",
@@ -334,7 +341,7 @@ func BuildSystemPrompt(cfg SystemPromptConfig) string {
 			"## USER PROFILE INCOMPLETE",
 			"",
 			"USER.md exists but hasn't been filled in yet.",
-			"During conversation, naturally learn the user's name, language, and timezone.",
+			"During conversation, naturally learn the user's name and language (their timezone is already provided in the time section below).",
 			"Once you have this info, silently call write_file to update USER.md with their details.",
 			"",
 		)
@@ -487,7 +494,7 @@ func BuildSystemPrompt(cfg SystemPromptConfig) string {
 
 	// 8. Time (below boundary — date changes don't bust the stable cache)
 	if !isNone {
-		lines = append(lines, buildTimeSection(cfg.DefaultTimezone)...)
+		lines = append(lines, buildTimeSection(cfg.UserTimezone, cfg.DefaultTimezone)...)
 	}
 
 	// 9.5. Channel formatting hints — full mode only

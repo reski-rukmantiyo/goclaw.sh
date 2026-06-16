@@ -92,11 +92,18 @@ func (l *Loop) buildMessages(ctx context.Context, history []providers.Message, s
 		hadBootstrap = false
 	}
 
+	// Resolve the effective per-turn timezone once: transport/persisted tz from
+	// context (WS connect / HTTP header / auth backfill) wins; else a "Timezone:"
+	// line parsed from the loaded USER.md (channel-learned path). Empty = unknown.
+	effectiveTimezone := resolveUserTimezone(ctx, contextFiles)
+
 	// Bootstrap auto-contact: inject known sender info from channel metadata.
 	// DM only — group chats have permission checks and multiple senders.
-	if hadBootstrap && peerKind == "direct" {
+	// Only ask for the timezone when it is genuinely unknown (effectiveTimezone == "");
+	// auth users and channels with a known USER.md tz are not asked again.
+	if hadBootstrap && peerKind == "direct" && effectiveTimezone == "" {
 		if senderName := store.SenderNameFromContext(ctx); senderName != "" {
-			hint := fmt.Sprintf("Known user info (from %s): Name=%q\nTimezone: not yet known. When the user mentions times, schedules, or reminders, ask for their timezone and update USER.md.", channelType, senderName)
+			hint := fmt.Sprintf("Known user info (from %s): Name=%q\nTimezone: not yet known. When the user first mentions times, schedules, or reminders, ask for their IANA timezone (e.g. Asia/Ho_Chi_Minh) and add a line in the form \"Timezone: <name>\" to USER.md.", channelType, senderName)
 			if extraSystemPrompt != "" {
 				extraSystemPrompt += "\n\n"
 			}
@@ -252,6 +259,7 @@ func (l *Loop) buildMessages(ctx context.Context, history []providers.Message, s
 		OrchMode:               l.orchMode,
 		ProviderContribution:   l.providerContribution(),
 		DefaultTimezone:        l.defaultTimezone,
+		UserTimezone:           effectiveTimezone,
 		SharedKGIDs:            l.sharedKGIDs(),
 	})
 
