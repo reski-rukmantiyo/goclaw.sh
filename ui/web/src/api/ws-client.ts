@@ -213,6 +213,7 @@ export class WsClient {
         token: this.getToken(),
         user_id: this.getUserId(),
         locale: localStorage.getItem("goclaw:language") || "en",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
         tenant_hint: localStorage.getItem("goclaw:tenant_hint") || "",
         tenant_id: localStorage.getItem("goclaw:tenant_id") || "",
         protocolVersion: PROTOCOL_VERSION,

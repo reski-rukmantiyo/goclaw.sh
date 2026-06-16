@@ -55,6 +55,7 @@ export class WsClient {
         user_id: 'system',
         sender_id: 'desktop',
         locale: localStorage.getItem('goclaw:language') || navigator.language.split('-')[0] || 'en',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
         protocol_version: 3,
       },
     })
