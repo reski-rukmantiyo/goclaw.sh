@@ -336,22 +336,52 @@ func buildTimeSection(userTimezone, defaultTimezone string) []string {
 	}
 	now := time.Now()
 	utcNow := now.UTC()
-	dateLine := fmt.Sprintf("Current date/time: %s %s (UTC)", utcNow.Format("2006-01-02 Monday"), utcNow.Format("15:04"))
+	// Resolve the local time we display (and bucket from). Falls back to UTC.
+	localNow := utcNow
+	hasLocal := false
 	if tz != "" {
 		if loc, err := time.LoadLocation(tz); err == nil {
-			localNow := now.In(loc)
-			dateLine = fmt.Sprintf("Current date/time: %s %s (UTC) / %s %s (%s)",
-				utcNow.Format("2006-01-02 Monday"), utcNow.Format("15:04"),
-				localNow.Format("2006-01-02 Monday"), localNow.Format("15:04"),
-				tz)
+			localNow = now.In(loc)
+			hasLocal = true
 		} else {
 			slog.Warn("agent.invalid_default_timezone", "tz", tz, "err", err)
 		}
 	}
+	// Pre-compute a coarse time-of-day label so the model does not have to infer
+	// "21:37 → evening" itself. A labelled bucket makes a user's "good morning"
+	// clash lexically with the shown "evening", raising correction likelihood
+	// (SRS 007 FR-09 option A — still soft, not a guarantee).
+	bucket := timeOfDayBucket(localNow.Hour())
+	var dateLine string
+	if hasLocal {
+		dateLine = fmt.Sprintf("Current date/time: %s %s (UTC) / %s %s (%s) — %s",
+			utcNow.Format("2006-01-02 Monday"), utcNow.Format("15:04"),
+			localNow.Format("2006-01-02 Monday"), localNow.Format("15:04"),
+			tz, bucket)
+	} else {
+		dateLine = fmt.Sprintf("Current date/time: %s %s (UTC) — %s",
+			utcNow.Format("2006-01-02 Monday"), utcNow.Format("15:04"), bucket)
+	}
 	return []string{
 		dateLine,
-		"Interpret relative time references (today, yesterday, tomorrow, next/last <weekday>, in N hours, this morning/afternoon) in the timezone shown above, not UTC.",
+		"IMPORTANT — verify time-of-day language before replying: when the user uses a time-of-day greeting or time-relative statement (good morning/afternoon/evening/night, today, yesterday, tomorrow, next/last weekday, in N hours), check it against the current date/time above in the user's timezone. If it is inconsistent (e.g. \"good morning\" when it is evening there), state the actual local time instead of mirroring the user's wording.",
 		"",
+	}
+}
+
+// timeOfDayBucket returns a coarse, locale-neutral part-of-day label for the given
+// 24h hour. Used so the prompt states the part of day explicitly (e.g. "— evening"),
+// collapsing the model's timestamp→part-of-day inference step.
+func timeOfDayBucket(hour int) string {
+	switch {
+	case hour >= 5 && hour < 12:
+		return "morning"
+	case hour >= 12 && hour < 17:
+		return "afternoon"
+	case hour >= 17 && hour < 21:
+		return "evening"
+	default: // 21..23 and 0..4
+		return "night"
 	}
 }
 

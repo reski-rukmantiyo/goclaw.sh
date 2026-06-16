@@ -234,3 +234,30 @@ func TestStableFilesAboveBoundary(t *testing.T) {
 		t.Error("USER.md should be below cache boundary")
 	}
 }
+
+// TestTimeOfDayBucket verifies the part-of-day label boundaries (SRS 007 FR-09 option A).
+func TestTimeOfDayBucket(t *testing.T) {
+	cases := []struct {
+		hour int
+		want string
+	}{
+		{0, "night"}, {4, "night"}, {5, "morning"}, {11, "morning"},
+		{12, "afternoon"}, {16, "afternoon"}, {17, "evening"}, {20, "evening"},
+		{21, "night"}, {23, "night"},
+	}
+	for _, c := range cases {
+		if got := timeOfDayBucket(c.hour); got != c.want {
+			t.Errorf("timeOfDayBucket(%d) = %q, want %q", c.hour, got, c.want)
+		}
+	}
+}
+
+// TestTimeSectionBucketAppended verifies the date line carries the computed part-of-day label.
+func TestTimeSectionBucketAppended(t *testing.T) {
+	lines := buildTimeSection("Asia/Jakarta", "")
+	dateLine := lines[0]
+	if !strings.Contains(dateLine, "— morning") && !strings.Contains(dateLine, "— afternoon") &&
+		!strings.Contains(dateLine, "— evening") && !strings.Contains(dateLine, "— night") {
+		t.Errorf("date line missing time-of-day bucket: %s", dateLine)
+	}
+}
