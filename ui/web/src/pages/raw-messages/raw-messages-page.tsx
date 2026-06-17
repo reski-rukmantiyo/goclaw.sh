@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { FileText, RefreshCw, X, Filter, RotateCcw, CheckCircle, Clock, AlertTriangle, Layers } from "lucide-react";
+import { FileText, RefreshCw, X, Filter, RotateCcw, CheckCircle, Clock, AlertTriangle, Layers, Pencil } from "lucide-react";
 import { toast } from "@/stores/use-toast-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
@@ -21,6 +22,7 @@ import { useAgents } from "@/pages/agents/hooks/use-agents";
 import { useRawMessages } from "./hooks/use-raw-messages";
 import type { RawMessage } from "./hooks/use-raw-messages";
 import { RawMessageDetailDialog } from "./raw-message-detail-dialog";
+import { scopePrefillFromSelection, scopeHasInput } from "./scope-helpers";
 
 const PAGE_SIZE = 50;
 
@@ -28,7 +30,7 @@ export function RawMessagesPage() {
   const { t } = useTranslation("raw-messages");
   const { t: tc } = useTranslation("common");
   const { agents } = useAgents();
-  const { messages, total, loading, stats, loadMessages, loadStats, resetToPending } = useRawMessages();
+  const { messages, total, loading, stats, loadMessages, loadStats, resetToPending, updateScope } = useRawMessages();
 
   const spinning = useMinLoading(loading);
   const showSkeleton = useDeferredLoading(loading && messages.length === 0);
@@ -49,6 +51,12 @@ export function RawMessagesPage() {
 
   // Row selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Batch scope (agent + graph) edit dialog
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const [scopeAgent, setScopeAgent] = useState("");
+  const [scopeGraph, setScopeGraph] = useState("");
+  const [scopeSaving, setScopeSaving] = useState(false);
 
   // Debounced text inputs for server-side filters
   const channelTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -199,6 +207,49 @@ export function RawMessagesPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(t("actions.resetFailed"), msg);
+    }
+  };
+
+  const handleOpenScope = () => {
+    if (selectedIds.size === 0) return;
+    const selected = filtered.filter((m) => selectedIds.has(m.id));
+    const prefill = scopePrefillFromSelection(selected);
+    setScopeAgent(prefill.agent);
+    setScopeGraph(prefill.graph);
+    setScopeOpen(true);
+  };
+
+  const handleApplyScope = async () => {
+    const agentTrim = scopeAgent.trim();
+    const graphTrim = scopeGraph.trim();
+    if (agentTrim === "" && graphTrim === "") return;
+    setScopeSaving(true);
+    try {
+      const count = await updateScope(
+        [...selectedIds],
+        { agentId: agentTrim || undefined, graphId: graphTrim || undefined },
+      );
+      setScopeOpen(false);
+      setSelectedIds(new Set());
+      handleRefresh();
+      toast.success(t("actions.scopeUpdated", { count }));
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      toast.error(t("actions.scopeUpdateFailed"), errMsg);
+    } finally {
+      setScopeSaving(false);
+    }
+  };
+
+  const handleSaveScope = async (msg: RawMessage, agentId?: string, graphId?: string) => {
+    try {
+      await updateScope([msg.id], { agentId, graphId });
+      setSelectedMsg(null);
+      handleRefresh();
+      toast.success(t("actions.scopeUpdated", { count: 1 }));
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      toast.error(t("actions.scopeUpdateFailed"), errMsg);
     }
   };
 
@@ -392,15 +443,26 @@ export function RawMessagesPage() {
           <span className="text-xs text-muted-foreground">
             {selectedIds.size} selected
           </span>
-          <Button
-            size="sm"
-            variant="outline"
-            className="ml-auto h-7 gap-1 text-xs"
-            onClick={handleResetToPending}
-          >
-            <RotateCcw className="h-3 w-3" />
-            {t("actions.resetToPending")}
-          </Button>
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1 text-xs"
+              onClick={handleOpenScope}
+            >
+              <Pencil className="h-3 w-3" />
+              {t("actions.updateScope")}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1 text-xs"
+              onClick={handleResetToPending}
+            >
+              <RotateCcw className="h-3 w-3" />
+              {t("actions.resetToPending")}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -521,10 +583,71 @@ export function RawMessagesPage() {
       {selectedMsg && (
         <RawMessageDetailDialog
           message={selectedMsg}
+          agents={agents}
           onClose={() => setSelectedMsg(null)}
           onReset={selectedMsg.processed_at ? () => handleResetSingle(selectedMsg) : undefined}
+          onSaveScope={(agentId, graphId) => handleSaveScope(selectedMsg, agentId, graphId)}
         />
       )}
+
+      {/* Batch scope edit dialog */}
+      <Dialog open={scopeOpen} onOpenChange={(o) => !scopeSaving && setScopeOpen(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("actions.scopePromptTitle")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">{t("detail.scopeHint")}</p>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">
+                {t("actions.scopeAgentLabel")}
+              </label>
+              <Select value={scopeAgent} onValueChange={setScopeAgent}>
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue placeholder={t("actions.scopeAgentLabel")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {agents.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.display_name || a.agent_key || a.id.slice(0, 8)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">
+                {t("actions.scopeGraphLabel")}
+              </label>
+              <input
+                type="text"
+                value={scopeGraph}
+                onChange={(e) => setScopeGraph(e.target.value)}
+                className="h-8 w-full rounded-md border bg-background px-2 text-sm text-base md:text-sm placeholder:text-muted-foreground"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 text-xs"
+                onClick={() => setScopeOpen(false)}
+                disabled={scopeSaving}
+              >
+                {t("detail.cancel")}
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 text-xs"
+                onClick={handleApplyScope}
+                disabled={!scopeHasInput(scopeAgent, scopeGraph) || scopeSaving}
+              >
+                {t("detail.saveScope")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

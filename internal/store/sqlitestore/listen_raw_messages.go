@@ -321,6 +321,67 @@ func (s *SQLiteListenRawMessageStore) ResetProcessedByIDs(ctx context.Context, i
 	return res.RowsAffected()
 }
 
+func (s *SQLiteListenRawMessageStore) UpdateScope(ctx context.Context, ids []uuid.UUID, agentID, graphID string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	// SET clause: always reset extraction + embedding state (scope change invalidates
+	// both prior KG extraction and prior chunk embedding); append agent_id/graph_id
+	// when provided. Resetting embedded_at re-queues the message for the embedding
+	// worker under the new (agent_id, graph_id) so fresh chunks land in the new scope.
+	setParts := []string{"processed_at = NULL", "extraction_status = ?", "extraction_error = NULL", "embedded_at = NULL"}
+	args := make([]any, 0, len(ids)+3)
+	args = append(args, store.ExtractionStatusPending)
+	if agentID != "" {
+		setParts = append(setParts, "agent_id = ?")
+		args = append(args, agentID)
+	}
+	if graphID != "" {
+		setParts = append(setParts, "graph_id = ?")
+		args = append(args, graphID)
+	}
+	placeholders := make([]string, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	tClause, tArgs, err := scopeClause(ctx)
+	if err != nil {
+		return 0, err
+	}
+	args = append(args, tArgs...)
+	q := `UPDATE listen_raw_messages SET ` + strings.Join(setParts, ", ") +
+		` WHERE id IN (` + strings.Join(placeholders, ",") + `)` + tClause
+	res, err := s.db.ExecContext(ctx, q, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+func (s *SQLiteListenRawMessageStore) ResetEmbeddedByIDs(ctx context.Context, ids []uuid.UUID) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, 0, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	tClause, tArgs, err := scopeClause(ctx)
+	if err != nil {
+		return 0, err
+	}
+	args = append(args, tArgs...)
+	q := `UPDATE listen_raw_messages SET embedded_at = NULL WHERE id IN (` + strings.Join(placeholders, ",") + `)` + tClause
+	res, err := s.db.ExecContext(ctx, q, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 func (s *SQLiteListenRawMessageStore) List(ctx context.Context, opts store.ListenRawMessageListOpts) ([]store.ListenRawMessage, int, error) {
 	tClause, tArgs, err := scopeClause(ctx)
 	if err != nil {

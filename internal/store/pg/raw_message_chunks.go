@@ -630,3 +630,52 @@ func (s *PGRawMessageChunkStore) DeleteByChatID(ctx context.Context, agentID, ch
 	}
 	return res.RowsAffected()
 }
+
+// DeleteBySourceMsgIDs removes every chunk whose source_msg_ids overlaps any of
+// msgIDs (day-group chunks shared with neighbor messages are removed too) and
+// returns the union of all source message IDs those chunks covered, so the caller
+// can re-queue neighbors (whose chunks were co-deleted) for re-embedding. The
+// "&&" operator is array overlap. Tenant-scoped. See SRS 007 FR-08.
+func (s *PGRawMessageChunkStore) DeleteBySourceMsgIDs(ctx context.Context, msgIDs []uuid.UUID) ([]uuid.UUID, int64, error) {
+	if len(msgIDs) == 0 {
+		return nil, 0, nil
+	}
+	strIDs := make([]string, len(msgIDs))
+	for i, m := range msgIDs {
+		strIDs[i] = m.String()
+	}
+	tc, tcArgs, _, err := scopeClause(ctx, 2)
+	if err != nil {
+		return nil, 0, err
+	}
+	q := `DELETE FROM raw_message_chunks WHERE source_msg_ids && $1::uuid[]` + tc +
+		` RETURNING source_msg_ids`
+	rows, err := s.dbFor(ctx).QueryContext(ctx, q, append([]any{pq.Array(strIDs)}, tcArgs...)...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	seen := make(map[uuid.UUID]struct{})
+	var deleted int64
+	for rows.Next() {
+		deleted++
+		var arr pq.StringArray
+		if err := rows.Scan(&arr); err != nil {
+			return nil, 0, err
+		}
+		for _, sid := range arr {
+			if u, perr := uuid.Parse(sid); perr == nil {
+				seen[u] = struct{}{}
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	out := make([]uuid.UUID, 0, len(seen))
+	for u := range seen {
+		out = append(out, u)
+	}
+	return out, deleted, nil
+}

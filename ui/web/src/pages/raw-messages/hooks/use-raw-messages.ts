@@ -29,6 +29,10 @@ interface ResetResponse {
   reset_count: number;
 }
 
+interface UpdateScopeResponse {
+  updated_count: number;
+}
+
 export interface RawMessageStats {
   extraction: Record<string, number>;
   embedding: { pending: number; embedded: number };
@@ -104,5 +108,16 @@ export function useRawMessages() {
     [http],
   );
 
-  return { messages, total, loading, stats, loadMessages, loadStats, resetToPending };
+  const updateScope = useCallback(
+    async (ids: string[], scope: { agentId?: string; graphId?: string }): Promise<number> => {
+      const body: Record<string, unknown> = { ids };
+      if (scope.agentId) body.agent_id = scope.agentId;
+      if (scope.graphId) body.graph_id = scope.graphId;
+      const res = await http.post<UpdateScopeResponse>("/v1/listen-raw-messages/scope", body);
+      return res?.updated_count ?? 0;
+    },
+    [http],
+  );
+
+  return { messages, total, loading, stats, loadMessages, loadStats, resetToPending, updateScope };
 }

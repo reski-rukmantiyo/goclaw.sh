@@ -103,6 +103,24 @@ type ListenRawMessageStore interface {
 	// for messages with the given IDs. Returns the number of rows affected.
 	ResetProcessedByIDs(ctx context.Context, ids []uuid.UUID) (int64, error)
 
+	// UpdateScope sets agent_id and/or graph_id (whichever arg is non-empty) and
+	// resets extraction AND embedding state (processed_at = NULL,
+	// extraction_status = 'pending', extraction_error = NULL, embedded_at = NULL)
+	// for the messages with the given IDs, so both the extraction worker (KG) and
+	// the embedding worker (raw_message_chunks) re-process them under the
+	// corrected (agent_id, graph_id) scope. An empty agentID/graphID leaves that
+	// field unchanged. At least one of agentID/graphID must be non-empty (enforced
+	// by the caller). Returns the row count affected. See SRS
+	// 007-feat-raw-message-graph-agent-edit.md.
+	UpdateScope(ctx context.Context, ids []uuid.UUID, agentID, graphID string) (int64, error)
+
+	// ResetEmbeddedByIDs sets embedded_at = NULL for the given IDs so the embedding
+	// worker re-embeds them. Used by the scope-edit "true move" (SRS 007 FR-08) to
+	// re-queue day-group neighbor messages whose chunks were co-deleted with the
+	// edited message's chunks. Does NOT change extraction state or scope (neighbors
+	// keep their current agent/graph). Returns the row count affected.
+	ResetEmbeddedByIDs(ctx context.Context, ids []uuid.UUID) (int64, error)
+
 	// ListPendingEmbeddings returns messages where embedded_at IS NULL for a given
 	// (agentID, graphID), ordered by msg_timestamp ASC (oldest first for sequential
 	// chunking), limited to maxRows.
