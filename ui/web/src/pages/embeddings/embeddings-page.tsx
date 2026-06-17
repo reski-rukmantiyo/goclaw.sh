@@ -45,8 +45,12 @@ export function EmbeddingsPage() {
   const [filterFromTime, setFilterFromTime] = useState("");
   const [filterToTime, setFilterToTime] = useState("");
 
-  // Client-side text search
+  // Server-side text search. Input (searchText) updates immediately; the committed
+  // value (searchTextQ) is debounced and sent to the server so total/paging reflect
+  // the filter. Previously this filtered the fetched page only, desyncing it from
+  // total/paging. See SRS 008.
   const [searchText, setSearchText] = useState("");
+  const [searchTextQ, setSearchTextQ] = useState("");
 
   // Row selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -56,6 +60,7 @@ export function EmbeddingsPage() {
   const chatTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const graphTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const senderTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const textSearchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const handleChatIdChange = useCallback((v: string) => {
     setFilterChatId(v);
@@ -75,6 +80,15 @@ export function EmbeddingsPage() {
     senderTimer.current = setTimeout(() => setOffset(0), 400);
   }, []);
 
+  const handleSearchTextChange = useCallback((v: string) => {
+    setSearchText(v);
+    clearTimeout(textSearchTimer.current);
+    textSearchTimer.current = setTimeout(() => {
+      setSearchTextQ(v);
+      setOffset(0);
+    }, 400);
+  }, []);
+
   // Reset offset when server-side filters change
   useEffect(() => { setOffset(0); setSelectedIds(new Set()); }, [filterAgentId, filterEmbedding, filterFromTime, filterToTime]);
 
@@ -88,6 +102,7 @@ export function EmbeddingsPage() {
       hasEmbedding?: boolean;
       fromTime?: string;
       toTime?: string;
+      searchText?: string;
       limit: number;
       offset: number;
     } = { limit: PAGE_SIZE, offset };
@@ -99,15 +114,13 @@ export function EmbeddingsPage() {
     if (filterEmbedding === "no") params.hasEmbedding = false;
     if (filterFromTime) params.fromTime = new Date(filterFromTime).toISOString();
     if (filterToTime) params.toTime = new Date(filterToTime + "T23:59:59").toISOString();
+    if (searchTextQ) params.searchText = searchTextQ;
     loadChunks(params);
-  }, [offset, filterAgentId, filterChatId, filterGraphId, filterSender, filterEmbedding, filterFromTime, filterToTime, loadChunks]);
+  }, [offset, filterAgentId, filterChatId, filterGraphId, filterSender, filterEmbedding, filterFromTime, filterToTime, searchTextQ, loadChunks]);
 
-  // Client-side filtered chunks
-  const filtered = useMemo(() => {
-    if (!searchText) return chunks;
-    const q = searchText.toLowerCase();
-    return chunks.filter((c) => c.text.toLowerCase().includes(q));
-  }, [chunks, searchText]);
+  // Text filter is server-side now; `filtered` mirrors the server page as-is
+  // (kept as a variable so the table/selection logic is unchanged).
+  const filtered = chunks;
 
   // Active filter count
   const activeFilterCount = useMemo(() => {
@@ -158,6 +171,7 @@ export function EmbeddingsPage() {
     setFilterFromTime("");
     setFilterToTime("");
     setSearchText("");
+    setSearchTextQ("");
     setOffset(0);
   };
 
@@ -170,6 +184,7 @@ export function EmbeddingsPage() {
       hasEmbedding: filterEmbedding === "yes" ? true : filterEmbedding === "no" ? false : undefined,
       fromTime: filterFromTime ? new Date(filterFromTime).toISOString() : undefined,
       toTime: filterToTime ? new Date(filterToTime + "T23:59:59").toISOString() : undefined,
+      searchText: searchTextQ || undefined,
       limit: PAGE_SIZE,
       offset,
     });
@@ -348,7 +363,7 @@ export function EmbeddingsPage() {
               type="text"
               placeholder={t("filters.searchText")}
               value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
+              onChange={(e) => handleSearchTextChange(e.target.value)}
               className="h-8 rounded-md border bg-background px-2 text-sm text-base md:text-sm placeholder:text-muted-foreground"
             />
           </div>

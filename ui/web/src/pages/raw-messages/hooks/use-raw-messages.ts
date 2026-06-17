@@ -54,6 +54,9 @@ export function useRawMessages() {
       chatId?: string;
       agentId?: string;
       graphId?: string;
+      chat?: string;
+      sender?: string;
+      body?: string;
     }) => {
       setLoading(true);
       try {
@@ -78,6 +81,15 @@ export function useRawMessages() {
         }
         if (params?.graphId) {
           query.graph_id = params.graphId;
+        }
+        if (params?.chat) {
+          query.chat = params.chat;
+        }
+        if (params?.sender) {
+          query.sender = params.sender;
+        }
+        if (params?.body) {
+          query.body = params.body;
         }
         const res = await http.get<RawMessagesResponse>("/v1/listen-raw-messages", query);
         setMessages(res?.messages ?? []);
