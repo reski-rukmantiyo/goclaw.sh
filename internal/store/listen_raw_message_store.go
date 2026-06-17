@@ -104,12 +104,14 @@ type ListenRawMessageStore interface {
 	ResetProcessedByIDs(ctx context.Context, ids []uuid.UUID) (int64, error)
 
 	// UpdateScope sets agent_id and/or graph_id (whichever arg is non-empty) and
-	// resets extraction state (processed_at = NULL, extraction_status = 'pending',
-	// extraction_error = NULL) for the messages with the given IDs, so the
-	// extraction worker re-processes them under the corrected (agent_id, graph_id)
-	// scope. An empty agentID/graphID leaves that field unchanged. At least one of
-	// agentID/graphID must be non-empty (enforced by the caller). Returns the row
-	// count affected. See SRS 007-feat-raw-message-graph-agent-edit.md.
+	// resets extraction AND embedding state (processed_at = NULL,
+	// extraction_status = 'pending', extraction_error = NULL, embedded_at = NULL)
+	// for the messages with the given IDs, so both the extraction worker (KG) and
+	// the embedding worker (raw_message_chunks) re-process them under the
+	// corrected (agent_id, graph_id) scope. An empty agentID/graphID leaves that
+	// field unchanged. At least one of agentID/graphID must be non-empty (enforced
+	// by the caller). Returns the row count affected. See SRS
+	// 007-feat-raw-message-graph-agent-edit.md.
 	UpdateScope(ctx context.Context, ids []uuid.UUID, agentID, graphID string) (int64, error)
 
 	// ListPendingEmbeddings returns messages where embedded_at IS NULL for a given

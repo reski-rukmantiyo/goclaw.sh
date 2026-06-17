@@ -43,14 +43,14 @@ func newListenRawMsg(agent, graph string) store.ListenRawMessage {
 	}
 }
 
-func assertListenRawRow(t *testing.T, db *sql.DB, id uuid.UUID, wantAgent, wantGraph, wantStatus string, wantProcessed bool) {
+func assertListenRawRow(t *testing.T, db *sql.DB, id uuid.UUID, wantAgent, wantGraph, wantStatus string, wantProcessed, wantEmbedded bool) {
 	t.Helper()
 	var agent, graph, status string
-	var processed sql.NullString
+	var processed, embedded sql.NullString
 	err := db.QueryRow(
-		"SELECT agent_id, graph_id, extraction_status, processed_at FROM listen_raw_messages WHERE id = ?",
+		"SELECT agent_id, graph_id, extraction_status, processed_at, embedded_at FROM listen_raw_messages WHERE id = ?",
 		id,
-	).Scan(&agent, &graph, &status, &processed)
+	).Scan(&agent, &graph, &status, &processed, &embedded)
 	if err != nil {
 		t.Fatalf("query row %s: %v", id, err)
 	}
@@ -69,11 +69,19 @@ func assertListenRawRow(t *testing.T, db *sql.DB, id uuid.UUID, wantAgent, wantG
 	if !wantProcessed && processed.Valid {
 		t.Errorf("expected processed_at NULL, got %v", processed.String)
 	}
+	if wantEmbedded && !embedded.Valid {
+		t.Errorf("expected embedded_at set, got NULL")
+	}
+	if !wantEmbedded && embedded.Valid {
+		t.Errorf("expected embedded_at NULL, got %v", embedded.String)
+	}
 }
 
 // TestSQLiteListenRawMessageStore_UpdateScope covers the dynamic SET (both
-// fields, graph-only, agent-only), the extraction reset, the no-op on empty ids,
-// and that untouched rows are not modified. See SRS 007 FR-00/FR-01.
+// fields, graph-only, agent-only), the extraction AND embedding reset, the
+// no-op on empty ids, and that untouched rows are not modified. See SRS 007
+// FR-00/FR-01. embedded_at must also reset so the message re-embeds under the
+// new (agent_id, graph_id) and appears in the embeddings menu under the new scope.
 func TestSQLiteListenRawMessageStore_UpdateScope(t *testing.T) {
 	s, ctx, db := newListenRawTestStore(t)
 
@@ -84,13 +92,13 @@ func TestSQLiteListenRawMessageStore_UpdateScope(t *testing.T) {
 		t.Fatalf("AppendBatch: %v", err)
 	}
 
-	// Simulate already-extracted rows (processed_at set, status=extracted).
+	// Simulate already-extracted + already-embedded rows.
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if _, err := db.Exec(
-		"UPDATE listen_raw_messages SET processed_at = ?, extraction_status = ?",
-		now, store.ExtractionStatusExtracted,
+		"UPDATE listen_raw_messages SET processed_at = ?, extraction_status = ?, embedded_at = ?",
+		now, store.ExtractionStatusExtracted, now,
 	); err != nil {
-		t.Fatalf("seed processed: %v", err)
+		t.Fatalf("seed processed+embedded: %v", err)
 	}
 
 	// Update m1 + m2: both agent + graph.
@@ -101,12 +109,12 @@ func TestSQLiteListenRawMessageStore_UpdateScope(t *testing.T) {
 	if n != 2 {
 		t.Fatalf("affected: got %d want 2", n)
 	}
-	assertListenRawRow(t, db, m1.ID, "agent-new", "graph-new", store.ExtractionStatusPending, false)
-	assertListenRawRow(t, db, m2.ID, "agent-new", "graph-new", store.ExtractionStatusPending, false)
-	// m3 untouched (still extracted/processed).
-	assertListenRawRow(t, db, m3.ID, "agent-old", "graph-old", store.ExtractionStatusExtracted, true)
+	assertListenRawRow(t, db, m1.ID, "agent-new", "graph-new", store.ExtractionStatusPending, false, false)
+	assertListenRawRow(t, db, m2.ID, "agent-new", "graph-new", store.ExtractionStatusPending, false, false)
+	// m3 untouched (still extracted + embedded).
+	assertListenRawRow(t, db, m3.ID, "agent-old", "graph-old", store.ExtractionStatusExtracted, true, true)
 
-	// graph-only update on m3 → agent unchanged, graph changed, reset.
+	// graph-only update on m3 → agent unchanged, graph changed, both reset.
 	n, err = s.UpdateScope(ctx, []uuid.UUID{m3.ID}, "", "graph-only")
 	if err != nil {
 		t.Fatalf("UpdateScope graph-only: %v", err)
@@ -114,9 +122,9 @@ func TestSQLiteListenRawMessageStore_UpdateScope(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("affected: got %d want 1", n)
 	}
-	assertListenRawRow(t, db, m3.ID, "agent-old", "graph-only", store.ExtractionStatusPending, false)
+	assertListenRawRow(t, db, m3.ID, "agent-old", "graph-only", store.ExtractionStatusPending, false, false)
 
-	// agent-only update on m1 → graph unchanged, agent changed.
+	// agent-only update on m1 → graph unchanged, agent changed, both reset.
 	n, err = s.UpdateScope(ctx, []uuid.UUID{m1.ID}, "agent-x", "")
 	if err != nil {
 		t.Fatalf("UpdateScope agent-only: %v", err)
@@ -124,7 +132,7 @@ func TestSQLiteListenRawMessageStore_UpdateScope(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("affected: got %d want 1", n)
 	}
-	assertListenRawRow(t, db, m1.ID, "agent-x", "graph-new", store.ExtractionStatusPending, false)
+	assertListenRawRow(t, db, m1.ID, "agent-x", "graph-new", store.ExtractionStatusPending, false, false)
 
 	// empty ids → no-op.
 	n, err = s.UpdateScope(ctx, nil, "a", "g")
@@ -138,9 +146,6 @@ func TestSQLiteListenRawMessageStore_UpdateScope(t *testing.T) {
 
 // TestSQLiteListenRawMessageStore_UpdateScope_TenantIsolation verifies a caller
 // scoped to tenant B cannot UpdateScope rows that belong to the master tenant.
-// (Rows are inserted under master because tenant_id has an FK to tenants; we
-// update under a ctx scoped to a non-inserted tenant B, so scopeClause excludes
-// the master row.)
 func TestSQLiteListenRawMessageStore_UpdateScope_TenantIsolation(t *testing.T) {
 	s, _, db := newListenRawTestStore(t)
 	ctxMaster := store.WithTenantID(context.Background(), store.MasterTenantID)
@@ -158,6 +163,6 @@ func TestSQLiteListenRawMessageStore_UpdateScope_TenantIsolation(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("cross-tenant update should affect 0 rows, got %d", n)
 	}
-	// Row unchanged — still the master tenant's scope.
-	assertListenRawRow(t, db, m.ID, "agent-a", "graph-a", store.ExtractionStatusPending, false)
+	// Row unchanged — still the master tenant's scope, never embedded.
+	assertListenRawRow(t, db, m.ID, "agent-a", "graph-a", store.ExtractionStatusPending, false, false)
 }

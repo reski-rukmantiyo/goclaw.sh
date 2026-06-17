@@ -262,8 +262,11 @@ func (s *PGListenRawMessageStore) UpdateScope(ctx context.Context, ids []uuid.UU
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	// SET clause: always reset extraction state; append agent_id/graph_id when provided.
-	setParts := []string{"processed_at = NULL", "extraction_status = 'pending'", "extraction_error = NULL"}
+	// SET clause: always reset extraction + embedding state (scope change invalidates
+	// both prior KG extraction and prior chunk embedding); append agent_id/graph_id
+	// when provided. Resetting embedded_at re-queues the message for the embedding
+	// worker under the new (agent_id, graph_id) so fresh chunks land in the new scope.
+	setParts := []string{"processed_at = NULL", "extraction_status = 'pending'", "extraction_error = NULL", "embedded_at = NULL"}
 	args := make([]any, 0, len(ids)+2+len(ids))
 	idx := 1
 	if agentID != "" {
