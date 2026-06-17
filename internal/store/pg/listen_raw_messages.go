@@ -487,6 +487,30 @@ func (s *PGListenRawMessageStore) List(ctx context.Context, opts store.ListenRaw
 		args = append(args, opts.GraphID)
 		paramIdx++
 	}
+	// Substring text filters (SRS 008 FR-00/FR-02). Added to both `where` (COUNT)
+	// and `whereM` (data) so total matches the filtered rows. PG reuses a positional
+	// param for both OR'd columns; the value is %<text>% (bound param, not interpolated).
+	if opts.Chat != "" {
+		pat := "%" + opts.Chat + "%"
+		where = append(where, fmt.Sprintf("(chat_name ILIKE $%d OR chat_id ILIKE $%d)", paramIdx, paramIdx))
+		whereM = append(whereM, fmt.Sprintf("(m.chat_name ILIKE $%d OR m.chat_id ILIKE $%d)", paramIdx, paramIdx))
+		args = append(args, pat)
+		paramIdx++
+	}
+	if opts.Sender != "" {
+		pat := "%" + opts.Sender + "%"
+		where = append(where, fmt.Sprintf("(sender ILIKE $%d OR sender_id ILIKE $%d)", paramIdx, paramIdx))
+		whereM = append(whereM, fmt.Sprintf("(m.sender ILIKE $%d OR m.sender_id ILIKE $%d)", paramIdx, paramIdx))
+		args = append(args, pat)
+		paramIdx++
+	}
+	if opts.Body != "" {
+		pat := "%" + opts.Body + "%"
+		where = append(where, fmt.Sprintf("body ILIKE $%d", paramIdx))
+		whereM = append(whereM, fmt.Sprintf("m.body ILIKE $%d", paramIdx))
+		args = append(args, pat)
+		paramIdx++
+	}
 	if opts.ExtractionStatus != "" {
 		where = append(where, fmt.Sprintf("extraction_status = $%d", paramIdx))
 		whereM = append(whereM, fmt.Sprintf("m.extraction_status = $%d", paramIdx))

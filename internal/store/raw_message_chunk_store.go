@@ -52,10 +52,15 @@ type RawMessageChunkListOpts struct {
 	AgentID      string
 	ChatID       string
 	GraphID      string
-	Sender       string
-	HasEmbedding *bool // nil=all, true=has embedding, false=no embedding
+	Sender       string // substring (ILIKE) match over sender — was exact; see SRS 008 FR-03
+	HasEmbedding *bool  // nil=all, true=has embedding, false=no embedding
 	FromTime     *time.Time
 	ToTime       *time.Time
+
+	// SearchText is a substring (ILIKE) match over the chunk text. Empty = not
+	// applied. Server-side so it participates in the COUNT/paging (it used to
+	// filter the fetched page only). See SRS 008 FR-00/FR-01.
+	SearchText string
 }
 
 // RawMessageChunkStore manages chunked embeddings from raw messages.

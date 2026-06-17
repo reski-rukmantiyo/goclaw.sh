@@ -50,6 +50,11 @@ func (h *EmbeddingsHandler) handleList(w http.ResponseWriter, r *http.Request) {
 	if v := r.URL.Query().Get("sender"); v != "" {
 		opts.Sender = v
 	}
+	// Substring text filter over chunk text (SRS 008 FR-00/FR-05). Server-side so it
+	// participates in the COUNT/paging (previously page-only in the UI).
+	if v := r.URL.Query().Get("search_text"); v != "" {
+		opts.SearchText = v
+	}
 	if v := r.URL.Query().Get("has_embedding"); v != "" {
 		b := v == "true" || v == "1"
 		opts.HasEmbedding = &b

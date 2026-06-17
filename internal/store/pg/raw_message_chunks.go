@@ -527,8 +527,8 @@ func (s *PGRawMessageChunkStore) List(ctx context.Context, opts store.RawMessage
 		paramIdx++
 	}
 	if opts.Sender != "" {
-		where = append(where, fmt.Sprintf("sender = $%d", paramIdx))
-		args = append(args, opts.Sender)
+		where = append(where, fmt.Sprintf("sender ILIKE $%d", paramIdx))
+		args = append(args, "%"+opts.Sender+"%")
 		paramIdx++
 	}
 	if opts.HasEmbedding != nil {
@@ -546,6 +546,13 @@ func (s *PGRawMessageChunkStore) List(ctx context.Context, opts store.RawMessage
 	if opts.ToTime != nil {
 		where = append(where, fmt.Sprintf("msg_time_to <= $%d", paramIdx))
 		args = append(args, *opts.ToTime)
+		paramIdx++
+	}
+	// Substring text filter (SRS 008 FR-00/FR-02). Added to the shared `where` so it
+	// applies to both COUNT and data. Value is %<text>% (bound param, not interpolated).
+	if opts.SearchText != "" {
+		where = append(where, fmt.Sprintf("text ILIKE $%d", paramIdx))
+		args = append(args, "%"+opts.SearchText+"%")
 		paramIdx++
 	}
 

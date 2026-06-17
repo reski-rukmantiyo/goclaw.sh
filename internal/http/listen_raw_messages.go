@@ -55,6 +55,17 @@ func (h *ListenRawMessagesHandler) handleList(w http.ResponseWriter, r *http.Req
 	if v := r.URL.Query().Get("graph_id"); v != "" {
 		opts.GraphID = v
 	}
+	// Substring text filters (SRS 008 FR-00/FR-05). Server-side so they participate
+	// in the COUNT/paging (previously page-only in the UI).
+	if v := r.URL.Query().Get("chat"); v != "" {
+		opts.Chat = v
+	}
+	if v := r.URL.Query().Get("sender"); v != "" {
+		opts.Sender = v
+	}
+	if v := r.URL.Query().Get("body"); v != "" {
+		opts.Body = v
+	}
 	if v := r.URL.Query().Get("processed"); v != "" {
 		b := v == "true" || v == "1"
 		opts.Processed = &b
