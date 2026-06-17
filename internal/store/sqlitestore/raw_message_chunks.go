@@ -5,6 +5,8 @@ package sqlitestore
 import (
 	"context"
 
+	"github.com/google/uuid"
+
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
 
@@ -37,6 +39,11 @@ func (s *SQLiteRawMessageChunkStore) DeleteByIDs(_ context.Context, _ []string) 
 
 func (s *SQLiteRawMessageChunkStore) DeleteByChatID(_ context.Context, _ string, _ string) (int64, error) {
 	return 0, nil
+}
+
+// DeleteBySourceMsgIDs is a no-op on SQLite (chunk store is stubbed; no pgvector).
+func (s *SQLiteRawMessageChunkStore) DeleteBySourceMsgIDs(_ context.Context, _ []uuid.UUID) ([]uuid.UUID, int64, error) {
+	return nil, 0, nil
 }
 
 func (s *SQLiteRawMessageChunkStore) SetEmbeddingProvider(_ store.EmbeddingProvider) {}

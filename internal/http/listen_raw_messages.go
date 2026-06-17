@@ -13,12 +13,15 @@ import (
 
 // ListenRawMessagesHandler handles listen-only raw message listing endpoints.
 type ListenRawMessagesHandler struct {
-	store store.ListenRawMessageStore
+	store      store.ListenRawMessageStore
+	chunkStore store.RawMessageChunkStore // optional; enables true-move chunk cleanup on scope edit
 }
 
-// NewListenRawMessagesHandler creates a handler for raw message endpoints.
-func NewListenRawMessagesHandler(s store.ListenRawMessageStore) *ListenRawMessagesHandler {
-	return &ListenRawMessagesHandler{store: s}
+// NewListenRawMessagesHandler creates a handler for raw message endpoints. The
+// chunk store enables the scope-edit "true move" (delete old-scope chunks + re-queue
+// neighbors). It may be nil to disable cleanup (graceful degradation to additive).
+func NewListenRawMessagesHandler(s store.ListenRawMessageStore, cs store.RawMessageChunkStore) *ListenRawMessagesHandler {
+	return &ListenRawMessagesHandler{store: s, chunkStore: cs}
 }
 
 // RegisterRoutes registers raw message routes on the given mux.
@@ -201,9 +204,48 @@ func (h *ListenRawMessagesHandler) handleUpdateScope(w http.ResponseWriter, r *h
 		return
 	}
 
-	slog.Info("http.update_scope: ok", "requested", len(ids), "affected", affected, "agent_id", agentID, "graph_id", graphID)
+	// True-move cleanup: delete the message's old-scope chunks (including day-group
+	// neighbor chunks, since the embedding worker groups a chat's day of messages
+	// into shared chunks) and re-queue those neighbors for re-embedding under their
+	// unchanged scope, so the message cleanly moves to the new scope instead of
+	// appearing under both in the embeddings menu. Best-effort, non-transactional;
+	// logged. On failure the edit still succeeds (degrades to additive). See SRS 007 FR-08.
+	var chunksDeleted int64
+	var neighborsRequeued int64
+	if affected > 0 && h.chunkStore != nil {
+		sources, deleted, derr := h.chunkStore.DeleteBySourceMsgIDs(r.Context(), ids)
+		if derr != nil {
+			slog.Warn("http.update_scope: chunk cleanup failed (edit still applied)", "error", derr)
+		} else {
+			chunksDeleted = deleted
+			changed := make(map[uuid.UUID]struct{}, len(ids))
+			for _, id := range ids {
+				changed[id] = struct{}{}
+			}
+			var neighbors []uuid.UUID
+			for _, src := range sources {
+				if _, ok := changed[src]; !ok {
+					neighbors = append(neighbors, src)
+				}
+			}
+			if len(neighbors) > 0 {
+				if rq, rerr := h.store.ResetEmbeddedByIDs(r.Context(), neighbors); rerr != nil {
+					slog.Warn("http.update_scope: neighbor re-queue failed (neighbors may need manual reset)", "error", rerr)
+				} else {
+					neighborsRequeued = rq
+				}
+			}
+		}
+	}
+
+	slog.Info("http.update_scope: ok",
+		"requested", len(ids), "affected", affected,
+		"agent_id", agentID, "graph_id", graphID,
+		"chunks_deleted", chunksDeleted, "neighbors_requeued", neighborsRequeued)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"updated_count": affected,
+		"updated_count":      affected,
+		"chunks_deleted":     chunksDeleted,
+		"neighbors_requeued": neighborsRequeued,
 	})
 }
 

@@ -166,3 +166,40 @@ func TestSQLiteListenRawMessageStore_UpdateScope_TenantIsolation(t *testing.T) {
 	// Row unchanged — still the master tenant's scope, never embedded.
 	assertListenRawRow(t, db, m.ID, "agent-a", "graph-a", store.ExtractionStatusPending, false, false)
 }
+
+// TestSQLiteListenRawMessageStore_ResetEmbeddedByIDs verifies only embedded_at is
+// cleared (scope + extraction state untouched), used to re-queue day-group
+// neighbors after the true-move chunk deletion (SRS 007 FR-08).
+func TestSQLiteListenRawMessageStore_ResetEmbeddedByIDs(t *testing.T) {
+	s, ctx, db := newListenRawTestStore(t)
+	m1 := newListenRawMsg("a", "g")
+	m2 := newListenRawMsg("a", "g")
+	if err := s.AppendBatch(ctx, []store.ListenRawMessage{m1, m2}); err != nil {
+		t.Fatalf("AppendBatch: %v", err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := db.Exec("UPDATE listen_raw_messages SET embedded_at = ?", now); err != nil {
+		t.Fatalf("seed embedded: %v", err)
+	}
+
+	n, err := s.ResetEmbeddedByIDs(ctx, []uuid.UUID{m1.ID})
+	if err != nil {
+		t.Fatalf("ResetEmbeddedByIDs: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("affected: got %d want 1", n)
+	}
+	// m1: embedded cleared, scope + status unchanged.
+	assertListenRawRow(t, db, m1.ID, "a", "g", store.ExtractionStatusPending, false, false)
+	// m2: untouched, still embedded.
+	assertListenRawRow(t, db, m2.ID, "a", "g", store.ExtractionStatusPending, false, true)
+
+	// empty ids → no-op.
+	n, err = s.ResetEmbeddedByIDs(ctx, nil)
+	if err != nil {
+		t.Fatalf("ResetEmbeddedByIDs empty: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("affected: got %d want 0", n)
+	}
+}

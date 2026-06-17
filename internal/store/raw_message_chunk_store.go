@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // RawMessageChunk represents a chunked embedding derived from raw messages.
@@ -75,6 +77,15 @@ type RawMessageChunkStore interface {
 
 	// DeleteByChatID removes all chunks for a given agent+chat scope.
 	DeleteByChatID(ctx context.Context, agentID, chatID string) (int64, error)
+
+	// DeleteBySourceMsgIDs removes every chunk whose source_msg_ids array overlaps
+	// any of the given listen-raw-message IDs, and returns the UNION of all source
+	// message IDs that those deleted chunks covered — including day-group neighbor
+	// messages whose chunks were co-deleted with the edited message's chunks. The
+	// caller resets embedded_at for the neighbor IDs (those in the result but not in
+	// the input set) so the embedding worker re-embeds them. Used by the scope-edit
+	// "true move" (SRS 007 FR-08). Tenant-scoped.
+	DeleteBySourceMsgIDs(ctx context.Context, msgIDs []uuid.UUID) (sources []uuid.UUID, deleted int64, err error)
 
 	// ReEmbedChunks generates embeddings for chunks that lack them, scoped by opts filters.
 	ReEmbedChunks(ctx context.Context, opts RawMessageChunkListOpts) (processed int, failed int, err error)

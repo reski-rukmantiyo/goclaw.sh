@@ -95,7 +95,7 @@ func wireHTTP(stores *store.Stores, defaultWorkspace, dataDir, bundledSkillsDir 
 	}
 
 	if stores != nil && stores.ListenRawMessages != nil {
-		listenRawMsgsH = httpapi.NewListenRawMessagesHandler(stores.ListenRawMessages)
+		listenRawMsgsH = httpapi.NewListenRawMessagesHandler(stores.ListenRawMessages, stores.RawMessageChunks)
 	}
 
 	if stores != nil && stores.RawMessageChunks != nil {

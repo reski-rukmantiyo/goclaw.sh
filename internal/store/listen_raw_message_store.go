@@ -114,6 +114,13 @@ type ListenRawMessageStore interface {
 	// 007-feat-raw-message-graph-agent-edit.md.
 	UpdateScope(ctx context.Context, ids []uuid.UUID, agentID, graphID string) (int64, error)
 
+	// ResetEmbeddedByIDs sets embedded_at = NULL for the given IDs so the embedding
+	// worker re-embeds them. Used by the scope-edit "true move" (SRS 007 FR-08) to
+	// re-queue day-group neighbor messages whose chunks were co-deleted with the
+	// edited message's chunks. Does NOT change extraction state or scope (neighbors
+	// keep their current agent/graph). Returns the row count affected.
+	ResetEmbeddedByIDs(ctx context.Context, ids []uuid.UUID) (int64, error)
+
 	// ListPendingEmbeddings returns messages where embedded_at IS NULL for a given
 	// (agentID, graphID), ordered by msg_timestamp ASC (oldest first for sequential
 	// chunking), limited to maxRows.
