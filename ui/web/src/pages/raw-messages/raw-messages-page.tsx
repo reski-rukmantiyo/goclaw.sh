@@ -22,6 +22,7 @@ import { useAgents } from "@/pages/agents/hooks/use-agents";
 import { useRawMessages } from "./hooks/use-raw-messages";
 import type { RawMessage } from "./hooks/use-raw-messages";
 import { RawMessageDetailDialog } from "./raw-message-detail-dialog";
+import { scopePrefillFromSelection, scopeHasInput } from "./scope-helpers";
 
 const PAGE_SIZE = 50;
 
@@ -212,12 +213,9 @@ export function RawMessagesPage() {
   const handleOpenScope = () => {
     if (selectedIds.size === 0) return;
     const selected = filtered.filter((m) => selectedIds.has(m.id));
-    const firstAgent = selected[0]?.agent_id ?? "";
-    const firstGraph = selected[0]?.graph_id ?? "";
-    const sameAgent = selected.every((m) => m.agent_id === firstAgent);
-    const sameGraph = selected.every((m) => m.graph_id === firstGraph);
-    setScopeAgent(sameAgent ? firstAgent : "");
-    setScopeGraph(sameGraph ? firstGraph : "");
+    const prefill = scopePrefillFromSelection(selected);
+    setScopeAgent(prefill.agent);
+    setScopeGraph(prefill.graph);
     setScopeOpen(true);
   };
 
@@ -642,7 +640,7 @@ export function RawMessagesPage() {
                 size="sm"
                 className="h-8 text-xs"
                 onClick={handleApplyScope}
-                disabled={(scopeAgent.trim() === "" && scopeGraph.trim() === "") || scopeSaving}
+                disabled={!scopeHasInput(scopeAgent, scopeGraph) || scopeSaving}
               >
                 {t("detail.saveScope")}
               </Button>

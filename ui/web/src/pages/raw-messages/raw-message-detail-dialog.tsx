@@ -14,6 +14,7 @@ import { Copy, Check, RotateCcw, Pencil } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import { useClipboard } from "@/hooks/use-clipboard";
 import type { RawMessage } from "./hooks/use-raw-messages";
+import { scopeEditCanSave } from "./scope-helpers";
 
 export interface ScopeAgentOption {
   id: string;
@@ -42,7 +43,14 @@ export function RawMessageDetailDialog({ message, agents, onClose, onReset, onSa
   const graphTrim = editGraph.trim();
   const agentChanged = editAgent !== message.agent_id;
   const graphChanged = graphTrim !== message.graph_id;
-  const canSave = !!onSaveScope && (agentChanged || graphChanged) && graphTrim !== "" && !saving;
+  const canSave = scopeEditCanSave({
+    hasCallback: !!onSaveScope,
+    currentAgent: message.agent_id,
+    currentGraph: message.graph_id,
+    editAgent,
+    editGraph,
+    saving,
+  });
 
   const handleSave = async () => {
     if (!onSaveScope || !canSave) return;
