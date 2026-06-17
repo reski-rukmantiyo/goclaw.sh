@@ -407,6 +407,23 @@ func (s *SQLiteListenRawMessageStore) List(ctx context.Context, opts store.Liste
 		conditions = append(conditions, "graph_id = ?")
 		args = append(args, opts.GraphID)
 	}
+	// Substring text filters (SRS 008 FR-00/FR-04). Added to the shared `conditions`
+	// so they apply to both COUNT and data. SQLite uses positional ?, so each OR'd
+	// column binds its own %<text>% arg. LIKE is ASCII case-insensitive by default.
+	if opts.Chat != "" {
+		pat := "%" + opts.Chat + "%"
+		conditions = append(conditions, "(chat_name LIKE ? OR chat_id LIKE ?)")
+		args = append(args, pat, pat)
+	}
+	if opts.Sender != "" {
+		pat := "%" + opts.Sender + "%"
+		conditions = append(conditions, "(sender LIKE ? OR sender_id LIKE ?)")
+		args = append(args, pat, pat)
+	}
+	if opts.Body != "" {
+		conditions = append(conditions, "body LIKE ?")
+		args = append(args, "%"+opts.Body+"%")
+	}
 	if opts.Processed != nil {
 		if *opts.Processed {
 			conditions = append(conditions, "processed_at IS NOT NULL")

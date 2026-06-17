@@ -44,10 +44,16 @@ export function RawMessagesPage() {
   const [filterChannel, setFilterChannel] = useState("");
   const [filterGraphId, setFilterGraphId] = useState("");
 
-  // Client-side text search
+  // Server-side text search. The input value (searchX) updates immediately for
+  // responsive typing; the committed value (searchXQ) is debounced and sent to
+  // the server so total/paging reflect the filter. Previously these filtered the
+  // fetched page only, which desynced them from total/paging. See SRS 008.
   const [searchChat, setSearchChat] = useState("");
   const [searchSender, setSearchSender] = useState("");
   const [searchBody, setSearchBody] = useState("");
+  const [searchChatQ, setSearchChatQ] = useState("");
+  const [searchSenderQ, setSearchSenderQ] = useState("");
+  const [searchBodyQ, setSearchBodyQ] = useState("");
 
   // Row selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -61,6 +67,9 @@ export function RawMessagesPage() {
   // Debounced text inputs for server-side filters
   const channelTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const graphTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const chatSearchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const senderSearchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const bodySearchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const handleChannelChange = useCallback((v: string) => {
     setFilterChannel(v);
@@ -72,6 +81,33 @@ export function RawMessagesPage() {
     setFilterGraphId(v);
     clearTimeout(graphTimer.current);
     graphTimer.current = setTimeout(() => setOffset(0), 400);
+  }, []);
+
+  const handleSearchChatChange = useCallback((v: string) => {
+    setSearchChat(v);
+    clearTimeout(chatSearchTimer.current);
+    chatSearchTimer.current = setTimeout(() => {
+      setSearchChatQ(v);
+      setOffset(0);
+    }, 400);
+  }, []);
+
+  const handleSearchSenderChange = useCallback((v: string) => {
+    setSearchSender(v);
+    clearTimeout(senderSearchTimer.current);
+    senderSearchTimer.current = setTimeout(() => {
+      setSearchSenderQ(v);
+      setOffset(0);
+    }, 400);
+  }, []);
+
+  const handleSearchBodyChange = useCallback((v: string) => {
+    setSearchBody(v);
+    clearTimeout(bodySearchTimer.current);
+    bodySearchTimer.current = setTimeout(() => {
+      setSearchBodyQ(v);
+      setOffset(0);
+    }, 400);
   }, []);
 
   // Reset offset when server-side filters change
@@ -89,35 +125,33 @@ export function RawMessagesPage() {
       channelName?: string;
       agentId?: string;
       graphId?: string;
+      chat?: string;
+      sender?: string;
+      body?: string;
     } = { limit: PAGE_SIZE, offset };
     if (filterStatus !== "all") params.extraction_status = filterStatus;
     if (filterChannel) params.channelName = filterChannel;
     if (filterAgentId !== "__all__") params.agentId = filterAgentId;
     if (filterGraphId) params.graphId = filterGraphId;
+    if (searchChatQ) params.chat = searchChatQ;
+    if (searchSenderQ) params.sender = searchSenderQ;
+    if (searchBodyQ) params.body = searchBodyQ;
     loadMessages(params);
-  }, [offset, filterStatus, filterAgentId, filterChannel, filterGraphId, loadMessages]);
+  }, [
+    offset,
+    filterStatus,
+    filterAgentId,
+    filterChannel,
+    filterGraphId,
+    searchChatQ,
+    searchSenderQ,
+    searchBodyQ,
+    loadMessages,
+  ]);
 
-  // Client-side filtered messages
-  const filtered = useMemo(() => {
-    let result = messages;
-    if (searchChat) {
-      const q = searchChat.toLowerCase();
-      result = result.filter(
-        (m) => m.chat_name.toLowerCase().includes(q) || m.chat_id.toLowerCase().includes(q),
-      );
-    }
-    if (searchSender) {
-      const q = searchSender.toLowerCase();
-      result = result.filter(
-        (m) => m.sender.toLowerCase().includes(q) || m.sender_id.toLowerCase().includes(q),
-      );
-    }
-    if (searchBody) {
-      const q = searchBody.toLowerCase();
-      result = result.filter((m) => m.body.toLowerCase().includes(q));
-    }
-    return result;
-  }, [messages, searchChat, searchSender, searchBody]);
+  // Text filters are server-side now; `filtered` mirrors the server page as-is
+  // (kept as a variable so the table/selection logic is unchanged).
+  const filtered = messages;
 
   // Active filter count
   const activeFilterCount = useMemo(() => {
@@ -165,6 +199,9 @@ export function RawMessagesPage() {
     setSearchChat("");
     setSearchSender("");
     setSearchBody("");
+    setSearchChatQ("");
+    setSearchSenderQ("");
+    setSearchBodyQ("");
     setOffset(0);
   };
 
@@ -177,11 +214,17 @@ export function RawMessagesPage() {
       channelName?: string;
       agentId?: string;
       graphId?: string;
+      chat?: string;
+      sender?: string;
+      body?: string;
     } = { limit: PAGE_SIZE, offset };
     if (filterStatus !== "all") params.extraction_status = filterStatus;
     if (filterChannel) params.channelName = filterChannel;
     if (filterAgentId !== "__all__") params.agentId = filterAgentId;
     if (filterGraphId) params.graphId = filterGraphId;
+    if (searchChatQ) params.chat = searchChatQ;
+    if (searchSenderQ) params.sender = searchSenderQ;
+    if (searchBodyQ) params.body = searchBodyQ;
     loadMessages(params);
   };
 
@@ -375,21 +418,21 @@ export function RawMessagesPage() {
               type="text"
               placeholder={t("filters.searchChat")}
               value={searchChat}
-              onChange={(e) => setSearchChat(e.target.value)}
+              onChange={(e) => handleSearchChatChange(e.target.value)}
               className="h-8 rounded-md border bg-background px-2 text-sm text-base md:text-sm placeholder:text-muted-foreground"
             />
             <input
               type="text"
               placeholder={t("filters.searchSender")}
               value={searchSender}
-              onChange={(e) => setSearchSender(e.target.value)}
+              onChange={(e) => handleSearchSenderChange(e.target.value)}
               className="h-8 rounded-md border bg-background px-2 text-sm text-base md:text-sm placeholder:text-muted-foreground"
             />
             <input
               type="text"
               placeholder={t("filters.searchBody")}
               value={searchBody}
-              onChange={(e) => setSearchBody(e.target.value)}
+              onChange={(e) => handleSearchBodyChange(e.target.value)}
               className="h-8 rounded-md border bg-background px-2 text-sm text-base md:text-sm placeholder:text-muted-foreground"
             />
           </div>

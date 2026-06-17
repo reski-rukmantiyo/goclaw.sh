@@ -50,6 +50,7 @@ export function useEmbeddings() {
       hasEmbedding?: boolean;
       fromTime?: string;
       toTime?: string;
+      searchText?: string;
       limit?: number;
       offset?: number;
     }) => {
@@ -63,6 +64,7 @@ export function useEmbeddings() {
         if (params?.hasEmbedding !== undefined) query.has_embedding = String(params.hasEmbedding);
         if (params?.fromTime) query.from_time = params.fromTime;
         if (params?.toTime) query.to_time = params.toTime;
+        if (params?.searchText) query.search_text = params.searchText;
         if (params?.limit) query.limit = String(params.limit);
         if (params?.offset) query.offset = String(params.offset);
         const res = await http.get<EmbeddingsResponse>("/v1/embeddings", query);

@@ -64,6 +64,14 @@ type ListenRawMessageListOpts struct {
 	GraphID          string
 	Processed        *bool  // nil=all, true=processed only, false=pending only (legacy)
 	ExtractionStatus string // ""=all, "pending", "extracted", "failed"
+
+	// Substring (ILIKE/LIKE) text filters. Empty = not applied. Promoted to
+	// server-side so they participate in the COUNT and therefore in paging
+	// (they used to filter the fetched page only, which desynced total/pages).
+	// See SRS 008 FR-00/FR-01.
+	Chat   string // substring over chat_name OR chat_id
+	Sender string // substring over sender OR sender_id
+	Body   string // substring over body
 }
 
 // ListenRawMessageStore persists raw messages captured by WhatsApp listen-only mode.
