@@ -2,7 +2,7 @@
 
 **Project**: GoClaw Gateway
 **Release**: 2026.3.0
-**Version**: 0.1-draft
+**Version**: 0.2-draft
 **Date**: 2026-06-17
 **Status**: Draft
 **Difficulty**: Low–Medium
@@ -15,6 +15,7 @@
 | Version | Date | Changes |
 |---------|------|---------|
 | 0.1-draft | 2026-06-17 | Initial draft. Root cause verified against code: both menus mix **server-side** filters (reduce server `total` → drive paging) with **client-side, page-only** text filters (`.filter()` over the fetched page only → do **not** reduce `total`, cannot reach matches on other pages → paging + "showing X of total" + select-all are incoherent while a text filter is active). Secondary defect: embeddings `sender` is SQL exact-match (`sender = $N`) while the UI presents it as free text. Fix = move the text filters server-side (ILIKE/LIKE, applied to **both** the COUNT and the data query so `total` matches), keep the UI inputs/chips unchanged. Composes with `007-feat-raw-message-graph-agent-edit.md` (same menus, same stores, same handlers). |
+| 0.2-draft | 2026-06-17 | **Implemented (code-complete + build-verified).** Store opts `Chat`/`Sender`/`Body` (listen) + `SearchText` (chunk) added; PG listen `List` ILIKE on `where`+`whereM` (count+data); PG chunk `List` `text ILIKE` + `sender ILIKE` (was exact); SQLite listen `List` LIKE mirror. Handlers read `chat`/`sender`/`body` + `search_text`. Hooks send them. Pages route text filters server-side (debounced `…Q` committed state), drop client `.filter()`, reset offset — inputs/chips/badges untouched. **Verification:** `go build ./...` ✓, `go build -tags sqliteonly ./...` ✓, `go vet ./internal/store/... ./internal/http/...` ✓, `pnpm build` (ui/web, tsc) ✓, `TestSQLiteListenRawMessageStore_ListTextFilters` (9 cases + tenant isolation) `-race` ✓. **Deferred (env-gated, same convention as `007`):** PG `List` integration test (needs pgvector pg18 test container — PG impl mirrors SQLite line-for-line; proven by the SQLite test + COUNT/data shared-WHERE inspection), and the live/manual UI checks (page-2 reachability with a text filter, filtered total, embeddings sender partial-match) which need a running gateway + browser. **Pre-existing unrelated failures (not touched by this change):** 4 SQLite schema-migration DDL tests (`EnsureSchema … duplicate column name: system_prompt_preview`, migration v18/v25/v28) + 2 `TestResolveAuth_*` http auth/pairing tests — both in code paths this change never touches (schema migration DDL; auth resolution). |
 
 ---
 
@@ -69,10 +70,10 @@ The Raw Messages and Embeddings menus' text filters must filter on the **server*
 
 Acceptance criteria:
 
-- [ ] With a text filter active, the server `total` reflects the filtered set (smaller than the unfiltered total when the filter excludes rows). _(store unit test — SQLite listen List; PG by inspection mirroring SQLite)_
+- [x] With a text filter active, the server `total` reflects the filtered set (smaller than the unfiltered total when the filter excludes rows). _(`TestSQLiteListenRawMessageStore_ListTextFilters` asserts `total == match count` for Chat/Sender/Body; PG by inspection — shared WHERE)_
 - [ ] A row that matches the text filter but sits on **page 2** is reachable by paging (today it is not, because the client filter only sees page 1's fetched rows). _(manual — needs running gateway; logic-guaranteed because the filter is now in the server WHERE + the page index walks the filtered set)_
 - [ ] While a text filter is active, `totalPages` / the page counter and "showing X of total" are consistent with the visible rows. _(manual; follows from total reflecting the filter)_
-- [ ] The existing filter inputs, chips, badges, and `activeFilterCount` render unchanged (no UI change). _(by inspection — no JSX/className/i18n removed; only data wiring changes)_
+- [x] The existing filter inputs, chips, badges, and `activeFilterCount` render unchanged (no UI change). _(by inspection — no JSX/className/i18n removed; `pnpm build` green)_
 
 ---
 
@@ -91,8 +92,8 @@ Add substring filter fields to the two list-options structs. Empty string = filt
 
 Acceptance criteria:
 
-- [ ] Both structs gain the documented fields; empty values are no-ops (existing tests/callers unchanged). _(by inspection; `go build` green)_
-- [ ] `ReEmbedChunks` (which takes `RawMessageChunkListOpts`) is unaffected — it only reads `AgentID`/`ChatID`/`GraphID`; the new `SearchText` is ignored there. _(by inspection — `raw_message_chunks.go:416-430` untouched)_
+- [x] Both structs gain the documented fields; empty values are no-ops (existing tests/callers unchanged). _(`go build ./...` + `go build -tags sqliteonly ./...` green)_
+- [x] `ReEmbedChunks` (which takes `RawMessageChunkListOpts`) is unaffected — it only reads `AgentID`/`ChatID`/`GraphID`; the new `SearchText` is ignored there. _(by inspection — `raw_message_chunks.go:416-430` untouched)_
 
 ---
 
@@ -149,9 +150,9 @@ The SQLite chunk store is a no-op stub (`sqlitestore/raw_message_chunks.go:32`),
 
 Acceptance criteria:
 
-- [ ] SQLite listen `List` with `Chat`/`Sender`/`Body` set returns only matching rows and a matching `total`. _(`TestSQLiteListenRawMessageStore_ListTextFilters`)_
-- [ ] Empty values add no predicate. _(same test)_
-- [ ] Tenant scope is preserved (the text predicates are AND-ed after the existing `tClause`). _(same test + existing isolation)_
+- [x] SQLite listen `List` with `Chat`/`Sender`/`Body` set returns only matching rows and a matching `total`. _(`TestSQLiteListenRawMessageStore_ListTextFilters`)_
+- [x] Empty values add no predicate. _(same test — "no filter returns all" case)_
+- [x] Tenant scope is preserved (the text predicates are AND-ed after the existing `tClause`). _(`TestSQLiteListenRawMessageStore_ListTextFilters_TenantIsolation`)_
 
 ---
 
@@ -170,8 +171,8 @@ Each is applied with `if v := r.URL.Query().Get("<param>"); v != "" { opts.<Fiel
 
 Acceptance criteria:
 
-- [ ] Both handlers populate the new opts fields from the new query params; empty params are ignored. _(by inspection)_
-- [ ] No existing query param/option is renamed or removed. _(by inspection)_
+- [x] Both handlers populate the new opts fields from the new query params; empty params are ignored. _(by inspection; `go build` green)_
+- [x] No existing query param/option is renamed or removed. _(by inspection)_
 
 ---
 
@@ -186,11 +187,11 @@ The debounce matches the existing channel/graph pattern (≈400 ms) so typing do
 
 Acceptance criteria:
 
-- [ ] The text-filter inputs still render and accept typing identically (no UI change). _(by inspection)_
+- [x] The text-filter inputs still render and accept typing identically (no UI change). _(by inspection; `pnpm build` green)_
 - [ ] Typing in a text filter triggers at most one server request per debounce window (not one per keystroke). _(manual; follows from debounce wiring mirroring channel/graph)_
-- [ ] `filtered` no longer re-filters the page client-side; it equals the server-returned rows. _(by inspection — `.filter()` block removed; `filtered` = `messages`/`chunks`)_
-- [ ] When a text filter changes, `offset` resets to 0. _(by inspection — added to the reset path)_
-- [ ] `activeFilterCount` and the active-filter chips are unchanged (text filters were never counted/chipped and remain so — no UI change). _(by inspection)_
+- [x] `filtered` no longer re-filters the page client-side; it equals the server-returned rows. _(by inspection — `.filter()` block removed; `filtered` = `messages`/`chunks`)_
+- [x] When a text filter changes, `offset` resets to 0. _(by inspection — committed-value setters call `setOffset(0)`)_
+- [x] `activeFilterCount` and the active-filter chips are unchanged (text filters were never counted/chipped and remain so — no UI change). _(by inspection)_
 
 ---
 
@@ -200,7 +201,7 @@ No new user-facing strings are introduced — the inputs, chips, badges, and toa
 
 Acceptance criteria:
 
-- [ ] No new i18n key is required; no raw key appears. _(by inspection — no JSX text added)_
+- [x] No new i18n key is required; no raw key appears. _(by inspection — no JSX text added; `pnpm build` green)_
 
 ---
 
@@ -210,8 +211,8 @@ The list endpoints' authorization envelope is unchanged: both are `requireAuth("
 
 Acceptance criteria:
 
-- [ ] No auth/role change; the new predicates are AND-ed inside the existing tenant-scoped WHERE. _(by inspection)_
-- [ ] A text filter cannot return another tenant's rows (it only narrows within the tenant-scoped set). _(logic-guaranteed — predicate is AND-ed after `tClause`)_
+- [x] No auth/role change; the new predicates are AND-ed inside the existing tenant-scoped WHERE. _(by inspection)_
+- [x] A text filter cannot return another tenant's rows (it only narrows within the tenant-scoped set). _(logic-guaranteed — predicate is AND-ed after `tClause`; proven by `TestSQLiteListenRawMessageStore_ListTextFilters_TenantIsolation`)_
 
 ## 4. System Impact
 
