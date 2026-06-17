@@ -49,7 +49,14 @@
     "resetToPending": "Reset to Pending",
     "resetConfirm": "Reset {{count}} message(s) to pending?",
     "resetSuccess": "{{count}} message(s) reset to pending",
-    "resetFailed": "Failed to reset messages"
+    "resetFailed": "Failed to reset messages",
+    "updateScope": "Update Scope",
+    "scopeUpdated": "Updated scope on {{count}} message(s)",
+    "scopeUpdateFailed": "Failed to update scope",
+    "scopePromptTitle": "Update Agent / Graph ID",
+    "scopeGraphLabel": "New Graph ID",
+    "scopeAgentLabel": "New Agent",
+    "scopeNoneProvided": "Set an agent or graph ID"
   },
   "detail": {
     "title": "Message Detail",
@@ -67,6 +74,10 @@
     "copy": "Copy",
     "copied": "Copied",
     "na": "—",
-    "resetToPending": "Reset to Pending"
+    "resetToPending": "Reset to Pending",
+    "editScope": "Edit",
+    "saveScope": "Save",
+    "cancel": "Cancel",
+    "scopeHint": "Changing the agent/graph resets this message to pending and re-extracts it into the new scope."
   }
 }

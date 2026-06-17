@@ -49,7 +49,14 @@
     "resetToPending": "Đặt lại thành Chờ xử lý",
     "resetConfirm": "Đặt lại {{count}} tin nhắn về trạng thái chờ xử lý?",
     "resetSuccess": "{{count}} tin nhắn đã được đặt lại",
-    "resetFailed": "Không thể đặt lại tin nhắn"
+    "resetFailed": "Không thể đặt lại tin nhắn",
+    "updateScope": "Cập nhật phạm vi",
+    "scopeUpdated": "Đã cập nhật phạm vi cho {{count}} tin nhắn",
+    "scopeUpdateFailed": "Cập nhật phạm vi thất bại",
+    "scopePromptTitle": "Cập nhật Agent / Graph ID",
+    "scopeGraphLabel": "Graph ID mới",
+    "scopeAgentLabel": "Agent mới",
+    "scopeNoneProvided": "Chọn agent hoặc graph ID"
   },
   "detail": {
     "title": "Chi tiết tin nhắn",
@@ -67,6 +74,10 @@
     "copy": "Sao chép",
     "copied": "Đã sao chép",
     "na": "—",
-    "resetToPending": "Đặt lại thành Chờ xử lý"
+    "resetToPending": "Đặt lại thành Chờ xử lý",
+    "editScope": "Chỉnh sửa",
+    "saveScope": "Lưu",
+    "cancel": "Hủy",
+    "scopeHint": "Đổi agent/graph sẽ đặt tin nhắn về pending và trích xuất lại vào phạm vi mới."
   }
 }

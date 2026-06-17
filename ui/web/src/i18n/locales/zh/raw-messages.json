@@ -49,7 +49,14 @@
     "resetToPending": "重置为待处理",
     "resetConfirm": "将 {{count}} 条消息重置为待处理？",
     "resetSuccess": "{{count}} 条消息已重置为待处理",
-    "resetFailed": "重置消息失败"
+    "resetFailed": "重置消息失败",
+    "updateScope": "更新范围",
+    "scopeUpdated": "已为 {{count}} 条消息更新范围",
+    "scopeUpdateFailed": "更新范围失败",
+    "scopePromptTitle": "更新 Agent / Graph ID",
+    "scopeGraphLabel": "新 Graph ID",
+    "scopeAgentLabel": "新 Agent",
+    "scopeNoneProvided": "请设置 agent 或 graph ID"
   },
   "detail": {
     "title": "消息详情",
@@ -67,6 +74,10 @@
     "copy": "复制",
     "copied": "已复制",
     "na": "—",
-    "resetToPending": "重置为待处理"
+    "resetToPending": "重置为待处理",
+    "editScope": "编辑",
+    "saveScope": "保存",
+    "cancel": "取消",
+    "scopeHint": "更改 agent/graph 会将此消息重置为 pending 并重新提取到新范围。"
   }
 }
