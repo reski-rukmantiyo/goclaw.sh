@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
@@ -26,6 +27,7 @@ func (h *ListenRawMessagesHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/listen-raw-messages/stats", h.authMiddleware(h.handleStats))
 	mux.HandleFunc("POST /v1/listen-raw-messages/reset-processed", h.authMiddleware(h.handleResetProcessed))
 	mux.HandleFunc("POST /v1/listen-raw-messages/reset", h.authMiddleware(h.handleResetByIDs))
+	mux.HandleFunc("POST /v1/listen-raw-messages/scope", h.authMiddleware(h.handleUpdateScope))
 }
 
 func (h *ListenRawMessagesHandler) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
@@ -142,6 +144,66 @@ func (h *ListenRawMessagesHandler) handleResetByIDs(w http.ResponseWriter, r *ht
 	slog.Info("http.reset_by_ids: ok", "requested", len(ids), "affected", affected)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"reset_count": affected,
+	})
+}
+
+// handleUpdateScope edits the agent_id and/or graph_id (the KG scope pair) of the
+// given raw messages and resets their extraction state to pending, so the
+// extraction worker re-processes them under the corrected scope. See SRS 007.
+func (h *ListenRawMessagesHandler) handleUpdateScope(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs     []string `json:"ids"`
+		AgentID string   `json:"agent_id"`
+		GraphID string   `json:"graph_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		slog.Warn("http.update_scope: invalid body", "error", err)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	if len(body.IDs) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ids is required"})
+		return
+	}
+
+	ids := make([]uuid.UUID, 0, len(body.IDs))
+	for _, s := range body.IDs {
+		id, err := uuid.Parse(s)
+		if err != nil {
+			slog.Warn("http.update_scope: invalid id", "id", s, "error", err)
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id: " + s})
+			return
+		}
+		ids = append(ids, id)
+	}
+
+	agentID := strings.TrimSpace(body.AgentID)
+	graphID := strings.TrimSpace(body.GraphID)
+	if agentID == "" && graphID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "agent_id or graph_id is required"})
+		return
+	}
+	if agentID != "" {
+		if _, err := uuid.Parse(agentID); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent_id"})
+			return
+		}
+	}
+	if len(graphID) > 255 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "graph_id too long"})
+		return
+	}
+
+	affected, err := h.store.UpdateScope(r.Context(), ids, agentID, graphID)
+	if err != nil {
+		slog.Error("http.update_scope: store error", "count", len(ids), "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	slog.Info("http.update_scope: ok", "requested", len(ids), "affected", affected, "agent_id", agentID, "graph_id", graphID)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"updated_count": affected,
 	})
 }
 

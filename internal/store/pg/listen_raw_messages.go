@@ -258,6 +258,44 @@ func (s *PGListenRawMessageStore) ResetProcessedByIDs(ctx context.Context, ids [
 	return res.RowsAffected()
 }
 
+func (s *PGListenRawMessageStore) UpdateScope(ctx context.Context, ids []uuid.UUID, agentID, graphID string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	// SET clause: always reset extraction state; append agent_id/graph_id when provided.
+	setParts := []string{"processed_at = NULL", "extraction_status = 'pending'", "extraction_error = NULL"}
+	args := make([]any, 0, len(ids)+2+len(ids))
+	idx := 1
+	if agentID != "" {
+		setParts = append(setParts, fmt.Sprintf("agent_id = $%d", idx))
+		args = append(args, agentID)
+		idx++
+	}
+	if graphID != "" {
+		setParts = append(setParts, fmt.Sprintf("graph_id = $%d", idx))
+		args = append(args, graphID)
+		idx++
+	}
+	placeholders := make([]string, len(ids))
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", idx)
+		args = append(args, id)
+		idx++
+	}
+	tClause, tArgs, _, err := scopeClause(ctx, idx)
+	if err != nil {
+		return 0, err
+	}
+	args = append(args, tArgs...)
+	q := `UPDATE listen_raw_messages SET ` + strings.Join(setParts, ", ") +
+		` WHERE id IN (` + strings.Join(placeholders, ",") + `)` + tClause
+	res, err := s.dbFor(ctx).ExecContext(ctx, q, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 func (s *PGListenRawMessageStore) ListPendingEmbeddings(ctx context.Context, agentID, graphID string, maxRows int) ([]store.ListenRawMessage, error) {
 	tClause, tArgs, _, err := scopeClause(ctx, 4)
 	if err != nil {
