@@ -16,6 +16,7 @@ import { useDeferredLoading } from "@/hooks/use-deferred-loading";
 import { useMinLoading } from "@/hooks/use-min-loading";
 import { useUiStore } from "@/stores/use-ui-store";
 import { useConfig } from "@/pages/config/hooks/use-config";
+import { useRole } from "@/hooks/use-role";
 import { useSessions } from "./hooks/use-sessions";
 import { SessionDetailPage } from "./session-detail-page";
 import { parseSessionKey } from "@/lib/session-key";
@@ -33,6 +34,7 @@ export function SessionsPage() {
   const [pageSize, setPageSizeRaw] = useState(globalPageSize);
   const setPageSize = (size: number) => { setPageSizeRaw(size); setPage(1); setGlobalPageSize(size); };
 
+  const { isOwner } = useRole();
   const { config, patch: patchConfig, saving: configSaving } = useConfig();
   const threshold = (config?.agents as any)?.defaults?.compaction?.autoCompactThreshold ?? 0.75;
   const keepLast = (config?.agents as any)?.defaults?.compaction?.keepLastMessages ?? 4;
@@ -45,11 +47,18 @@ export function SessionsPage() {
     setDraftKeepLast(keepLast.toString());
   }, [threshold, keepLast]);
 
-  const handleSaveSettings = () => {
-    const t = parseFloat(draftThreshold);
-    const k = parseInt(draftKeepLast, 10);
-    if (!isNaN(t) && t >= 0 && t <= 1 && !isNaN(k) && k >= 1 && k <= 20) {
-      patchConfig({ agents: { defaults: { compaction: { autoCompactThreshold: t, keepLastMessages: k } } } });
+  const draftThresholdNum = parseFloat(draftThreshold);
+  const draftKeepLastNum = parseInt(draftKeepLast, 10);
+  const thresholdValid = !isNaN(draftThresholdNum) && draftThresholdNum >= 0 && draftThresholdNum <= 1;
+  const keepLastValid = !isNaN(draftKeepLastNum) && draftKeepLastNum >= 1 && draftKeepLastNum <= 1000;
+  const settingsValid = thresholdValid && keepLastValid;
+
+  const handleSaveSettings = async () => {
+    if (!settingsValid) return; // Save is disabled while invalid; guard regardless.
+    try {
+      await patchConfig({ agents: { defaults: { compaction: { autoCompactThreshold: draftThresholdNum, keepLastMessages: draftKeepLastNum } } } });
+    } catch {
+      // error toast is surfaced by the useConfig hook; keep inputs intact for correction
     }
   };
 
@@ -102,19 +111,19 @@ export function SessionsPage() {
         description={t("description")}
         actions={
           <div className="flex items-center gap-2">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-1">
-                  <Settings className="h-3.5 w-3.5" />
-                  {t("settings.title")}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-72">
-                <div className="space-y-3">
-                  <h4 className="font-medium text-sm">{t("settings.title")}</h4>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">{t("settings.autoCompactThreshold")}</Label>
-                    <div className="flex items-center gap-2">
+            {isOwner ? (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1">
+                    <Settings className="h-3.5 w-3.5" />
+                    {t("settings.title")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72">
+                  <div className="space-y-3">
+                    <h4 className="font-medium text-sm">{t("settings.title")}</h4>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">{t("settings.autoCompactThreshold")}</Label>
                       <Input
                         type="number"
                         min={0}
@@ -122,41 +131,52 @@ export function SessionsPage() {
                         step={0.05}
                         value={draftThreshold}
                         onChange={(e) => setDraftThreshold(e.target.value)}
-                        className="h-8 text-sm"
+                        aria-invalid={!thresholdValid}
+                        className="h-8 text-base md:text-sm"
                       />
+                      {!thresholdValid && (
+                        <p className="text-2xs text-destructive">{t("settings.invalidThreshold")}</p>
+                      )}
+                      <p className="text-2xs text-muted-foreground">{t("settings.autoCompactThresholdTip")}</p>
                     </div>
-                    <p className="text-2xs text-muted-foreground">{t("settings.autoCompactThresholdTip")}</p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">{t("settings.keepLastMessages")}</Label>
-                    <div className="flex items-center gap-2">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">{t("settings.keepLastMessages")}</Label>
                       <Input
                         type="number"
                         min={1}
-                        max={20}
+                        max={1000}
                         step={1}
                         value={draftKeepLast}
                         onChange={(e) => setDraftKeepLast(e.target.value)}
-                        className="h-8 text-sm"
+                        aria-invalid={!keepLastValid}
+                        className="h-8 text-base md:text-sm"
                       />
+                      {!keepLastValid && (
+                        <p className="text-2xs text-destructive">{t("settings.invalidKeepLast")}</p>
+                      )}
+                      <p className="text-2xs text-muted-foreground">{t("settings.keepLastMessagesTip")}</p>
                     </div>
-                    <p className="text-2xs text-muted-foreground">{t("settings.keepLastMessagesTip")}</p>
+                    <Button
+                      size="sm"
+                      className="w-full"
+                      onClick={handleSaveSettings}
+                      disabled={configSaving || !settingsValid}
+                    >
+                      {configSaving ? (
+                        <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> {t("settings.saving")}</>
+                      ) : (
+                        t("settings.save")
+                      )}
+                    </Button>
                   </div>
-                  <Button
-                    size="sm"
-                    className="w-full"
-                    onClick={handleSaveSettings}
-                    disabled={configSaving}
-                  >
-                    {configSaving ? (
-                      <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> {t("settings.saving")}</>
-                    ) : (
-                      t("settings.save")
-                    )}
-                  </Button>
-                </div>
-              </PopoverContent>
-            </Popover>
+                </PopoverContent>
+              </Popover>
+            ) : (
+              <Button variant="outline" size="sm" className="gap-1" disabled title={t("settings.ownerOnlyHint")}>
+                <Settings className="h-3.5 w-3.5" />
+                {t("settings.title")}
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={refresh} disabled={spinning} className="gap-1">
               <RefreshCw className={"h-3.5 w-3.5" + (spinning ? " animate-spin" : "")} />
               {t("refresh")}

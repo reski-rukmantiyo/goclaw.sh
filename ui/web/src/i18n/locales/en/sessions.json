@@ -24,7 +24,10 @@
     "keepLastMessages": "Keep last messages",
     "keepLastMessagesTip": "Number of recent messages to preserve after compaction.",
     "save": "Save",
-    "saving": "Saving..."
+    "saving": "Saving...",
+    "invalidThreshold": "Threshold must be a number between 0 and 1.",
+    "invalidKeepLast": "Keep-last must be a whole number between 1 and 1000.",
+    "ownerOnlyHint": "Compaction settings can only be changed by the system owner."
   },
   "detail": {
     "reset": "Reset",
