@@ -431,11 +431,27 @@ func (r *MethodRouter) handleConnect(ctx context.Context, client *Client, req *p
 }
 
 func (r *MethodRouter) sendConnectResponse(ctx context.Context, client *Client, reqID string) {
+	// Recognize the master/system tenant owner as a global/platform owner.
+	// gateway.owner_ids (GOCLAW_OWNER_IDS) is env-only and usually unset; when so,
+	// owner detection falls back to the literal "system" (isOwnerID, above). A human
+	// logging in via the web UI authenticates as a UUID (users.id), which matches
+	// neither — so without this the master-tenant owner is rejected by owner-gated
+	// methods (e.g. Sessions Settings → config.patch; SRS 010 RC2). The master tenant
+	// IS the platform tenant; its owners (is_owner=true) are the platform admins, so
+	// this mirrors the literal-"system" fallback's intent. Only MasterTenantID is
+	// consulted — non-master tenant owners stay RoleAdmin (no privilege leak).
+	if client.role != permissions.RoleOwner && client.userID != "" && r.tenantStore != nil {
+		if ok, _ := r.tenantStore.IsOwner(ctx, store.MasterTenantID, client.userID); ok {
+			client.role = permissions.RoleOwner
+		}
+	}
+
 	// Build scoped ctx that store.IsMasterScope expects: role + tenant.
-	// Only global owners get RoleOwner injected — tenant owners scoped to a
-	// non-master tenant must not receive master-scope privileges.
+	// Only owners get RoleOwner injected — tenant owners scoped to a non-master
+	// tenant must not receive master-scope privileges. client.IsOwner() covers both
+	// the explicit owner_ids path and the master-tenant-owner recognition above.
 	scopedCtx := store.WithTenantID(ctx, client.tenantID)
-	if isOwnerID(client.userID, r.server.cfg.Gateway.OwnerIDs) {
+	if client.IsOwner() {
 		scopedCtx = store.WithRole(scopedCtx, store.RoleOwner)
 	}
 	resp := map[string]any{
