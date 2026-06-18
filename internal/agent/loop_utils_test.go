@@ -103,7 +103,7 @@ func TestShouldShareKnowledgeGraph_EnabledConfig(t *testing.T) {
 }
 
 func TestShouldShareKnowledgeGraph_DisabledByDefault(t *testing.T) {
-	l := &Loop{workspaceSharing: &store.WorkspaceSharingConfig{ShareMemory: true}}
+	l := &Loop{workspaceSharing: &store.WorkspaceSharingConfig{ShareMemory: boolPtr(true)}}
 	if l.shouldShareKnowledgeGraph() {
 		t.Error("ShareMemory alone should not enable KG sharing")
 	}
@@ -126,7 +126,7 @@ func TestShouldShareSessions_EnabledConfig(t *testing.T) {
 }
 
 func TestShouldShareSessions_DisabledByDefault(t *testing.T) {
-	l := &Loop{workspaceSharing: &store.WorkspaceSharingConfig{ShareMemory: true, ShareKnowledgeGraph: true}}
+	l := &Loop{workspaceSharing: &store.WorkspaceSharingConfig{ShareMemory: boolPtr(true), ShareKnowledgeGraph: true}}
 	if l.shouldShareSessions() {
 		t.Error("ShareMemory and ShareKnowledgeGraph alone should not enable sessions sharing")
 	}
@@ -134,7 +134,7 @@ func TestShouldShareSessions_DisabledByDefault(t *testing.T) {
 
 func TestShouldShareSessions_IndependentOfMemory(t *testing.T) {
 	l := &Loop{workspaceSharing: &store.WorkspaceSharingConfig{
-		ShareMemory:    true,
+		ShareMemory:    boolPtr(true),
 		ShareSessions: false,
 	}}
 	if l.shouldShareSessions() {

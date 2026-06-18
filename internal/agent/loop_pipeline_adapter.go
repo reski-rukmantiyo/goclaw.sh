@@ -273,15 +273,54 @@ func (l *Loop) makeAutoInjectCallback(req *RunRequest) func(ctx context.Context,
 	}
 	return func(ctx context.Context, userMessage, userID, recentContext string) (string, error) {
 		result, err := l.autoInjector.Inject(ctx, memory.InjectParams{
-			AgentID:       l.agentUUID.String(),
-			UserID:        store.MemoryUserID(ctx),
-			TenantID:      store.TenantIDFromContext(ctx).String(),
-			UserMessage:   userMessage,
-			RecentContext: recentContext,
+			AgentID:           l.agentUUID.String(),
+			UserID:            store.MemoryUserID(ctx),
+			TenantID:          store.TenantIDFromContext(ctx).String(),
+			UserMessage:       userMessage,
+			RecentContext:     recentContext,
+			Enabled:           memoryAutoInjectEnabled(l.memoryCfg),
+			MaxEntries:        memoryInt(l.memoryCfg, func(c *config.MemoryConfig) int { return c.AutoInjectMaxEntries }, 5),
+			MaxTokens:         memoryInt(l.memoryCfg, func(c *config.MemoryConfig) int { return c.AutoInjectMaxTokens }, 500),
+			Threshold:         memoryFloat(l.memoryCfg, func(c *config.MemoryConfig) float64 { return c.AutoInjectThreshold }, 0.3),
+			L1Depth:           memoryInt(l.memoryCfg, func(c *config.MemoryConfig) int { return c.AutoInjectL1Depth }, 2),
+			L1PerHitMaxTokens: memoryInt(l.memoryCfg, func(c *config.MemoryConfig) int { return c.AutoInjectL1PerHitTok }, 120),
 		})
 		if err != nil || result == nil {
 			return "", err
 		}
 		return result.Section, nil
 	}
+}
+
+// memoryAutoInjectEnabled resolves the per-agent auto-inject enabled flag.
+// nil config or nil pointer → default true. (009 FR-02)
+func memoryAutoInjectEnabled(cfg *config.MemoryConfig) bool {
+	if cfg == nil || cfg.AutoInjectEnabled == nil {
+		return true
+	}
+	return *cfg.AutoInjectEnabled
+}
+
+// memoryInt resolves a per-agent int setting with a default when the config is
+// absent or the value is zero/unset. (009 FR-02)
+func memoryInt(cfg *config.MemoryConfig, get func(*config.MemoryConfig) int, def int) int {
+	if cfg == nil {
+		return def
+	}
+	if v := get(cfg); v > 0 {
+		return v
+	}
+	return def
+}
+
+// memoryFloat resolves a per-agent float setting with a default when the config
+// is absent or the value is zero/unset. (009 FR-02)
+func memoryFloat(cfg *config.MemoryConfig, get func(*config.MemoryConfig) float64, def float64) float64 {
+	if cfg == nil {
+		return def
+	}
+	if v := get(cfg); v > 0 {
+		return v
+	}
+	return def
 }

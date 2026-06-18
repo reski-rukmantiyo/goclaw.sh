@@ -249,6 +249,18 @@ type MemoryConfig struct {
 	TextWeight        float64 `json:"text_weight,omitempty"`        // hybrid search FTS weight (default 0.3)
 	MinScore          float64 `json:"min_score,omitempty"`          // minimum relevance score (default 0.35)
 
+	// Auto-inject controls the per-turn recall of episodic memory into the
+	// system prompt (ContextStage). These were previously hardcoded in the
+	// auto-injector and ignored any per-agent config; wiring them here makes
+	// recall tunable per agent. See 009-bugfix-agent-episodic-recall-not-surfaced.md FR-02/03.
+	// Zero/nil values fall back to the documented defaults.
+	AutoInjectEnabled      *bool   `json:"auto_inject_enabled,omitempty"`        // default true (nil = enabled)
+	AutoInjectThreshold    float64 `json:"auto_inject_threshold,omitempty"`      // default 0.3
+	AutoInjectMaxEntries   int     `json:"auto_inject_max_entries,omitempty"`    // default 5
+	AutoInjectMaxTokens    int     `json:"auto_inject_max_tokens,omitempty"`     // default 500
+	AutoInjectL1Depth      int     `json:"auto_inject_l1_depth,omitempty"`       // top hits to surface a short L1 summary for (default 2)
+	AutoInjectL1PerHitTok  int     `json:"auto_inject_l1_per_hit_tokens,omitempty"` // per-hit L1 summary token budget (default 120)
+
 	// Dreaming configures the episodic → long-term consolidation worker.
 	// nil = use hardcoded defaults (threshold=5, debounce=10min, enabled).
 	Dreaming *DreamingConfig `json:"dreaming,omitempty"`

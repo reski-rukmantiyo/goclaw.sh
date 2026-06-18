@@ -358,7 +358,11 @@ type WorkspaceSharingConfig struct {
 	SharedDM            bool     `json:"shared_dm" db:"-"`
 	SharedGroup         bool     `json:"shared_group" db:"-"`
 	SharedUsers         []string `json:"shared_users,omitempty" db:"-"`
-	ShareMemory         bool     `json:"share_memory" db:"-"`
+	// ShareMemory is a pointer so an explicit `false` (per-user memory) can be
+	// distinguished from unset (nil → fall back to the agent-type default:
+	// predefined/shared agents share memory, open agents do not). See
+	// 009-bugfix-agent-episodic-recall-not-surfaced.md FR-01.
+	ShareMemory         *bool    `json:"share_memory,omitempty" db:"-"`
 	ShareKnowledgeGraph bool     `json:"share_knowledge_graph" db:"-"`
 	ShareSessions       bool     `json:"share_sessions" db:"-"`
 	SharedKGIDs         []string `json:"shared_kg_ids,omitempty" db:"-"`
@@ -451,7 +455,7 @@ func (a *AgentData) ParseWorkspaceSharing() *WorkspaceSharingConfig {
 	if json.Unmarshal(a.WorkspaceSharing, &ws) != nil {
 		return nil
 	}
-	if !ws.SharedDM && !ws.SharedGroup && len(ws.SharedUsers) == 0 && !ws.ShareMemory && !ws.ShareKnowledgeGraph && !ws.ShareSessions && len(ws.SharedKGIDs) == 0 {
+	if !ws.SharedDM && !ws.SharedGroup && len(ws.SharedUsers) == 0 && ws.ShareMemory == nil && !ws.ShareKnowledgeGraph && !ws.ShareSessions && len(ws.SharedKGIDs) == 0 {
 		return nil
 	}
 	return &ws
