@@ -60,3 +60,20 @@ func tailClipRunes(s string, maxRunes int) string {
 	}
 	return string(runes[len(runes)-maxRunes:])
 }
+
+// headClipRunes returns the first maxRunes runes of s, rune-safe for multi-byte
+// scripts. Used to truncate an L1 summary to a per-hit budget without slicing a
+// multi-byte rune in half. See 009 FR-03.
+func headClipRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes])
+}
+
+// runeLen returns the number of runes in s (rune-safe length).
+func runeLen(s string) int { return len([]rune(s)) }

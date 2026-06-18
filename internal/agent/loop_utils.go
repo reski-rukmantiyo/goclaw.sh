@@ -13,6 +13,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/bootstrap"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
+	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/internal/tools"
 )
 
@@ -52,10 +53,31 @@ func (l *Loop) shouldShareWorkspace(userID, peerKind string) bool {
 	return false
 }
 
-// shouldShareMemory returns true if memory/KG should be shared across all users.
-// Independent of workspace folder sharing.
+// shouldShareMemory returns true if memory (episodic + document + search) should
+// be shared across all of the agent's invocation contexts — i.e. recalled at
+// agent scope (user_id = "") rather than partitioned by the per-invocation
+// user_id. Independent of workspace folder sharing.
+//
+// A shared-context (predefined) agent shares its memory by default, consistent
+// with the fact that its knowledge graph is already shared. This fixes the
+// defect where a predefined agent's episodic memory — created under one
+// invocation's user_id (e.g. a WhatsApp group) — was invisible when the same
+// agent ran under a different user_id (e.g. the owner in the web UI). See
+// 009-bugfix-agent-episodic-recall-not-surfaced.md FR-01.
+//
+// Resolution order:
+//  1. Explicit ShareMemory override (true/false) always wins.
+//  2. Otherwise: predefined agents share; open agents do not; an agent that
+//     already shares its knowledge graph shares memory too (consistency).
 func (l *Loop) shouldShareMemory() bool {
-	return l.workspaceSharing != nil && l.workspaceSharing.ShareMemory
+	ws := l.workspaceSharing
+	if ws != nil && ws.ShareMemory != nil {
+		return *ws.ShareMemory
+	}
+	if l.agentType == store.AgentTypePredefined {
+		return true
+	}
+	return ws != nil && ws.ShareKnowledgeGraph
 }
 
 // shouldShareKnowledgeGraph returns true if knowledge graph should be shared

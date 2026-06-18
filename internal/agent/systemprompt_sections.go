@@ -93,6 +93,10 @@ func buildMemoryRecallSlimSection(hasMemoryExpand bool, sharedKGIDs []string) []
 	}
 	line += " If no results, say so naturally."
 	lines := []string{line}
+	// 009 FR-04: tell the agent that relevant prior memory may already be
+	// auto-injected into its context (Memory Context / Recalled Prior Context
+	// section), so it uses the recalled content directly instead of ignoring it.
+	lines = append(lines, "If a 'Memory Context' or 'Recalled Prior Context' section is present above, it is relevant memory from past sessions already retrieved for you — use it directly.")
 	if len(sharedKGIDs) > 0 {
 		lines = append(lines,
 			fmt.Sprintf("Your knowledge graph scopes (%d): %s. Use the `scope` parameter in knowledge_graph_search to filter by a specific scope.",
@@ -109,6 +113,7 @@ func buildMemoryRecallSlimSection(hasMemoryExpand bool, sharedKGIDs []string) []
 func buildMemoryRecallMinimalSection() []string {
 	return []string{
 		"If you need context from past sessions: call memory_search.",
+		"If a 'Memory Context' or 'Recalled Prior Context' section is present above, use it directly.",
 		"",
 	}
 }

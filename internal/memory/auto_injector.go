@@ -33,8 +33,18 @@ type InjectParams struct {
 	RecentContext string
 
 	MaxEntries  int     // default 5
-	MaxTokens   int     // default 200
+	MaxTokens   int     // default 500 (fits ~2 L1 summaries + several L0 abstracts)
 	Threshold   float64 // relevance threshold (default 0.3)
+
+	// Enabled gates auto-inject for this agent. When false, Inject returns empty
+	// (operator opt-out). Default true. (009 FR-02)
+	Enabled bool
+	// L1Depth is the number of top hits for which a short L1 summary (the
+	// episode's actual Summary, truncated) is injected in addition to the L0
+	// abstract. Default 2. (009 FR-03)
+	L1Depth int
+	// L1PerHitMaxTokens bounds each injected L1 summary. Default 120. (009 FR-03)
+	L1PerHitMaxTokens int
 }
 
 // InjectResult contains the injection output + observability data.
