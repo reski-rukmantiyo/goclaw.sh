@@ -213,8 +213,19 @@ func (t *SharedKnowledgeSearchTool) Execute(ctx context.Context, args map[string
 
 	var header strings.Builder
 	fmt.Fprintf(&header, "Raw message search for %q across %d scope(s)", query, len(scopes))
-	if len(scopes) <= 3 {
-		header.WriteString(" [" + strings.Join(scopes, ", ") + "]")
+	// Always list the scopes searched so an operator can distinguish a genuine
+	// miss from a not-in-allow-list scope (both yield "No results" otherwise).
+	// See docs/srs/011 (RC1 observability).
+	if len(scopes) > 0 {
+		shown := scopes
+		if len(shown) > 20 {
+			shown = shown[:20]
+		}
+		header.WriteString(" [" + strings.Join(shown, ", "))
+		if len(scopes) > 20 {
+			fmt.Fprintf(&header, ", +%d more", len(scopes)-20)
+		}
+		header.WriteString("]")
 	}
 	fmt.Fprintf(&header, ":\n\n")
 
