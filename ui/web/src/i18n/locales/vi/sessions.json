@@ -24,7 +24,10 @@
     "keepLastMessages": "Giữ lại tin nhắn gần đây",
     "keepLastMessagesTip": "Số lượng tin nhắn gần đây được giữ lại sau khi nén.",
     "save": "Lưu",
-    "saving": "Đang lưu..."
+    "saving": "Đang lưu...",
+    "invalidThreshold": "Ngưỡng phải là số từ 0 đến 1.",
+    "invalidKeepLast": "Giữ lại phải là số nguyên từ 1 đến 1000.",
+    "ownerOnlyHint": "Cài đặt nén chỉ có thể đổi bởi chủ hệ thống."
   },
   "detail": {
     "reset": "Đặt lại",

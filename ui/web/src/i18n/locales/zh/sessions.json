@@ -24,7 +24,10 @@
     "keepLastMessages": "保留最近消息数",
     "keepLastMessagesTip": "压缩后保留的最近消息数量。",
     "save": "保存",
-    "saving": "保存中..."
+    "saving": "保存中...",
+    "invalidThreshold": "阈值必须是 0 到 1 之间的数字。",
+    "invalidKeepLast": "保留消息数必须是 1 到 1000 之间的整数。",
+    "ownerOnlyHint": "压缩设置只能由系统所有者修改。"
   },
   "detail": {
     "reset": "重置",
