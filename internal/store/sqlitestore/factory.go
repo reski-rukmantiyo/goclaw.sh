@@ -51,7 +51,7 @@ func NewSQLiteStores(cfg store.StoreConfig) (*store.Stores, error) {
 		Snapshots:             NewSQLiteSnapshotStore(db),
 		Cron:                  NewSQLiteCronStore(db),
 		ChannelInstances:      NewSQLiteChannelInstanceStore(db, cfg.EncryptionKey),
-		Pairing:               NewSQLitePairingStore(db),
+		Pairing:               NewSQLitePairingStore(db, cfg.PairingDeviceTTL, cfg.PairingRenewalWindow),
 		PendingMessages:       NewSQLitePendingMessageStore(db),
 		Contacts:              NewSQLiteContactStore(db),
 		Teams:  NewSQLiteTeamStore(db),

@@ -1,0 +1,280 @@
+# Software Requirements Specification: Paired Device ("Nodes") Sliding Expiry — Active Devices Auto-Renew, No 30-Day Re-Pairing
+
+**Project**: GoClaw Gateway
+**Release**: 2026.3.0
+**Version**: 0.2-draft
+**Date**: 2026-07-15
+**Status**: Implemented (code-complete + build/vet/test-verified). UI render + live on-tenant verification pending (§3 FR-02/FR-03 manual boxes).
+**Difficulty**: Low–Medium
+**Estimate**: 0.5–1 days
+
+---
+
+## Revision History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 0.1-draft | 2026-07-15 | Initial draft. Verified root cause against code: every paired device gets a hard `expires_at = paired_at + 30d` (`internal/store/pg/pairing.go:20,112`; `internal/store/sqlitestore/pairing.go:24,98`) and the TTL is never refreshed — `IsPaired` only *reads* the expiry (`pg/pairing.go:167`; `sqlite:152`), the only `UPDATE paired_devices` is `MigrateGroupChatID` which does not touch `expires_at` (`pg/pairing.go:265`; `sqlite:249`). So an active device that messages daily still dies at day 30 and is pruned on the next `ListPaired` (`pg/pairing.go:231`; `sqlite:204`) → operator must re-pair ("register nodes again"). **No schema migration required** — the `expires_at` column already exists in both DBs (PG `migrations/000021_paired_devices_expiry.up.sql:3`; SQLite `schema.sql:539`). Chosen fix: sliding renewal inside the store `IsPaired` (single point covers every channel + browser), gated by a renewal window to avoid a write-per-message, plus a configurable TTL + renewal window, and surfacing `expires_at` in the `pairing.list` response + Nodes UI so the expiry is visible. |
+| 0.2-draft | 2026-07-15 | **Implemented (code-complete + build/vet/test-verified).** Config: `PairingConfig` (`config_channels.go`) with `DeviceTTLDuration()` (30d default, `0`=never) + `RenewalWindowDuration(ttl)` (auto ttl/4, clamp, `0`=disabled), threaded through `store.StoreConfig` (`types.go` + `DefaultPairedDeviceTTL`) → `pg/factory.go`/`sqlitestore/factory.go` → constructors `NewPGPairingStore(db,ttl,window)`/`NewSQLitePairingStore(db,ttl,window)`; 4 gateway build sites + onboard seed store wired (`cmd/gateway_stores_*.go`, `cmd/onboard_managed.go`). Stores: `IsPaired` runs a window-gated, best-effort, tenant-scoped renewal UPDATE after the COUNT verdict (PG + SQLite); `ApprovePairing` writes `expires_at = NULL` when ttl≤0; `ListPaired` SELECT + `pairedDeviceRow` add `expires_at`; `PairedDeviceData.ExpiresAt *int64` (`pairing_store.go`). Hardcoded `pairedDeviceTTL` consts removed. i18n: 4 keys × en/vi/zh in `nodes.json`. UI: `PairedDevice.expires_at?` (`use-nodes.ts`) + Expires column + never/expired/expiring-soon badges (`nodes-page.tsx`). **Verification:** `go build ./...` ✓, `go build -tags sqliteonly ./...` ✓, `go vet ./...` clean, `go test -tags sqliteonly -race ./internal/store/sqlitestore/ -run TestSQLitePairingStore_` 7/7 ✓, `go test ./internal/config/` 69/69 ✓ (incl. new `TestPairingConfig_Durations` 8 subtests + `TestChannelsConfig_PairingDefault`), `pnpm build` (ui/web) ✓. `go fix ./...` reverted — produced unrelated modernization churn (agent/memory/http-tenants tests etc.), same convention as `007`/`009`. **Deferred (env-gated):** PG pairing store integration test (needs pgvector pg18 container; PG impl mirrors SQLite line-for-line — SQLite tests prove the SQL logic), live on-tenant manual check (active device's `expires_at` advances; idle device pruned), and the FR-02/FR-03 UI render checks (needs browser). **Pre-existing unrelated failures:** 4 SQLite schema-migration DDL tests (`TestEnsureSchema_MigrationV11*`, `TestSQLiteSchemaUpgrade_23_to_24`, `_25_to_26_HeartbeatFK`) — same class documented in `008`; fail identically on the clean tree. |
+
+---
+
+## 1. Summary
+
+The **Nodes** page (`/t/{tenant}/nodes`, `ui/web/src/pages/nodes/nodes-page.tsx`) lists approved device pairings — Telegram/WhatsApp/Discord/Feishu/Zalo/Slack chat bindings + the browser pairing flow, backed by the `paired_devices` table (`internal/gateway/methods/pairing.go`). Operators report that **paired devices must be re-registered ("re-paired") after some time**, even though the device is in constant use.
+
+**Confirmed root cause (single, code):** every approved pairing is written with a hard expiry `expires_at = now + pairedDeviceTTL`, where `pairedDeviceTTL = 30 * 24 * time.Hour` — a hardcoded package-level const duplicated in **both** stores (`internal/store/pg/pairing.go:20`, `internal/store/sqlitestore/pairing.go:24`, set at `pg/pairing.go:112` and `sqlite:98`). The expiry is **never refreshed after approval**:
+
+- `IsPaired` (`internal/store/pg/pairing.go:163-174`; `internal/store/sqlitestore/pairing.go:150-156`) only *reads* `expires_at` in its WHERE clause: `... AND (expires_at IS NULL OR expires_at > NOW())`. A hit returns true; it does **not** bump `expires_at`.
+- The only `UPDATE paired_devices` in the codebase is `MigrateGroupChatID` (`internal/store/pg/pairing.go:254-313`; `internal/store/sqlitestore/pairing.go:249`), which rewrites `sender_id`/`chat_id` — it does **not** touch `expires_at`.
+- So a device that sends a message every day still hits the 30-day wall. After it passes, `IsPaired` returns false → the channel routes the next message to `PolicyNeedsPairing` (`internal/channels/channel.go:335,374`) → the user must re-pair. Worse, `ListPaired` (the Nodes-page data source) **deletes** the expired row on first read (`internal/store/pg/pairing.go:231`; `internal/store/sqlitestore/pairing.go:204`): `DELETE FROM paired_devices WHERE expires_at IS NOT NULL AND expires_at < NOW()`.
+
+The TTL is **not configurable** — no pairing field exists in `internal/config/config.go` (grep empty); the value is the two duplicate consts.
+
+This SRS owns the **sliding-expiry** fix: renew `expires_at` on legitimate activity so active devices never expire, make the TTL + renewal window operator-tunable (incl. a never-expire option), and surface the expiry in the API + Nodes UI so "why must I re-register" is observable instead of a silent day-30 eviction. It composes with the existing pairing/approval/revoke flow (`internal/gateway/methods/pairing.go`) and channel policy gate (`internal/channels/channel.go`) **unchanged** — no new endpoint, no new auth surface, no schema migration.
+
+---
+
+## 2. Scope
+
+**In scope**:
+
+- **Sliding renewal of `expires_at` on activity.** When a paired device passes the `IsPaired` gate on a real message, the store bumps `expires_at = now + pairedDeviceTTL`, so an active device is never evicted. Renewal runs inside the store `IsPaired` (the single gate every channel + the browser flow already calls), gated by a **renewal window** (only renew when within the last fraction of the TTL) so it does **not** write once per message.
+- **Configurable TTL + renewal window.** Move `pairedDeviceTTL` out of the two hardcoded consts into config, threaded through `NewPGPairingStore` / `NewSQLitePairingStore` and the store factories. Default 30 days (unchanged). A TTL of `0` (or a dedicated "never" value) means **no expiry** — operator opt-out, matching the migration-021 intent that `NULL expires_at = no expiry` (`migrations/000021_paired_devices_expiry.up.sql:2`).
+- **Surfacing expiry.** Add `ExpiresAt` to `PairedDeviceData` (`internal/store/pairing_store.go:18-25`) and to the `ListPaired` SELECT (`internal/store/pg/pairing.go:227`; `internal/store/sqlitestore/pairing.go:198`) so `pairing.list` (`internal/gateway/methods/pairing.go:167-175`) returns it and the Nodes page can show "expires / expired / never".
+- **Nodes UI.** Render the expiry column + an "expiring soon" / "expired" / "never" badge in the paired-devices table (`ui/web/src/pages/nodes/nodes-page.tsx:104-148`).
+- **i18n** for the new UI strings (en/vi/zh).
+
+**Out of scope**:
+
+- **The pairing *approval* flow** (`RequestPairing`/`ApprovePairing`/`DenyPairing`/`RevokePairing`, `internal/store/pairing_store.go:29-32`, `internal/gateway/methods/pairing.go`). Unchanged — approve still sets the initial `expires_at`; revoke still hard-deletes.
+- **The per-channel pairing *request* UX** (Telegram `/pair`, WhatsApp/Slack/Discord/Feishu/Zalo pairing messages). Unchanged.
+- **`pairing_requests` (pending) expiry / `codeTTL`.** The 60-minute pairing-code TTL (`internal/store/pg/pairing.go:19`) is a separate, correct short-lived-code expiry and is **not** a sliding window. Untouched.
+- **Per-device or per-channel TTL overrides.** A single global TTL (config) is in scope; per-pairing custom expiry is a follow-up.
+- **Schema migration.** The `expires_at` column already exists in both DBs (PG `migrations/000021_paired_devices_expiry.up.sql:3`; SQLite `internal/store/sqlitestore/schema.sql:539` + `schema.go:121`). No DDL, no `RequiredSchemaVersion` bump, no SQLite `SchemaVersion` bump, no `schema.go` migration patch (FR-05 verification only).
+- **New WS/HTTP endpoints or auth changes.** Renewal is an in-store side-effect of the existing `IsPaired` read; the API surface is additive only (`expires_at` added to an existing response).
+- **A batch "renew all" admin job.** Sliding renewal is per-activity; a sweep job that extends idle devices would defeat the "evict stale pairings" purpose and is out of scope.
+
+---
+
+## 3. Functional Requirements
+
+### FR-00: Active paired devices renew their expiry (sliding window) — root-cause fix
+
+`IsPaired` is the single gate every channel + the browser flow call to decide a device is bound (`internal/channels/channel.go:335,374`; `internal/channels/telegram/handlers.go:159-160,266,321,377`; `internal/http/auth.go:281`; `internal/gateway/router.go:353`; `internal/gateway/methods/pairing.go:249`). Today it is read-only. It must **renew** `expires_at` when it admits a device, so an in-use device does not fall off at day 30.
+
+Renewal is **gated by a renewal window** so it does not fire once per message:
+
+| State on `IsPaired` hit | Behaviour |
+|---|---|
+| `expires_at IS NULL` (never-expire pairing) | no write (already never-expiring) |
+| `expires_at - now > renewalWindow` (not yet near expiry) | no write (still comfortably valid) |
+| `0 < expires_at - now <= renewalWindow` (within renewal window) | bump `expires_at = now + pairedDeviceTTL` |
+| `expires_at <= now` | (already excluded by the existing `expires_at > NOW()` predicate) — no renewal; row pruned by `ListPaired` as today |
+
+`renewalWindow` defaults to the last 25% of `pairedDeviceTTL` (≈7.5 days of 30). This bounds the renewal write to **at most ~once per week** per active device even under high message volume, instead of once per message. The renewal UPDATE is **best-effort, non-blocking to the gate**: `IsPaired` still returns its true paired/not-paired verdict based on the SELECT; a renewal-write failure is logged (`slog.Warn("security.pairing_renew_failed", …)`) and **does not** flip the device to not-paired (the `IsPaired` fail-open posture at `channel.go:337-339` is preserved).
+
+Implement in **both** stores (dual-DB rule):
+- PG `IsPaired` (`internal/store/pg/pairing.go:163`): after the COUNT SELECT returns `count > 0`, run a conditional UPDATE.
+- SQLite `IsPaired` (`internal/store/sqlitestore/pairing.go:150`): mirror.
+
+The conditional PG renewal UPDATE (single statement, tenant-scoped via the existing `tenantIDForInsert(ctx)`):
+
+```sql
+UPDATE paired_devices
+SET expires_at = NOW() + $ttl
+WHERE sender_id = $1 AND channel = $2 AND tenant_id = $3
+  AND expires_at IS NOT NULL
+  AND expires_at <= NOW() + $renewalWindow
+```
+
+(The SQLite mirror uses `?` params and `datetime('now', '+N seconds')` for both the new expiry and the window bound — consistent with the existing SQLite `datetime('now')` usage in `sqlitestore/pairing.go`.)
+
+Acceptance criteria:
+
+- [x] A paired device whose `expires_at` is **within** `renewalWindow` of now, on the next `IsPaired` hit, has its `expires_at` advanced to `now + ttl`. _(`TestSQLitePairingStore_RenewsWithinWindow` — SQLite; PG mirrors line-for-line)_
+- [x] A paired device whose `expires_at` is **outside** `renewalWindow` (freshly approved) is **not** written on an `IsPaired` hit (no churn). _(`TestSQLitePairingStore_NoRenewalOutsideWindow` — 100 hits, expiry byte-identical)_
+- [x] A device with `expires_at IS NULL` is never renewed (and never expires). _(`TestSQLitePairingStore_NeverExpireNull`)_
+- [x] A renewal-write error does **not** change `IsPaired`'s verdict (the device stays admitted if it was paired; logged at warn, not returned). _(by inspection — `pg/pairing.go` IsPaired computes `paired` from the COUNT SELECT *before* the renewal UPDATE, and the UPDATE error is only `slog.Warn`'d, not returned; SQLite identical)_
+- [x] Over a burst of consecutive `IsPaired` hits on a freshly-approved device, at most **one** renewal write occurs (the renewal-window guard holds). _(`TestSQLitePairingStore_WindowGateStopsRepeatRenewal` — 2nd immediate hit is a no-op; `_NoRenewalOutsideWindow` — 100 hits no-op)_
+
+---
+
+### FR-01: Configurable TTL + renewal window (operator-tunable; `0` = never expire)
+
+`pairedDeviceTTL` is a hardcoded package-level const in two stores (`internal/store/pg/pairing.go:20`, `internal/store/sqlitestore/pairing.go:24`). Make it configurable so an operator can extend, shorten, or disable device expiry without a code change.
+
+| Config field | Default | Meaning |
+|---|---|---|
+| `pairedDeviceTTL` (duration) | `720h` (30 days) | lifetime granted on approve and on each renewal |
+| `pairedDeviceRenewalWindow` (duration) | `180h` (≈25% of TTL) | the near-expiry window inside which a hit renews (FR-00) |
+
+Semantics:
+- `pairedDeviceTTL = 0` → **never expire**. `ApprovePairing` writes `expires_at = NULL` (honouring the migration-021 "NULL = no expiry" contract, `migrations/000021_paired_devices_expiry.up.sql:2`); `IsPaired`'s `expires_at IS NULL OR expires_at > NOW()` predicate already admits it forever; FR-00 renewal no-ops on NULL rows.
+- `pairedDeviceRenewalWindow` is clamped to `[0, pairedDeviceTTL]`; `0` disables renewal (devices expire exactly at TTL — re-introduces today's behaviour, useful if an operator wants forced periodic re-authorization).
+
+Wiring (additive — no existing field renamed):
+1. Config field on `GatewayConfig` (or a new small `PairingConfig`), parsed from `config.json` / env like other durations (`internal/config/config.go`, JSON5 via `internal/config`).
+2. Thread through the store constructors: `NewPGPairingStore(db, ttl, renewalWindow)` (`internal/store/pg/pairing.go:31`) and `NewSQLitePairingStore(db, ttl, renewalWindow)` (`internal/store/sqlitestore/pairing.go:34`). When `ttl <= 0`, the store treats expiry as "never" (`expires_at = NULL` on approve; no renewal).
+3. Factory wiring: `internal/store/pg/factory.go:36` (`Pairing: NewPGPairingStore(db)`) and `internal/store/sqlitestore/factory.go:54` read the resolved config and pass `ttl`/`renewalWindow` into the constructors. Zero/absent config falls back to the current `30d` / 25%-window constants so behaviour is byte-identical for operators who set nothing.
+
+Acceptance criteria:
+
+- [x] Setting `pairedDeviceTTL = 0` in config makes newly-approved pairings `expires_at = NULL` (never-expire); they remain paired indefinitely and `ListPaired` never prunes them. _(`TestSQLitePairingStore_ConfigurableTTLNever` — approve writes NULL; prune DELETE has `WHERE expires_at IS NOT NULL` so NULL rows are excluded by inspection)_
+- [x] Setting `pairedDeviceTTL = 168h` (7 days) makes approve set `expires_at = now + 7d`. _(`TestPairingConfig_Durations` "explicit ttl" + `TestSQLitePairingStore_ConfigurableTTLFinite` proves finite approve)_
+- [x] Absent/zero config keeps today's behaviour: 30-day TTL, 25% renewal window. _(`TestPairingConfig_Durations` "empty defaults" + `TestChannelsConfig_PairingDefault`; constructor default path)_
+- [x] `pairedDeviceRenewalWindow` clamped to `[0, ttl]`; `0` disables renewal (FR-00 writes nothing). _(`TestPairingConfig_Durations` "window clamped to ttl" + "explicit zero window disables renewal")_
+- [x] The two hardcoded `pairedDeviceTTL` consts are replaced by the constructor params (no second source of truth that can drift — the exact defect class this SRS addresses). _(by inspection — `pairedDeviceTTL` const removed from both `pg/pairing.go` and `sqlitestore/pairing.go`; replaced by constructor `ttl` param + `store.DefaultPairedDeviceTTL`/`config.defaultPairedDeviceTTL` fallbacks)_
+
+---
+
+### FR-02: Surface `expires_at` in the `pairing.list` response + Nodes UI
+
+`PairedDeviceData` (`internal/store/pairing_store.go:18-25`) today carries `SenderID/Channel/ChatID/PairedAt/PairedBy/Metadata` but **no** `ExpiresAt`, and the `ListPaired` SELECT omits the column (`internal/store/pg/pairing.go:227-236`; `internal/store/sqlitestore/pairing.go:198`). So the Nodes page cannot show why/when a device will lapse. Add it.
+
+Store + DTO:
+- `PairedDeviceData` gains `ExpiresAt *int64 \`json:"expires_at,omitempty"\`` (`*int64`: nil = never-expire / unknown; non-nil = Unix-ms). A `*int64` (not `int64`) so "never" (NULL) is distinguishable from a zero timestamp — mirrors the `*string`/`*time.Time` nullable-column convention in CLAUDE.md.
+- `pairedDeviceRow` (`internal/store/pg/pairing.go:189-197`) gains `ExpiresAt *time.Time`; the `ListPaired` SELECT adds `expires_at` (`pg/pairing.go:234`; `sqlite:205`); the row→DTO map sets `ExpiresAt` from the nullable value (nil when the column is NULL).
+
+WS handler: `handleList` (`internal/gateway/methods/pairing.go:167-175`) already returns `paired` straight from `ListPaired`, so `expires_at` flows to the client with no handler change once the DTO carries it.
+
+UI:
+- `useNodes.PairedDevice` (`ui/web/src/pages/nodes/hooks/use-nodes.ts:17-23`) gains `expires_at?: number | null`.
+- The paired-devices table (`nodes-page.tsx:104-148`) gains an **"Expires"** column rendering one of: `never` (when null/0), a relative date, or an "expired"/"expiring soon" badge (e.g. within `renewalWindow`). Respects the mobile table rule (`overflow-x-auto` + `min-w-[600px]` already present at `nodes-page.tsx:110-111`).
+
+Acceptance criteria:
+
+- [x] `pairing.list` response items include `expires_at` (Unix-ms) for finite-expiry pairings; the field is **absent** (or null) for never-expire pairings. _(`TestSQLitePairingStore_ConfigurableTTLFinite` asserts `ExpiresAt` surfaced; `_ConfigurableTTLNever` asserts nil; PG `ListPaired` SELECT + `pairedDeviceRow.ExpiresAt *time.Time` mirror by inspection)_
+- [ ] The Nodes paired-devices table shows an "Expires" column: `never` badge for NULL, a date for finite, and an "expired"/"expiring soon" badge when within the renewal window / past. _(manual — needs browser; code-complete: `nodes-page.tsx` Expires column + `expires.never`/`expired`/`expiringSoon` badges, `pnpm build` green)_
+- [x] `PairedDeviceData.ExpiresAt` is `*int64` so NULL never-expiry rows are distinguishable from a zero timestamp. _(by inspection — `internal/store/pairing_store.go` `ExpiresAt *int64 \`json:"expires_at,omitempty"\`)_
+
+---
+
+### FR-03: i18n (en / vi / zh)
+
+New Nodes-UI strings (expiry column + badges) go into the `nodes` namespace (`ui/web/src/i18n/locales/{en,vi,zh}/nodes.json`, the namespace `nodes-page.tsx:22` already uses), per the project 3-locale rule and `004` FR-06.
+
+| Key | English | Vietnamese | Chinese |
+|-----|---------|------------|---------|
+| `columns.expires` | Expires | Hết hạn | 到期 |
+| `expires.never` | Never | Không bao giờ | 永不过期 |
+| `expires.expired` | Expired | Đã hết hạn | 已过期 |
+| `expires.expiringSoon` | Expiring soon | Sắp hết hạn | 即将到期 |
+
+Acceptance criteria:
+
+- [x] All four keys exist in `nodes.json` for `en`, `vi`, `zh` with identical key sets. _(added `columns.expires` + `expires.{never,expired,expiringSoon}` to all 3 locale files)_
+- [x] No raw key renders (`nodes` namespace already registered — no `004`-FR-07-style mismatch). _(by inspection — `nodes-page.tsx:22` already uses `useTranslation("nodes")`; `pnpm build` green)_
+
+---
+
+### FR-04: Authorization & tenant scope (unchanged envelope)
+
+Renewal is a side-effect of the existing `IsPaired` read; no new endpoint, no new auth surface. The renewal UPDATE carries the same `tenant_id = $N` binding (`tenantIDForInsert(ctx)`) as every other pairing write, so a caller cannot renew another tenant's pairing. The channel-policy fail-open posture (`channel.go:337-339`, `security.pairing_check_failed` assuming paired) is **preserved** — a renewal error does not change the gate verdict.
+
+Acceptance criteria:
+
+- [x] No new WS/HTTP endpoint or auth change. _(by inspection — renewal is an in-store side-effect of the existing `IsPaired` read)_
+- [x] The renewal UPDATE is tenant-scoped (`tenant_id = $N`); a renewal hit on tenant A cannot bump tenant B's `expires_at`. _(`TestSQLitePairingStore_RenewalTenantIsolation`)_
+- [x] `IsPaired` fail-open behaviour on store error (`channel.go:337-339`) is unchanged; a renewal-write failure is logged, not surfaced as "not paired". _(by inspection — renewal UPDATE error is `slog.Warn("security.pairing_renew_failed")` only; the gate verdict + the existing `security.pairing_check_failed` fail-open are untouched)_
+
+---
+
+### FR-05: No schema migration (verification only)
+
+The `expires_at` column already exists in both DBs — added for PG by `migrations/000021_paired_devices_expiry.up.sql:3` and present in the SQLite fresh-DB schema at `internal/store/sqlitestore/schema.sql:539` (+ `schema.go:121`). Sliding renewal is a store-layer UPDATE on that existing column; configurable TTL is constructor plumbing; expiry surfacing is a SELECT + DTO addition. **No DDL, no version bump.**
+
+Acceptance criteria:
+
+- [x] No new file under `migrations/`; `RequiredSchemaVersion` stays `90` (`internal/upgrade/version.go:5`). _(by inspection — no `migrations/` file added; version.go untouched)_
+- [x] No SQLite `schema.go` migration patch added; `SchemaVersion` stays `47` (`internal/store/sqlitestore/schema.go:19`). _(by inspection — schema.go untouched)_
+- [x] The desktop `sqliteonly` build is green (the renewal + config + DTO change is shared code; no SQLite-only DDL). _(`go build -tags sqliteonly ./...` ✓)_
+
+---
+
+## 4. System Impact
+
+- **Store interface + DTO** (`internal/store/pairing_store.go`): add `ExpiresAt *int64` to `PairedDeviceData` (FR-02). No new interface method — renewal is internal to `IsPaired`.
+- **PG store** (`internal/store/pg/pairing.go`): (a) `IsPaired` gains a conditional renewal UPDATE after the COUNT SELECT (FR-00); (b) `pairedDeviceTTL` const → constructor param `ttl`, add `renewalWindow`; `ApprovePairing` writes `NULL` when `ttl <= 0` (FR-01); (c) `pairedDeviceRow` + `ListPaired` SELECT add `expires_at` → map to `*int64` (FR-02). Constructor `NewPGPairingStore(db, ttl, renewalWindow)`.
+- **SQLite store** (`internal/store/sqlitestore/pairing.go`): mirror (a)/(b)/(c). Constructor `NewSQLitePairingStore(db, ttl, renewalWindow)`.
+- **Store factories** (`internal/store/pg/factory.go:36`, `internal/store/sqlitestore/factory.go:54`): resolve the config TTL/window and pass into the constructors; fall back to `30d` / 25% when config absent.
+- **Config** (`internal/config/config.go` + JSON5 loader): add `pairedDeviceTTL` / `pairedDeviceRenewalWindow` durations (default `720h` / `180h`).
+- **WS handler** (`internal/gateway/methods/pairing.go`): no logic change — `handleList` already returns `ListPaired` verbatim, so `expires_at` flows once the DTO carries it. (Optional: nothing else.)
+- **Web UI** (`ui/web/src/pages/nodes/hooks/use-nodes.ts`, `nodes-page.tsx`): `PairedDevice.expires_at?`; "Expires" column + badges (FR-02/FR-03).
+- **i18n**: 4 keys × `en`/`vi`/`zh` in `nodes.json` (FR-03).
+- **No schema migration**, no new error-code registration (FR-05), no new endpoint.
+
+## 5. Test Plan
+
+- **Store unit test (PG + SQLite) — renewal (FR-00):** (a) device within `renewalWindow` → `expires_at` advanced to `now+ttl` on `IsPaired`; (b) device outside window → no write; (c) `expires_at IS NULL` → no write, never expires; (d) renewal-UPDATE failure → `IsPaired` verdict unchanged; (e) 100-hit burst on a fresh device → ≤1 renewal write. `-race`.
+- **Store unit test — configurable TTL (FR-01):** `ttl=0` → approve writes `expires_at = NULL`; `ttl=168h` → approve writes `now+7d`; absent config → 30d (factory default).
+- **Store unit test — tenant isolation (FR-04):** a renewal hit scoped to tenant A does not bump tenant B's `expires_at`.
+- **DTO/handler test — expiry surfaced (FR-02):** `ListPaired`/`pairing.list` returns `expires_at` (Unix-ms) for finite rows and omits/nulls it for never-expire rows.
+- **Frontend (manual, no `@testing-library/react` per `007` §0.7):** Nodes table renders the Expires column + badges; `never` for NULL, date for finite, "expiring soon"/"expired" within window.
+- **Build/safety:** `go build ./...`, `go build -tags sqliteonly ./...`, `go vet ./internal/store/... ./internal/config/... ./internal/channels/...`, `pnpm build` (ui/web).
+- **Manual (live):** pair a device on the master tenant; before the fix it dies at day 30; after the fix, confirm (via the new Expires column) that an active device's `expires_at` keeps moving forward and it is **not** pruned, while an idle device (no messages past TTL) **is** evicted as before.
+
+## 6. Decision Log (locked)
+
+| Decision | Rationale |
+|----------|-----------|
+| **Renew inside the store `IsPaired` (single point), not per-channel.** | `IsPaired` is the one gate every channel + the browser flow already call (`channel.go:335,374`, telegram, `http/auth.go:281`, `router.go:353`, `methods/pairing.go:249`). Renewing there covers all paths with one edit. Per-channel renewal (`CheckDMPolicy`/`CheckGroupPolicy` in `channel.go`) would miss the browser flow, duplicate logic, and still rely on `IsPaired` underneath. |
+| **Gate renewal by a renewal window (last ~25% of TTL), not write-per-message.** | Channels call `IsPaired` on every inbound message (telegram even twice — user + group, `handlers.go:159-160`). Renewing unconditionally would add an UPDATE per message. Bounding the renewal to the near-expiry window keeps it to ≤~1 write/week/device while still guaranteeing no active device lapses (it renews the moment it enters the window). |
+| **Renewal is best-effort + non-blocking; fail-open preserved.** | `IsPaired` already drives the security gate. A renewal-write failure must not flip a paired device to not-paired — that would lock users out on a transient DB hiccup. The existing fail-open posture (`channel.go:337-339`) is kept; renewal errors are logged, not returned. |
+| **Make TTL configurable (`0` = never), not just bump the constant.** | The 30d wall is the reported pain; operators have different trust/retention needs. `0`/NULL honours the migration-021 "NULL = no expiry" contract as a clean opt-out. Keeping a single hardcoded const would re-fix only one number. |
+| **Surface `expires_at` in the API + UI.** | The defect was invisible: a device vanishes on day 30 with no warning. Showing the expiry makes the behaviour observable and lets an operator see a device is "expiring soon" before it lapses — directly answering "why must I re-register". |
+| **No schema migration.** | The `expires_at` column exists in both DBs (PG migration 021; SQLite `schema.sql:539`). Renewal is an UPDATE on it; configurable TTL is constructor plumbing; expiry surfacing is a SELECT/DTO addition. Adding a migration would be cargo-culting — and would force a `sqliteonly` schema bump that the desktop edition does not need. |
+| **Do NOT add a sweep/"renew all" job.** | Sliding renewal is per-activity by design: active devices survive, idle ones lapse (the eviction purpose of the original expiry). A background sweep that extends idle pairings would defeat that purpose and re-grant access to dormant/abandoned devices — a security regression. |
+
+## 7. Risks and Open Questions
+
+| Risk or question | Draft decision |
+|---|---|
+| Renewing inside a *read* method (`IsPaired`) makes a read have a write side-effect — surprising for future maintainers. | Document it loudly at the method + in this SRS. The pairing store already does lazy writes in read-ish paths (`RequestPairing`/`ListPending`/`ListPaired` all prune `DELETE` expired rows), so an `IsPaired` renewal UPDATE is consistent with the established "lazy cleanup on access" pattern, not a new idiom. |
+| `IsPaired` is called on the hot path (per message); an extra UPDATE even when windowed adds load. | Bounded by the renewal window (≤~1 write/week/device). The conditional UPDATE touches a tenant-scoped unique row (`idx_paired_devices_tenant_sender_channel`) — index-backed, single-row. Acceptable; if a very-high-volume tenant proves otherwise, move renewal to the channel-policy in-memory approve-cache path (`MarkGroupApproved`, `channel.go:381`) which already de-dupes per chat. |
+| Telegram calls `IsPaired` twice per message (user + group, `handlers.go:159-160`) — double renewal attempt. | The renewal-window guard makes the second attempt a no-op (the first already advanced `expires_at` past the window). No correctness issue; at most redundant SELECTs. Acceptable. |
+| Configurable `ttl=0` (never) removes the periodic re-authorization defence-in-depth the original expiry was added for (`migrations/000021` comment "defense-in-depth"). | Operator choice. Default stays 30d. Document the trade-off: never-expire loses the periodic re-auth guarantee; operators who want it keep the TTL. `ttl=0` is opt-in, not the default. |
+| `PairedDeviceData.ExpiresAt` as `*int64` may need a WS-consumer update if any client assumes the field is always present. | Additive + `omitempty`; the field is absent when NULL. `use-nodes.ts` treats it as optional. No existing consumer assumes it (it did not exist). Verify the Nodes page handles absent gracefully. |
+| Should renewal also fire on the browser pairing status check (`methods/pairing.go:249`, `router.go:353`)? | Yes — those call `IsPaired`, so renewal is automatic (FR-00 covers all callers). A browser session that is active keeps its pairing alive the same way a chat does. No extra work. |
+| Pre-021 pairings (created before migration 021) have `expires_at = NULL` and therefore "never expire" already. | Unchanged — they stay never-expiring (consistent with FR-01 `ttl=0`). Only post-021 pairings (which got the 30d wall) are affected by this fix. |
+
+## 8. Implementation Plan
+
+1. **Store constructors + config (FR-01):** add `pairedDeviceTTL` / `pairedDeviceRenewalWindow` to config; thread `ttl, renewalWindow` through `NewPGPairingStore` / `NewSQLitePairingStore`; wire from `pg/factory.go:36` + `sqlitestore/factory.go:54` with `30d`/25% fallback. Replace the two hardcoded consts with the params (keep them only as defaults).
+2. **Sliding renewal (FR-00):** in PG `IsPaired` (`pg/pairing.go:163`) and SQLite `IsPaired` (`sqlite:150`), after the COUNT SELECT returns paired, run the conditional renewal UPDATE (within-window only). Best-effort + logged on error. `ApprovePairing` writes `expires_at = NULL` when `ttl <= 0`.
+3. **DTO + SELECT (FR-02):** add `ExpiresAt *int64` to `PairedDeviceData`; add `expires_at` to the `ListPaired` SELECT + `pairedDeviceRow` + row→DTO map (PG + SQLite).
+4. **i18n (FR-03):** add the 4 keys to `nodes.json` × `en`/`vi`/`zh`.
+5. **Web UI (FR-02):** `PairedDevice.expires_at?` in `use-nodes.ts`; "Expires" column + `never`/date/"expiring soon"/"expired" badges in `nodes-page.tsx`.
+6. **Tests:** store renewal + configurable-TTL + tenant-isolation + DTO tests per §5.
+7. **No-migration verification (FR-05):** confirm no `migrations/` file, `RequiredSchemaVersion=90`, `SchemaVersion=47`, `sqliteonly` build green.
+8. **Checklist:** `go build ./...`, `go build -tags sqliteonly ./...`, `go vet ./internal/store/... ./internal/config/... ./internal/channels/...`, `pnpm build` in `ui/web`.
+9. **Manual (live):** on the master tenant, confirm an active device's `expires_at` advances (visible in the new Expires column) and is not pruned, while an idle device past TTL is evicted as before.
+
+## 9. Proposed Error Codes
+
+No new canonical error codes. Renewal is a silent best-effort side-effect of an existing read; a renewal-write failure is logged (`security.pairing_renew_failed`) and does not change the gate verdict. The config validation (negative window, non-duration) follows the existing inline `config` validation style. For traceability only:
+
+| Code (inline → proposed canonical mapping) | Meaning |
+|------|---------|
+| `security.pairing_renew_failed` | The `IsPaired` renewal UPDATE errored (transient DB hiccup); logged at warn, device stays paired (fail-open). Not returned to any caller — observability only. |
+| `request.validation_failed` | A malformed `pairedDeviceTTL` / `pairedDeviceRenewalWindow` config value (non-duration, negative window). Existing config-load inline error path. No change. |
+
+No new error code is registered by this feature.
+
+---
+
+## 10. Key files (verified)
+
+- `internal/store/pg/pairing.go:20` — `pairedDeviceTTL` const (to become a constructor param); `:112` `expiresAt := now.Add(pairedDeviceTTL)` (approve); `:163-174` `IsPaired` (renewal hook); `:189-252` `ListPaired` + prune at `:231`; `:265` `MigrateGroupChatID` UPDATE (does not touch `expires_at`).
+- `internal/store/sqlitestore/pairing.go:24` — `pairedDeviceTTL` const; `:98` approve expiry; `:150-156` `IsPaired`; `:198-211` `ListPaired` + prune at `:204`; `:249` `MigrateGroupChatID` UPDATE.
+- `internal/store/pairing_store.go:18-40` — `PairedDeviceData` (no `ExpiresAt` today) + `PairingStore` interface (no `Touch`/renew method — renewal is internal to `IsPaired`).
+- `internal/store/pg/factory.go:36` / `internal/store/sqlitestore/factory.go:54` — store construction (TTL wiring point).
+- `internal/config/config.go` — no pairing config today (add point).
+- `internal/channels/channel.go:335,374` — generic `IsPaired` policy gate (DM + group); `:337-339` fail-open posture to preserve.
+- `internal/gateway/methods/pairing.go:167-175` — `handleList` (returns `ListPaired` verbatim → `expires_at` flows once DTO carries it).
+- `ui/web/src/pages/nodes/hooks/use-nodes.ts:17-47` — `PairedDevice` type + `PAIRING_LIST` load.
+- `ui/web/src/pages/nodes/nodes-page.tsx:104-148` — paired-devices table (add Expires column + badges).
+- `migrations/000021_paired_devices_expiry.up.sql:3` — `expires_at` column (PG, already applied).
+- `internal/store/sqlitestore/schema.sql:539` + `schema.go:121` — `expires_at` column (SQLite, already present).
+- `internal/upgrade/version.go:5` — `RequiredSchemaVersion = 90` (unchanged).
+- `internal/store/sqlitestore/schema.go:19` — `SchemaVersion = 47` (unchanged).

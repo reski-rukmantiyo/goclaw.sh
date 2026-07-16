@@ -38,10 +38,12 @@ func setupStoresAndTracing(
 			sqlitePath = filepath.Join(dataDir, "goclaw.db")
 		}
 		storeCfg := store.StoreConfig{
-			SQLitePath:       sqlitePath,
-			StorageBackend:   "sqlite",
-			EncryptionKey:    os.Getenv("GOCLAW_ENCRYPTION_KEY"),
-			SkillsStorageDir: filepath.Join(dataDir, "skills-store"),
+			SQLitePath:           sqlitePath,
+			StorageBackend:       "sqlite",
+			EncryptionKey:        os.Getenv("GOCLAW_ENCRYPTION_KEY"),
+			SkillsStorageDir:     filepath.Join(dataDir, "skills-store"),
+			PairingDeviceTTL:     cfg.Channels.Pairing.DeviceTTLDuration(),
+			PairingRenewalWindow: cfg.Channels.Pairing.RenewalWindowDuration(cfg.Channels.Pairing.DeviceTTLDuration()),
 		}
 		s, err := sqlitestore.NewSQLiteStores(storeCfg)
 		if err != nil {
@@ -66,9 +68,11 @@ func setupStoresAndTracing(
 			os.Exit(1)
 		}
 		storeCfg := store.StoreConfig{
-			PostgresDSN:      cfg.Database.PostgresDSN,
-			EncryptionKey:    os.Getenv("GOCLAW_ENCRYPTION_KEY"),
-			SkillsStorageDir: filepath.Join(dataDir, "skills-store"),
+			PostgresDSN:          cfg.Database.PostgresDSN,
+			EncryptionKey:        os.Getenv("GOCLAW_ENCRYPTION_KEY"),
+			SkillsStorageDir:     filepath.Join(dataDir, "skills-store"),
+			PairingDeviceTTL:     cfg.Channels.Pairing.DeviceTTLDuration(),
+			PairingRenewalWindow: cfg.Channels.Pairing.RenewalWindowDuration(cfg.Channels.Pairing.DeviceTTLDuration()),
 		}
 		s, err := pg.NewPGStores(storeCfg)
 		if err != nil {

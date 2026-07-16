@@ -44,4 +44,21 @@ type StoreConfig struct {
 	// EncryptionKey is the AES-256 key for encrypting sensitive data (API keys).
 	// If empty, sensitive data is stored in plain text.
 	EncryptionKey string
+
+	// PairingDeviceTTL is the expiry lifetime granted to a paired device on approve
+	// and on each sliding renewal (SRS 012). 0 → never expire (approve writes
+	// expires_at = NULL); >0 → that lifetime. Gateway build sites always set this
+	// from config (empty → DefaultPairedDeviceTTL); callers without a config MUST
+	// set DefaultPairedDeviceTTL explicitly so an accidental zero is not read as
+	// "never expire".
+	PairingDeviceTTL time.Duration
+
+	// PairingRenewalWindow is the near-expiry window inside which an IsPaired hit
+	// slides the expiry forward. <=0 → auto (TTL/4). Clamped to TTL by the store.
+	// 0 → renewal disabled.
+	PairingRenewalWindow time.Duration
 }
+
+// DefaultPairedDeviceTTL is the 30-day expiry used for paired devices when no
+// TTL is configured (SRS 012). Mirrors the pre-SRS-012 hardcoded const.
+const DefaultPairedDeviceTTL = 30 * 24 * time.Hour

@@ -33,7 +33,7 @@ func NewPGStores(cfg store.StoreConfig) (*store.Stores, error) {
 		Sessions:            NewPGSessionStore(db),
 		Memory:    NewPGMemoryStore(db, memCfg),
 		Cron:      NewPGCronStore(db),
-		Pairing:   NewPGPairingStore(db),
+		Pairing:   NewPGPairingStore(db, cfg.PairingDeviceTTL, cfg.PairingRenewalWindow),
 		Skills:    NewPGSkillStore(db, skillsDir),
 		Agents:    NewPGAgentStore(db),
 		Providers: NewPGProviderStore(db, cfg.EncryptionKey),

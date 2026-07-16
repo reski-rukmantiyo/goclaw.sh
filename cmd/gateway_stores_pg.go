@@ -35,6 +35,8 @@ func setupStoresAndTracing(
 		PostgresDSN:      cfg.Database.PostgresDSN,
 		EncryptionKey:    os.Getenv("GOCLAW_ENCRYPTION_KEY"),
 		SkillsStorageDir: filepath.Join(dataDir, "skills-store"),
+		PairingDeviceTTL:     cfg.Channels.Pairing.DeviceTTLDuration(),
+		PairingRenewalWindow: cfg.Channels.Pairing.RenewalWindowDuration(cfg.Channels.Pairing.DeviceTTLDuration()),
 	}
 	pgStores, pgErr := pg.NewPGStores(storeCfg)
 	if pgErr != nil {

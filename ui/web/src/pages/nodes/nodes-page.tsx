@@ -108,12 +108,13 @@ export function NodesPage() {
                   {t("pairedDevices", { count: pairedDevices.length })}
                 </h3>
                 <div className="rounded-md border overflow-x-auto">
-                  <table className="w-full min-w-[600px] text-sm">
+                  <table className="w-full min-w-[760px] text-sm">
                     <thead>
                       <tr className="border-b bg-muted/50">
                         <th className="px-4 py-3 text-left font-medium">{t("columns.channel")}</th>
                         <th className="px-4 py-3 text-left font-medium">{t("columns.senderId")}</th>
                         <th className="px-4 py-3 text-left font-medium">{t("columns.paired")}</th>
+                        <th className="px-4 py-3 text-left font-medium">{t("columns.expires")}</th>
                         <th className="px-4 py-3 text-left font-medium">{t("columns.by")}</th>
                         <th className="px-4 py-3 text-right font-medium">{t("columns.actions")}</th>
                       </tr>
@@ -127,6 +128,26 @@ export function NodesPage() {
                           <td className="px-4 py-3 font-medium">{formatUserLabel(d.sender_id, resolve)}</td>
                           <td className="px-4 py-3 text-muted-foreground">
                             {formatDate(new Date(d.paired_at))}
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {d.expires_at ? (
+                              (() => {
+                                const expDate = new Date(d.expires_at);
+                                const delta = d.expires_at - Date.now();
+                                if (delta <= 0) {
+                                  return <Badge variant="destructive">{t("expires.expired")}</Badge>;
+                                }
+                                const soon = delta <= 7 * 24 * 60 * 60 * 1000;
+                                return (
+                                  <span className="flex items-center gap-1.5">
+                                    {soon && <Badge variant="secondary">{t("expires.expiringSoon")}</Badge>}
+                                    <span>{formatRelativeTime(expDate)}</span>
+                                  </span>
+                                );
+                              })()
+                            ) : (
+                              <Badge variant="outline">{t("expires.never")}</Badge>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-muted-foreground">{d.paired_by ? formatUserLabel(d.paired_by, resolve) : "--"}</td>
                           <td className="px-4 py-3 text-right">
