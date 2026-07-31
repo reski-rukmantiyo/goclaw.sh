@@ -1,10 +1,10 @@
-# Software Requirements Specification: WhatsApp QR Rescan Fails on Paired-but-Disconnected Session (`GetQRChannel … no user ID in the client's Store`)
+# Software Requirements Specification: WhatsApp QR Rescan Fails After Disconnect / Signout (`GetQRChannel … no user ID in the client's Store` AND `… invalid use of deleted device`)
 
 **Project**: GoClaw Gateway
 **Release**: 2026.3.0
-**Version**: 0.2-draft
+**Version**: 0.3-draft
 **Date**: 2026-07-31
-**Status**: Implemented (code-complete + build/vet/test-verified). Live on-device rescan verification pending (FR-01/FR-03 manual boxes).
+**Status**: Implemented (code-complete + build/vet/test-verified) — covers both rescan failure modes (paired-but-disconnected + deleted-device). Live on-device rescan verification pending (FR-01/FR-03 manual boxes).
 **Difficulty**: Medium
 **Estimate**: 0.5 days
 
@@ -16,20 +16,28 @@
 |---------|------|---------|
 | 0.1-draft | 2026-07-31 | Initial root-cause analysis. Confirmed defect spans two layers: (1) backend QR flow keys off connection state (`waAuthenticated`) instead of pairing state (`client.Store.ID`); (2) UI auto-starts rescan with `force_reauth=false` and gates the only `force_reauth=true` control behind the `connected` status the user is not in. whatsmeow precondition cited from module source. |
 | 0.2-draft | 2026-07-31 | **Implemented (code-complete + build/vet/test-verified).** Backend: `auth.go` adds `ErrAlreadyPairedDisconnected` sentinel + `StartQRFlow` guards `client.Store.ID != nil` before `GetQRChannel` (returns sentinel, never leaks whatsmeow raw error); `Reauth()` makes `Store.Delete` failure a hard error (was warn-only). `qr_methods.go` adds reason consts + maps failures in `whatsapp.qr.done` (`already_paired_disconnected` / `session_clear_failed` / `qr_start_failed`); Reauth failure now returns early with `session_clear_failed`. UI: `use-whatsapp-qr-login.ts` captures+exposes `reason`; `whatsapp-reauth-dialog.tsx` renders the paired-disconnected message + **Re-link Device** button (`force_reauth=true`) from the error state — the previously-unreachable action. i18n: 3 keys × en/vi/zh in `channels.json`. New `TestStartQRFlow_PairedButDisconnected` + `TestStartQRFlow_NotAuthenticatedFlagDoesNotSuppressPairedGuard`. **Verification:** `go build ./...` ✓, `go build -tags sqliteonly ./...` ✓, `go vet ./internal/channels/...` clean, `go test -race ./internal/channels/whatsapp/ -run TestStartQRFlow` 2/2 ✓, `pnpm build` (ui/web) ✓. `go fix ./...` skipped (same unrelated-modernization-churn convention as 007/009/012). **Deviations:** (1) backend `internal/i18n` keys NOT added — the failure is carried as a machine-readable `reason` code translated client-side, so only web locale files were touched (cleaner than the §5 overspec); (2) desktop N/A — no WhatsApp QR hook in `ui/desktop/frontend/`. **Pre-existing unrelated failure:** `TestMimeToExt` (media_utils, "text/plain"→".txt" vs ".bin") — file untouched by this fix. **Pending:** live rescan on a paired-but-disconnected device (FR-01/FR-03). |
+| 0.3-draft | 2026-07-31 | **Second rescan failure mode found + fixed (build/vet/test-verified).** After fixing mode 1, a real signout surfaced a *different* error: `whatsapp connect for QR: invalid use of deleted device`. Root cause §3.8: on `events.LoggedOut`, whatsmeow *itself* calls `cli.Store.Delete()` (`connectionevents.go:44,129`) which nils `Store.ID`, sets `Store.Deleted=true`, and removes the DB row. The v0.2 `Store.ID != nil` guard does not fire (ID is now nil), `GetQRChannel` succeeds (it doesn't check `Deleted`), but `Connect()` returns `store.ErrDeviceDeleted` (`client.go:505`). The deleted client is unrecoverable. Fix: `auth.go` `StartQRFlow` now auto-recreates the client when `client == nil || client.Store.Deleted` (new `clientNeedsRecreate()` helper) via `GetFirstDevice` (returns a fresh `NewDevice` once the row is gone — `sqlstore/container.go:175`). This is **non-destructive auto-recovery** (signout already destroyed the identity), so no operator prompt — unlike the `Store.ID != nil` mode which prompts Re-link. New `TestClientNeedsRecreate` (nil / fresh / deleted). **Verification:** `go build` (pg+sqliteonly) ✓, `go vet ./internal/channels/whatsapp/` clean, `go test -race -run "TestStartQRFlow|TestClientNeedsRecreate"` 6/6 ✓. **Pending:** live rescan after a real signout (FR-00 deleted-device AC). |
 
 ---
 
 ## 1. Summary
 
-When an operator reopens the WhatsApp QR wizard to **rescan an already-paired instance that is currently disconnected** (logged out from the phone, evicted companion node, network drop, or gateway restart mid-reconnect), the scan fails with the raw whatsmeow error:
+When an operator reopens the WhatsApp QR wizard to **rescan an already-paired instance that is currently disconnected**, the scan fails with one of two raw whatsmeow errors depending on the exact disconnected state:
 
 ```
+# Mode 1 — paired identity lingers, account not connected
 whatsapp get QR channel: GetQRChannel can only be called when there's no user ID in the client's Store
+
+# Mode 2 — account was signed out (events.LoggedOut)
+whatsapp connect for QR: invalid use of deleted device
 ```
 
-This SRS documents **why** the error happens and specifies the fix. The defect is a state-model mismatch: GoClaw decides QR-readiness from a **connection** flag (`waAuthenticated`) while whatsmeow's `GetQRChannel` precondition is about **pairing identity** (`client.Store.ID == nil`). In the paired-but-disconnected state the two disagree, the QR flow is requested against a store that still holds a paired identity, and whatsmeow refuses. The UI then offers no path to the `force_reauth=true` action that would clear the identity and unblock the scan.
+This SRS documents **why** both errors happen and specifies the fix. The shared root cause is a state-model mismatch: GoClaw decided QR-readiness from a single **connection** flag (`waAuthenticated`) while whatsmeow's QR path keys off two other states — **pairing identity** (`client.Store.ID == nil`, enforced by `GetQRChannel`) and **device-deletion** (`!client.Store.Deleted`, enforced by `Connect()`). GoClaw reconciled neither.
 
-This is independent of the `paired_devices` table expiry work in [012](012-feat-paired-device-sliding-expiry.md) — that layer governs chat-binding authorisation rows; this bug is at the whatsmeow device-store identity layer (`client.Store.ID`).
+- **Mode 1** (§3.1–3.7): paired-but-disconnected (`Store.ID != nil`, `waAuthenticated=false`). The QR request reaches `GetQRChannel` against a store that still holds a paired identity, and whatsmeow refuses. Fix: detect `Store.ID != nil`, surface a structured `already_paired_disconnected` reason, and make the **Re-link** (`force_reauth=true`) action reachable from the error state (it was gated behind `status==="connected"`).
+- **Mode 2** (§3.8): signed-out. whatsmeow itself deletes the device on `events.LoggedOut` (nils `Store.ID`, sets `Store.Deleted=true`, removes the DB row), so the v0.2 `Store.ID != nil` guard does not fire, `GetQRChannel` succeeds, but `Connect()` returns `store.ErrDeviceDeleted`. Fix: auto-recreate the client from a fresh device store — non-destructive (signout already destroyed the identity), no prompt needed.
+
+This is independent of the `paired_devices` table expiry work in [012](012-feat-paired-device-sliding-expiry.md) — that layer governs chat-binding authorisation rows; both bugs here are at the whatsmeow device-store identity layer (`client.Store.ID` / `client.Store.Deleted`).
 
 ## 2. Scope
 
@@ -193,17 +201,70 @@ The reachable failure state (`status === "error"`) offers only a **Retry** butto
 5. Backend emits `whatsapp.qr.done { success: false, error: "whatsapp get QR channel: …" }`.
 6. UI sets `status="error"`, shows the raw whatsmeow string. "Relink Device" (`forceReauth=true`) is not rendered. Retry loops at step 2.
 
+### 3.8 Mode 2 — second failure: `invalid use of deleted device` after signout
+
+After the v0.2 fix shipped, a real signout surfaced a **different** error at a **different** call site:
+
+```
+whatsapp connect for QR: invalid use of deleted device
+```
+
+The prefix `whatsapp connect for QR:` is wrapped by `StartQRFlow` around `client.Connect()` (`auth.go`). The trailing string is whatsmeow's `store.ErrDeviceDeleted` (`go.mau.fi/whatsmeow store/store.go:264`), returned by `unlockedConnect` when the device is marked deleted (`client.go:505-507`):
+
+```go
+func (cli *Client) unlockedConnect(ctx context.Context) error {
+    if cli.Store.Deleted {
+        return store.ErrDeviceDeleted
+    }
+    ...
+}
+```
+
+**What signs out do to the store.** On a server-forced logout, whatsmeow **itself** fires `events.LoggedOut` and then deletes the device store (`go.mau.fi/whatsmeow connectionevents.go:43-44` and `:128-129`):
+
+```go
+go cli.dispatchEvent(&events.LoggedOut{...})
+err := cli.Store.Delete(ctx)
+```
+
+`Device.Delete()` (`store/store.go:270-283`) does three things:
+
+```go
+err := device.Container.DeleteDevice(ctx, device) // 1. remove the DB row
+device.ID = nil                                    // 2. nil the paired identity
+device.Deleted = true                              // 3. mark deleted
+device.SetAllStores(&NoopStore{ErrDeviceDeleted})  // 4. noop all stores
+```
+
+So after signout the in-memory client is `Store.ID == nil` **AND** `Store.Deleted == true`, and the DB row is gone. GoClaw's `handleLoggedOut` (`whatsapp.go:365-374`) only flips `waAuthenticated=false` + marks degraded — it does not recreate the client, so the channel keeps pointing at the dead, deleted client.
+
+**Why the v0.2 guard did not catch it.** The v0.2 `StartQRFlow` guard checks `client.Store.ID != nil`. After a real signout `Store.ID` is **nil** (whatsmeow nilled it), so:
+
+1. `clientNeedsRecreate` (v0.3) / lazy-init (v0.2): `client != nil`, and v0.2 only recreated when `client == nil` → skipped.
+2. `IsAuthenticated()` = false → no early return.
+3. `Store.ID != nil` guard → false (ID is nil) → does not return `ErrAlreadyPairedDisconnected`.
+4. `GetQRChannel(ctx)` → succeeds (its preconditions are `!IsConnected()` and `Store.ID == nil`; it does **not** check `Deleted`).
+5. `!client.IsConnected()` → `client.Connect()` → `Store.Deleted == true` → **`store.ErrDeviceDeleted`**.
+
+The deleted client is unrecoverable — it cannot be Connected or re-paired in place; it must be replaced with a fresh device store.
+
+**Fix (v0.3).** `StartQRFlow` now recreates the client when `client == nil || client.Store.Deleted` (new `clientNeedsRecreate()` helper, `auth.go`). Recreation calls `container.GetFirstDevice`, which returns a brand-new `NewDevice` when the container is empty (`sqlstore/container.go:175-184`) — and a device reloaded from any lingering row has `Deleted=false` (the `Deleted` flag is in-memory, set only by `Device.Delete`, never read back from DB). The new client has `Store.Deleted == false`, so `Connect()` proceeds and a fresh QR is delivered.
+
+**Why this is auto-recovery, not a prompt.** Unlike Mode 1 (`Store.ID != nil`, an active linkage that Re-link would destroy), a deleted device has **already** been destroyed by signout — there is nothing to lose and no ambiguity to confirm. The operator simply gets a fresh QR; no `force_reauth` / Re-link prompt is needed. The recreation is logged (`slog.Info "whatsapp: replacing deleted device store for QR flow"`) for observability.
+
 ## 4. Functional Requirements
 
-### FR-00: Reconcile pairing identity before requesting a QR
+### FR-00: Reconcile device state (pairing identity AND deletion) before requesting a QR
 
-The QR flow must not call `GetQRChannel` while `client.Store.ID != nil`. Before requesting a QR, the system must detect a lingering paired identity and either clear it (when the operator's intent is to re-pair) or surface a structured reason.
+The QR flow must not call `GetQRChannel` / `Connect()` against an unusable device store. Two unusable states must be reconciled before a QR: (a) a lingering paired identity (`client.Store.ID != nil`) and (b) a deleted device (`client.Store.Deleted == true`, set by whatsmeow on signout).
 
 Acceptance criteria:
 
 - [x] `StartQRFlow` (or its caller) checks `c.client.Store.ID` before `GetQRChannel`; it never forwards the raw `ErrQRStoreContainsID` to the client. *(auth.go guard + `TestStartQRFlow_PairedButDisconnected`)*
 - [x] When `Store.ID != nil` and a fresh QR is requested, the paired identity is cleared (via the existing `Reauth()` store-delete path) before `GetQRChannel` is called. *(forced path: `qr_methods.go` calls `Reauth()` → `StartQRFlow`; `Reauth` now hard-fails if `Store.Delete` errors)*
 - [x] `IsAuthenticated()` semantics are documented as **connection** state; a separate check is used for **pairing** state. The two are not conflated in any QR gating decision. *(auth.go comment + `TestStartQRFlow_NotAuthenticatedFlagDoesNotSuppressPairedGuard`)*
+- [x] `StartQRFlow` recreates the client when `client == nil || client.Store.Deleted`, so a signed-out device (`store.ErrDeviceDeleted` from `Connect()`) is replaced with a fresh device store before the QR flow. Auto-recovery — no operator prompt, since signout already destroyed the identity. *(v0.3: `clientNeedsRecreate()` + `TestClientNeedsRecreate`)*
+- [ ] After a real signout (`events.LoggedOut`), reopening the QR wizard delivers a scannable QR without manual restart or server-side intervention. *(live verification pending)*
 
 ### FR-01: Make session-clear reachable from the disconnected/logged-out state
 
@@ -280,5 +341,6 @@ Acceptance criteria:
 |------|---------|
 | `whatsapp.qr.already_paired_disconnected` | Device holds a paired identity (`Store.ID != nil`) but is not connected; a QR cannot be issued until the identity is cleared (re-pair) or the session is reconnected. Surfaced in `whatsapp.qr.done` `reason`. |
 | `whatsapp.qr.session_clear_failed` | `Reauth()` failed to delete the device store; the QR flow was aborted rather than calling `GetQRChannel` against a populated store. Surfaced in `whatsapp.qr.done` `reason`; raw error logged server-side. |
+| _(deleted device — no code)_ | Mode 2 (`store.ErrDeviceDeleted` after signout) is **auto-recovered** in `StartQRFlow` (`clientNeedsRecreate`): the client is replaced with a fresh device store and a normal QR is delivered, so no `reason`/error is surfaced to the UI. The recovery is logged server-side (`slog.Info "whatsapp: replacing deleted device store for QR flow"`). |
 | `NOT_FOUND` (`pkg/protocol/errors.go:13`) | Existing — instance not found / not a WhatsApp instance (`qr_methods.go:59`). Unchanged. |
 | `INVALID_REQUEST` (`pkg/protocol/errors.go:5`) | Existing — malformed `instance_id` (`qr_methods.go:53`). Unchanged. |

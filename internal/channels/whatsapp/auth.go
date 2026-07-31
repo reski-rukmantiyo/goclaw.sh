@@ -26,12 +26,22 @@ var ErrAlreadyPairedDisconnected = errors.New("whatsapp: device already paired b
 func (c *Channel) StartQRFlow(ctx context.Context) (<-chan whatsmeow.QRChannelItem, error) {
 	c.reauthMu.Lock()
 	defer c.reauthMu.Unlock()
-	if c.client == nil {
-		// Lazy init: wizard may request QR before Start() is called.
+	if c.clientNeedsRecreate() {
+		// Lazy init (wizard fired QR before Start) OR replace a deleted device.
+		// whatsmeow sets Store.Deleted=true and removes the DB row on signout
+		// (events.LoggedOut -> cli.Store.Delete in connectionevents.go). A
+		// deleted client cannot be Connected (Connect returns ErrDeviceDeleted),
+		// so swap in a fresh device store before the QR flow. Signout already
+		// destroyed the old identity, so this is recovery, not a destructive
+		// re-pair — no operator prompt needed (unlike Store.ID != nil below).
 		c.mu.Lock()
-		if c.client == nil {
+		if c.clientNeedsRecreate() {
 			if c.ctx == nil {
 				c.ctx, c.cancel = context.WithCancel(context.Background())
+			}
+			if c.client != nil {
+				c.client.Disconnect()
+				slog.Info("whatsapp: replacing deleted device store for QR flow", "channel", c.Name())
 			}
 			deviceStore, err := c.container.GetFirstDevice(ctx)
 			if err != nil {
@@ -70,6 +80,18 @@ func (c *Channel) StartQRFlow(ctx context.Context) (<-chan whatsmeow.QRChannelIt
 	}
 
 	return qrChan, nil
+}
+
+// clientNeedsRecreate reports whether the whatsmeow client must be (re)created
+// before a QR flow can run:
+//   - client == nil: never started (wizard fired QR before Start).
+//   - Store.Deleted: the account was signed out. whatsmeow marks Store.Deleted
+//     and removes the DB row on events.LoggedOut; such a client cannot be
+//     Connected (Connect returns store.ErrDeviceDeleted), so it must be replaced
+//     with a fresh device store (GetFirstDevice returns a brand-new device when
+//     the container is empty).
+func (c *Channel) clientNeedsRecreate() bool {
+	return c.client == nil || c.client.Store.Deleted
 }
 
 // Reauth clears the current session and prepares for a fresh QR scan.

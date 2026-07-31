@@ -47,3 +47,32 @@ func TestStartQRFlow_NotAuthenticatedFlagDoesNotSuppressPairedGuard(t *testing.T
 		t.Fatalf("expected ErrAlreadyPairedDisconnected even with empty JID, got %v", err)
 	}
 }
+
+// TestClientNeedsRecreate covers the second QR-rescan failure mode (docs/srs/013
+// §3.8): after a signout, whatsmeow marks Store.Deleted=true (and removes the DB
+// row). A deleted client cannot be Connected (Connect returns
+// store.ErrDeviceDeleted), so StartQRFlow must recreate it. These tests cover
+// the recreate decision; the full recreate (GetFirstDevice) needs a container
+// and is validated by build + live rescan.
+func TestClientNeedsRecreate(t *testing.T) {
+	t.Run("nil client", func(t *testing.T) {
+		c := &Channel{}
+		if !c.clientNeedsRecreate() {
+			t.Fatal("nil client must need recreate")
+		}
+	})
+	t.Run("fresh device", func(t *testing.T) {
+		c := &Channel{client: whatsmeow.NewClient(&store.Device{}, nil)}
+		if c.clientNeedsRecreate() {
+			t.Fatal("fresh (non-deleted) device must not need recreate")
+		}
+	})
+	t.Run("deleted device", func(t *testing.T) {
+		dev := &store.Device{}
+		c := &Channel{client: whatsmeow.NewClient(dev, nil)}
+		dev.Deleted = true // whatsmeow sets this on events.LoggedOut
+		if !c.clientNeedsRecreate() {
+			t.Fatal("deleted device must need recreate")
+		}
+	})
+}
