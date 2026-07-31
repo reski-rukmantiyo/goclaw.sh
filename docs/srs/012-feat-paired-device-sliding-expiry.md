@@ -2,8 +2,8 @@
 
 **Project**: GoClaw Gateway
 **Release**: 2026.3.0
-**Version**: 0.2-draft
-**Date**: 2026-07-15
+**Version**: 0.4-draft
+**Date**: 2026-07-22
 **Status**: Implemented (code-complete + build/vet/test-verified). UI render + live on-tenant verification pending (§3 FR-02/FR-03 manual boxes).
 **Difficulty**: Low–Medium
 **Estimate**: 0.5–1 days
@@ -16,6 +16,8 @@
 |---------|------|---------|
 | 0.1-draft | 2026-07-15 | Initial draft. Verified root cause against code: every paired device gets a hard `expires_at = paired_at + 30d` (`internal/store/pg/pairing.go:20,112`; `internal/store/sqlitestore/pairing.go:24,98`) and the TTL is never refreshed — `IsPaired` only *reads* the expiry (`pg/pairing.go:167`; `sqlite:152`), the only `UPDATE paired_devices` is `MigrateGroupChatID` which does not touch `expires_at` (`pg/pairing.go:265`; `sqlite:249`). So an active device that messages daily still dies at day 30 and is pruned on the next `ListPaired` (`pg/pairing.go:231`; `sqlite:204`) → operator must re-pair ("register nodes again"). **No schema migration required** — the `expires_at` column already exists in both DBs (PG `migrations/000021_paired_devices_expiry.up.sql:3`; SQLite `schema.sql:539`). Chosen fix: sliding renewal inside the store `IsPaired` (single point covers every channel + browser), gated by a renewal window to avoid a write-per-message, plus a configurable TTL + renewal window, and surfacing `expires_at` in the `pairing.list` response + Nodes UI so the expiry is visible. |
 | 0.2-draft | 2026-07-15 | **Implemented (code-complete + build/vet/test-verified).** Config: `PairingConfig` (`config_channels.go`) with `DeviceTTLDuration()` (30d default, `0`=never) + `RenewalWindowDuration(ttl)` (auto ttl/4, clamp, `0`=disabled), threaded through `store.StoreConfig` (`types.go` + `DefaultPairedDeviceTTL`) → `pg/factory.go`/`sqlitestore/factory.go` → constructors `NewPGPairingStore(db,ttl,window)`/`NewSQLitePairingStore(db,ttl,window)`; 4 gateway build sites + onboard seed store wired (`cmd/gateway_stores_*.go`, `cmd/onboard_managed.go`). Stores: `IsPaired` runs a window-gated, best-effort, tenant-scoped renewal UPDATE after the COUNT verdict (PG + SQLite); `ApprovePairing` writes `expires_at = NULL` when ttl≤0; `ListPaired` SELECT + `pairedDeviceRow` add `expires_at`; `PairedDeviceData.ExpiresAt *int64` (`pairing_store.go`). Hardcoded `pairedDeviceTTL` consts removed. i18n: 4 keys × en/vi/zh in `nodes.json`. UI: `PairedDevice.expires_at?` (`use-nodes.ts`) + Expires column + never/expired/expiring-soon badges (`nodes-page.tsx`). **Verification:** `go build ./...` ✓, `go build -tags sqliteonly ./...` ✓, `go vet ./...` clean, `go test -tags sqliteonly -race ./internal/store/sqlitestore/ -run TestSQLitePairingStore_` 7/7 ✓, `go test ./internal/config/` 69/69 ✓ (incl. new `TestPairingConfig_Durations` 8 subtests + `TestChannelsConfig_PairingDefault`), `pnpm build` (ui/web) ✓. `go fix ./...` reverted — produced unrelated modernization churn (agent/memory/http-tenants tests etc.), same convention as `007`/`009`. **Deferred (env-gated):** PG pairing store integration test (needs pgvector pg18 container; PG impl mirrors SQLite line-for-line — SQLite tests prove the SQL logic), live on-tenant manual check (active device's `expires_at` advances; idle device pruned), and the FR-02/FR-03 UI render checks (needs browser). **Pre-existing unrelated failures:** 4 SQLite schema-migration DDL tests (`TestEnsureSchema_MigrationV11*`, `TestSQLiteSchemaUpgrade_23_to_24`, `_25_to_26_HeartbeatFK`) — same class documented in `008`; fail identically on the clean tree. |
+| 0.3-draft | 2026-07-22 | **Live-verification gap closed (FR-06).** Operator reported a WhatsApp group showed `expires ≈ now` ("just now") yet still accepted messages. Root cause: the in-memory group-approval cache `approvedGroups` (`channel.go`) had **no TTL** — a group was cached on first `IsPaired` hit and every later message hit the cache → `PolicyAllow` **before** reaching `IsPaired`. So for groups the FR-00 renewal (which lives in `IsPaired`) never fired (expiry lapsed) **and** a revoked/expired group kept working for the whole process lifetime. Fix (centralized in `IsGroupApproved`/`MarkGroupApproved`): cache now stores `chatID → time.Time` (approved-at); `IsGroupApproved` evicts + returns false when older than `groupApproveCacheTTL` (10 min), so the next message re-validates via `IsPaired` → renews (FR-00) **or** evicts an expired/revoked group. Covers WhatsApp + Telegram (all `IsGroupApproved` callers). New `TestGroupApproveCache_TTL`. **Verification:** `go build` (PG+sqliteonly) ✓, `go vet ./internal/channels/...` clean, `go test -race ./internal/channels/ -run TestGroupApproveCache` ✓. **Note:** requires a gateway rebuild + restart to take effect; the old in-memory cache only clears on restart. |
+| 0.4-draft | 2026-07-22 | **Explicit active-node guarantee (FR-07) + live-diagnosis.** Operator: "as long as there's activity from each node — especially WhatsApp + WhatsApp group — the node should extend its sliding window so it never expires during active use." Verified this is **already satisfied** by FR-00 (renewal) + FR-06 (cache TTL): DMs call `IsPaired` every message (no cache); groups' `approvedGroups` cache HIT does **not** re-stamp → ages out after `groupApproveCacheTTL` → next msg re-runs `IsPaired` (renewal). So an active group is renewed within ≤10 min of entering the 7.5-day window. Added `FR-07` with the guarantee + ACs. New `TestCheckGroupPolicy_ActiveGroupRevalidatesAfterCacheTTL` (mock `isPairedCalls`: fresh-cache burst = 1, post-TTL = 2) — proves cache hits skip `IsPaired` but a stale cache re-validates (the renewal path an active group relies on). Added `isPairedCalls` counter to `mockPairingStore`. **Live diagnosis:** staged the 3 `whatsapp-reski` devices into the renewal window (`expires_at = now+2h`) to force a slide; the operator's test messages were <10 min apart, so the 2nd hit the still-fresh cache → `IsPaired` skipped → no slide observed (expected, not a defect). Devices **restored to originals** (Aug 7/10/20, healthy 16–29d) to avoid lockout. **Verification:** `go test -race ./internal/channels/` 135/135 ✓ (incl. the 2 cache tests). **Still pending:** the live slide (device in-window + message >10 min after the previous one). |
 
 ---
 
@@ -189,6 +191,52 @@ Acceptance criteria:
 - [x] No new file under `migrations/`; `RequiredSchemaVersion` stays `90` (`internal/upgrade/version.go:5`). _(by inspection — no `migrations/` file added; version.go untouched)_
 - [x] No SQLite `schema.go` migration patch added; `SchemaVersion` stays `47` (`internal/store/sqlitestore/schema.go:19`). _(by inspection — schema.go untouched)_
 - [x] The desktop `sqliteonly` build is green (the renewal + config + DTO change is shared code; no SQLite-only DDL). _(`go build -tags sqliteonly ./...` ✓)_
+
+---
+
+### FR-06: Group approval cache is TTL-bounded (renewal + expiry enforce reach groups)
+
+**Gap found at live verification:** the in-memory group-approval cache `approvedGroups` (`internal/channels/channel.go:187`) admits a group on its first `IsPaired` hit (`MarkGroupApproved`) and every subsequent message hits `IsGroupApproved` → `PolicyAllow` **before** reaching `IsPaired` (`channel.go:369-370`). The cache had **no TTL**, so for groups `IsPaired` was never called again → (a) the FR-00 sliding renewal never fired for groups (their `expires_at` stayed at the approve value and lapsed), and (b) a revoked/expired group kept working for the whole gateway process lifetime (the cache never re-checked `expires_at`). This is why a WhatsApp group showed `expires ≈ now` ("just now" in the Nodes UI) yet still accepted messages. DMs were unaffected (no cache → `IsPaired` every message → renewal fired).
+
+Fix: make the cache TTL-bounded so the next message after the TTL re-validates via `IsPaired` — which renews an in-window device (FR-00) **or** evicts an expired/revoked one.
+
+| Cache state on message | Behaviour |
+|---|---|
+| no entry | fall through to `IsPaired` (renew / evict) → `MarkGroupApproved` |
+| entry fresh (`now - approvedAt <= groupApproveCacheTTL`) | `PolicyAllow` (current fast path, no DB) |
+| entry stale (`now - approvedAt > groupApproveCacheTTL`) | evict entry → fall through to `IsPaired` (renew / evict) → re-`MarkGroupApproved` |
+
+`groupApproveCacheTTL` defaults to `10 * time.Minute` (`channel.go`). Short enough to renew well before the 30-day wall and to evict a lapsed group within minutes; long enough to keep the DB-skip benefit on active groups. The change is centralized in `IsGroupApproved`/`MarkGroupApproved`, so every caller benefits: WhatsApp (`whatsapp/policy.go:16` → `CheckGroupPolicy`) and Telegram (`handlers.go:264,319,375`).
+
+Acceptance criteria:
+
+- [x] `approvedGroups` stores `chatID → time.Time` (approved-at), not a bare `true`. _(by inspection — `channel.go:187` + `MarkGroupApproved`)_
+- [x] `IsGroupApproved` returns false (and evicts the entry) when the cached approval is older than `groupApproveCacheTTL`; returns true when fresh. _(`TestGroupApproveCache_TTL`)_
+- [x] A stale/unknown group falls through to `IsPaired` so FR-00 renewal fires for groups and an expired group is evicted (not admitted forever). _(by inspection — `CheckGroupPolicy` `channel.go:369-385` calls `IsPaired` then re-`MarkGroupApproved` on a cache miss; `IsGroupApproved` now misses when stale)_
+- [x] `go build ./...`, `go build -tags sqliteonly ./...`, `go vet ./internal/channels/...` green. _(`go build` PG+sqliteonly ✓, vet clean)_
+
+---
+
+### FR-07: Active-node sliding guarantee — activity extends expiry; no expiry during active use
+
+**User-facing guarantee (operator request):** as long as a node — **especially a WhatsApp DM and a WhatsApp group** — has message activity, its `expires_at` is extended by the sliding renewal (FR-00), so it **never expires during periods of activity**. Only **inactivity beyond the TTL** expires a node. This is the property the "register nodes again after some time" report violated, and it must hold for every channel, not just DMs.
+
+The guarantee rests on the renewal hook (`IsPaired`) being reached while the device is in-window. Two reach paths:
+
+| Node type | Renewal-hook reach | Why active ⇒ no expiry |
+|---|---|---|
+| **DM** (WhatsApp/Telegram/…) | `CheckDMPolicy` has **no cache** → `IsPaired` called on **every** message (`channel.go:335`) | every active msg renews while in-window |
+| **Group** (WhatsApp/Telegram) | `approvedGroups` cache HIT does **not** refresh the stamp (`channel.go:389-390` returns early) → entry ages out exactly `groupApproveCacheTTL` (10 min) after the last miss → next msg re-runs `IsPaired` (`channel.go:389-404`) | an active group is re-validated (renewed) within ≤10 min of entering the 7.5-day renewal window — far inside the window, so it never lapses |
+
+Critical property verified: a cache **hit does not re-stamp** the entry, so even a group messaged every few seconds still ages out after 10 min and re-runs `IsPaired`. If hits re-stamped, a constantly-active group would never re-validate and would expire — the exact symptom the cache-TTL fix (FR-06) closed.
+
+Acceptance criteria:
+
+- [x] A cache HIT on an approved group does NOT call `IsPaired` (fast path) and does NOT refresh the approval stamp. _(`TestCheckGroupPolicy_ActiveGroupRevalidatesAfterCacheTTL` — fresh-cache burst leaves `isPairedCalls` at 1)_
+- [x] After the cache entry ages past `groupApproveCacheTTL`, the next group message re-runs `IsPaired` (the renewal hook) and re-approves. _(same test — `isPairedCalls` 1→2 after stale injection)_
+- [x] DMs have no approval cache → `IsPaired` runs on every DM message (renewal fires every active msg while in-window). _(by inspection — `CheckDMPolicy` `channel.go:320-347` has no `IsGroupApproved`/cache short-circuit)_
+- [x] `whatsapp.go:485` `MarkGroupApproved` is the join-rule **auto-approval** path only (one-time, on group config), not a per-message re-stamp. _(by inspection — `whatsapp.go:460-486` is the join-rule branch)_
+- [ ] Live: an active WhatsApp group whose `expires_at` is within the renewal window has its expiry extended within ≤`groupApproveCacheTTL` of a message (manual — needs a device in-window + a message after the cache TTL; the staged live test was cache-blocked because the two test messages were <10 min apart).
 
 ---
 

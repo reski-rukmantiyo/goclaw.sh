@@ -184,7 +184,7 @@ type BaseChannel struct {
 	pairingService  store.PairingStore
 	groupHistory    *PendingHistory
 	historyLimit    int
-	approvedGroups  sync.Map // chatID → true (in-memory cache for paired group approval)
+	approvedGroups  sync.Map // chatID → time.Time approved-at (TTL-bounded cache, groupApproveCacheTTL)
 	pairingDebounce sync.Map // senderID → time.Time (debounce pairing reply sends)
 	requireMention  bool
 
@@ -271,15 +271,35 @@ func (c *BaseChannel) ConfigPersister() func(ctx context.Context, config any) er
 // RequireMention returns whether @mention is required in group chats.
 func (c *BaseChannel) RequireMention() bool { return c.requireMention }
 
-// IsGroupApproved returns true if the group was already approved via pairing.
+// groupApproveCacheTTL bounds how long a group stays in the in-memory approval
+// cache before the next message re-validates via IsPaired (SRS 012). Bounds
+// staleness so (a) the sliding renewal fires for groups (IsPaired is the renewal
+// hook) and (b) a revoked/expired group is evicted within this window instead of
+// admitted forever. Short enough to renew well before the 30-day wall; long
+// enough to keep the DB-skip benefit on active groups.
+const groupApproveCacheTTL = 60 * time.Minute
+
+// IsGroupApproved returns true if the group was approved via pairing AND the
+// cached approval is still fresh (within groupApproveCacheTTL). A stale entry is
+// evicted so the caller re-validates via IsPaired — which renews an in-window
+// device (sliding expiry) or evicts an expired/revoked one.
 func (c *BaseChannel) IsGroupApproved(chatID string) bool {
-	_, ok := c.approvedGroups.Load(chatID)
-	return ok
+	v, ok := c.approvedGroups.Load(chatID)
+	if !ok {
+		return false
+	}
+	approvedAt, _ := v.(time.Time)
+	if time.Since(approvedAt) > groupApproveCacheTTL {
+		c.approvedGroups.Delete(chatID)
+		return false
+	}
+	return true
 }
 
-// MarkGroupApproved caches a group as approved so future messages skip DB lookups.
+// MarkGroupApproved caches a group as approved (with the current time) so future
+// messages skip DB lookups until the cache TTL elapses.
 func (c *BaseChannel) MarkGroupApproved(chatID string) {
-	c.approvedGroups.Store(chatID, true)
+	c.approvedGroups.Store(chatID, time.Now())
 }
 
 // ClearGroupApproval removes a group from the approval cache.
