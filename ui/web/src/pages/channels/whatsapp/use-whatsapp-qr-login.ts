@@ -8,6 +8,7 @@ export function useWhatsAppQrLogin(instanceId: string | null) {
   const [qrPng, setQrPng] = useState<string | null>(null);
   const [status, setStatus] = useState<QrStatus>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [reason, setReason] = useState("");
   const { call: startQR, loading } = useWsCall("whatsapp.qr.start");
 
   const start = useCallback(async (forceReauth = false) => {
@@ -15,6 +16,7 @@ export function useWhatsAppQrLogin(instanceId: string | null) {
     setStatus("waiting");
     setQrPng(null);
     setErrorMsg("");
+    setReason("");
     try {
       await startQR({ instance_id: instanceId, force_reauth: forceReauth });
     } catch (err) {
@@ -30,6 +32,7 @@ export function useWhatsAppQrLogin(instanceId: string | null) {
     setStatus("idle");
     setQrPng(null);
     setErrorMsg("");
+    setReason("");
   }, []);
 
   useWsEvent(
@@ -49,7 +52,7 @@ export function useWhatsAppQrLogin(instanceId: string | null) {
     "whatsapp.qr.done",
     useCallback(
       (payload: unknown) => {
-        const p = payload as { instance_id: string; success: boolean; already_connected?: boolean; error?: string };
+        const p = payload as { instance_id: string; success: boolean; already_connected?: boolean; error?: string; reason?: string };
         if (p.instance_id !== instanceId) return;
         if (p.success) {
           // Distinguish: already connected before any QR vs. freshly authenticated via QR scan.
@@ -57,6 +60,7 @@ export function useWhatsAppQrLogin(instanceId: string | null) {
         } else {
           setStatus("error");
           setErrorMsg(p.error ?? "QR authentication failed");
+          setReason(p.reason ?? "");
         }
       },
       [instanceId],
@@ -64,6 +68,6 @@ export function useWhatsAppQrLogin(instanceId: string | null) {
   );
 
   return {
-    qrPng, status, errorMsg, loading, start, reset, retry: start, triggerReauth,
+    qrPng, status, errorMsg, reason, loading, start, reset, retry: start, triggerReauth,
   };
 }

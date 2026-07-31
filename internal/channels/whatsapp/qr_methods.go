@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -18,6 +19,22 @@ import (
 )
 
 const qrSessionTimeout = 3 * time.Minute
+
+// Structured failure reasons emitted in the whatsapp.qr.done event payload so
+// the UI can render an actionable message + the correct next step instead of
+// surfacing whatsmeow's raw internal error string.
+const (
+	// qrReasonAlreadyPairedDisconnected: device holds a paired identity
+	// (Store.ID != nil) but is disconnected; QR needs a re-link (force reauth)
+	// to clear the session first.
+	qrReasonAlreadyPairedDisconnected = "already_paired_disconnected"
+	// qrReasonSessionClearFailed: Reauth could not delete the paired device
+	// store; the QR flow was aborted rather than calling GetQRChannel against
+	// a populated store.
+	qrReasonSessionClearFailed = "session_clear_failed"
+	// qrReasonStartFailed: any other failure starting the QR flow.
+	qrReasonStartFailed = "qr_start_failed"
+)
 
 // cancelEntry wraps a CancelFunc so it can be stored in sync.Map.CompareAndDelete.
 type cancelEntry struct {
@@ -129,6 +146,17 @@ func (m *QRMethods) runQRSession(ctx context.Context, entry *cancelEntry,
 	if forceReauth {
 		if err := wa.Reauth(); err != nil {
 			slog.Warn("whatsapp QR: reauth failed", "error", err)
+			client.SendEvent(goclawprotocol.EventFrame{
+				Type:  goclawprotocol.FrameTypeEvent,
+				Event: goclawprotocol.EventWhatsAppQRDone,
+				Payload: map[string]any{
+					"instance_id": instanceIDStr,
+					"success":     false,
+					"reason":      qrReasonSessionClearFailed,
+					"error":       err.Error(),
+				},
+			})
+			return
 		}
 	}
 
@@ -147,13 +175,20 @@ func (m *QRMethods) runQRSession(ctx context.Context, entry *cancelEntry,
 	// Start QR flow — get QR channel from whatsmeow.
 	qrChan, err := wa.StartQRFlow(ctx)
 	if err != nil {
-		slog.Warn("whatsapp QR: start flow failed", "error", err)
+		// Map known failures to a structured reason the UI can act on; never
+		// leak whatsmeow's raw error (e.g. ErrQRStoreContainsID) to the client.
+		reason := qrReasonStartFailed
+		if errors.Is(err, ErrAlreadyPairedDisconnected) {
+			reason = qrReasonAlreadyPairedDisconnected
+		}
+		slog.Warn("whatsapp QR: start flow failed", "error", err, "reason", reason)
 		client.SendEvent(goclawprotocol.EventFrame{
 			Type:  goclawprotocol.FrameTypeEvent,
 			Event: goclawprotocol.EventWhatsAppQRDone,
 			Payload: map[string]any{
 				"instance_id": instanceIDStr,
 				"success":     false,
+				"reason":      reason,
 				"error":       err.Error(),
 			},
 		})

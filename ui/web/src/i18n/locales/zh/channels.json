@@ -549,6 +549,9 @@
     "alreadyLinked": "✅ 设备已连接",
     "alreadyLinkedDetail": "WhatsApp 已连接。如需连接其他设备，请点击【重新连接】——这将退出当前会话。",
     "relinkDevice": "重新连接",
+    "pairedDisconnected": "⚠️ 设备已连接但已断开",
+    "pairedDisconnectedDetail": "此设备仍关联着一个 WhatsApp 账号，但会话已断开。点击【重新连接】以清除当前会话并扫描新的二维码。",
+    "sessionClearFailed": "清除上一个 WhatsApp 会话失败。请重启网关后再试。",
     "connectedSuccess": "✅ WhatsApp 连接成功！",
     "tabQrCode": "二维码"
   },

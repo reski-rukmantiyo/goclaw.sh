@@ -23,7 +23,7 @@ export function WhatsAppReauthDialog({
 }: ReauthDialogProps) {
   const { t } = useTranslation("channels");
   const {
-    qrPng, status, errorMsg, loading, start, reset, retry, triggerReauth,
+    qrPng, status, errorMsg, reason, loading, start, reset, retry, triggerReauth,
   } = useWhatsAppQrLogin(instanceId);
 
   // Auto-start QR when dialog opens; intentionally omits `start` from deps
@@ -82,7 +82,16 @@ export function WhatsAppReauthDialog({
         {status !== "connected" && status !== "done" && (
           <>
             <div className="flex flex-col items-center gap-4 py-4 min-h-[200px]">
-              {status === "error" && (
+              {status === "error" && reason === "already_paired_disconnected" && (
+                <div className="text-center space-y-2 max-w-[240px]">
+                  <p className="text-sm font-medium text-amber-600">{t("whatsapp.pairedDisconnected")}</p>
+                  <p className="text-xs text-muted-foreground">{t("whatsapp.pairedDisconnectedDetail")}</p>
+                </div>
+              )}
+              {status === "error" && reason === "session_clear_failed" && (
+                <p className="text-sm text-destructive text-center">{t("whatsapp.sessionClearFailed")}</p>
+              )}
+              {status === "error" && reason !== "already_paired_disconnected" && reason !== "session_clear_failed" && (
                 <p className="text-sm text-destructive">{errorMsg}</p>
               )}
               {status === "waiting" && !qrPng && (
@@ -106,7 +115,10 @@ export function WhatsAppReauthDialog({
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => onOpenChange(false)}>{t("whatsapp.close")}</Button>
-              {status === "error" && (
+              {status === "error" && reason === "already_paired_disconnected" && (
+                <Button variant="destructive" onClick={triggerReauth} disabled={loading}>{t("whatsapp.relinkDevice")}</Button>
+              )}
+              {status === "error" && reason !== "already_paired_disconnected" && (
                 <Button onClick={() => retry()} disabled={loading}>{t("whatsapp.retry")}</Button>
               )}
             </div>

@@ -550,6 +550,9 @@
     "alreadyLinked": "✅ Device already linked",
     "alreadyLinkedDetail": "WhatsApp is connected. To link a different device, click Re-link — this will log out the current session.",
     "relinkDevice": "Re-link Device",
+    "pairedDisconnected": "⚠️ Device linked but disconnected",
+    "pairedDisconnectedDetail": "This device is still linked to a WhatsApp account, but the session is disconnected. Click Re-link to clear the existing session and scan a new QR code.",
+    "sessionClearFailed": "Failed to clear the previous WhatsApp session. Restart the gateway and try again.",
     "connectedSuccess": "✅ WhatsApp connected successfully!",
     "tabQrCode": "QR Code"
   },

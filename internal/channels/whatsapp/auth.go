@@ -2,11 +2,21 @@ package whatsapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
 	"go.mau.fi/whatsmeow"
 )
+
+// ErrAlreadyPairedDisconnected is returned by StartQRFlow when the device store
+// still holds a paired identity (client.Store.ID != nil) but the account is not
+// connected. whatsmeow's GetQRChannel refuses to issue a QR in this state
+// (ErrQRStoreContainsID), so the caller must clear the identity via Reauth (the
+// force_reauth path) before retrying, or reconnect the existing session.
+// Surfaced to the UI as the structured reason "already_paired_disconnected"
+// rather than leaking whatsmeow's raw internal error.
+var ErrAlreadyPairedDisconnected = errors.New("whatsapp: device already paired but disconnected; re-link (force reauth) to clear the session before QR scan")
 
 // StartQRFlow initiates the QR authentication flow.
 // Returns a channel that emits QR code strings and auth events.
@@ -36,6 +46,16 @@ func (c *Channel) StartQRFlow(ctx context.Context) (<-chan whatsmeow.QRChannelIt
 
 	if c.IsAuthenticated() {
 		return nil, nil // caller checks this
+	}
+
+	// whatsmeow GetQRChannel requires Store.ID == nil. If a paired identity
+	// lingers while the account is disconnected (e.g. logged out from the
+	// phone, evicted companion, or mid-reconnect), GetQRChannel would return
+	// ErrQRStoreContainsID. Surface a structured error instead so the caller
+	// can prompt the operator to re-link (which clears Store.ID via Reauth)
+	// rather than replaying the failing QR request.
+	if c.client.Store.ID != nil {
+		return nil, ErrAlreadyPairedDisconnected
 	}
 
 	qrChan, err := c.client.GetQRChannel(ctx)
@@ -73,9 +93,12 @@ func (c *Channel) Reauth() error {
 	}
 
 	// Delete device from store to force fresh QR on next connect.
+	// A failed delete is a hard error: if Store.ID survives, the next
+	// GetQRChannel call will fail with ErrQRStoreContainsID, so the operator
+	// gets stuck relinking. Fail fast with a structured reason instead.
 	if c.client != nil && c.client.Store.ID != nil {
 		if err := c.client.Store.Delete(context.Background()); err != nil {
-			slog.Warn("whatsapp: failed to delete device store", "error", err)
+			return fmt.Errorf("whatsapp: delete paired device store: %w", err)
 		}
 	}
 
