@@ -48,7 +48,7 @@ func (c *Channel) StartQRFlow(ctx context.Context) (<-chan whatsmeow.QRChannelIt
 				c.mu.Unlock()
 				return nil, fmt.Errorf("whatsapp get device: %w", err)
 			}
-			c.client = whatsmeow.NewClient(deviceStore, nil)
+			c.client = whatsmeow.NewClient(deviceStore, c.whatsmeowLogger())
 			c.client.AddEventHandler(c.handleEvent)
 		}
 		c.mu.Unlock()
@@ -66,6 +66,17 @@ func (c *Channel) StartQRFlow(ctx context.Context) (<-chan whatsmeow.QRChannelIt
 	// rather than replaying the failing QR request.
 	if c.client.Store.ID != nil {
 		return nil, ErrAlreadyPairedDisconnected
+	}
+
+	// GetQRChannel must run BEFORE Connect. A prior QR attempt or the reconnect
+	// watchdog may have left this client connected; calling GetQRChannel on a
+	// connected client returns ErrQRAlreadyConnected. We only reach here when
+	// !IsAuthenticated() && Store.ID == nil, so any live socket is an anonymous
+	// pre-pairing one — safe to tear down so GetQRChannel can drive a fresh
+	// pairing connection. (A paired+connected client never reaches here: it is
+	// caught by the IsAuthenticated() early-return above or the Store.ID guard.)
+	if c.client.IsConnected() {
+		c.client.Disconnect()
 	}
 
 	qrChan, err := c.client.GetQRChannel(ctx)
@@ -140,7 +151,7 @@ func (c *Channel) Reauth() error {
 	if err != nil {
 		return fmt.Errorf("whatsapp: get fresh device: %w", err)
 	}
-	c.client = whatsmeow.NewClient(deviceStore, nil)
+	c.client = whatsmeow.NewClient(deviceStore, c.whatsmeowLogger())
 	c.client.AddEventHandler(c.handleEvent)
 
 	return nil

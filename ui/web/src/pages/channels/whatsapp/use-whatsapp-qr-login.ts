@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useWsCall } from "@/hooks/use-ws-call";
 import { useWsEvent } from "@/hooks/use-ws-event";
 
@@ -11,8 +11,16 @@ export function useWhatsAppQrLogin(instanceId: string | null) {
   const [reason, setReason] = useState("");
   const { call: startQR, loading } = useWsCall("whatsapp.qr.start");
 
+  // Guard against re-entrant / duplicate qr.start calls. React StrictMode
+  // double-mounts effects in dev (two start() calls in the same tick) and
+  // rapid clicks can fire several; each extra call cancels the prior session
+  // (backend Swap) so no QR ever renders. Relink/Retry buttons are already
+  // disabled while loading, so this never blocks a legitimate action.
+  const inFlight = useRef(false);
+
   const start = useCallback(async (forceReauth = false) => {
-    if (!instanceId) return;
+    if (!instanceId || inFlight.current) return;
+    inFlight.current = true;
     setStatus("waiting");
     setQrPng(null);
     setErrorMsg("");
@@ -22,6 +30,8 @@ export function useWhatsAppQrLogin(instanceId: string | null) {
     } catch (err) {
       setStatus("error");
       setErrorMsg(err instanceof Error ? err.message : "Failed to start QR session");
+    } finally {
+      inFlight.current = false;
     }
   }, [startQR, instanceId]);
 
