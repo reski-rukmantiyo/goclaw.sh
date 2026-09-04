@@ -16,7 +16,7 @@ var schemaSQL string
 
 // SchemaVersion is the current SQLite schema version.
 // Bump this when adding new migration steps below.
-const SchemaVersion = 47
+const SchemaVersion = 48
 
 // migrations maps version → SQL to apply when upgrading FROM that version.
 // schema.sql always represents the LATEST full schema (for fresh DBs).
@@ -1063,6 +1063,14 @@ WHERE name = 'Admin'
 		// Version 45 → 46: no-op placeholder (reserved).
 		// Version 46 → 47: add phone column to users table (mirrors PG migration 000088).
 		46: `ALTER TABLE users ADD COLUMN phone TEXT;`,
+		// Version 47 → 48: add media_analyzed_at worker-state column to
+		// listen_raw_messages + partial index for the media enrichment worker
+		// poll (mirrors PG migration 000091, SRS 014 FR-01).
+		47: `
+ALTER TABLE listen_raw_messages ADD COLUMN media_analyzed_at TEXT;
+CREATE INDEX IF NOT EXISTS idx_listen_raw_media_pending
+    ON listen_raw_messages(tenant_id, agent_id, created_at)
+    WHERE media_refs NOT IN ('[]', 'null') AND media_analyzed_at IS NULL;`,
 }
 
 // addHooksTables is the SQLite incremental migration for schema v19 → v20.

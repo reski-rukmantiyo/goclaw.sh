@@ -91,7 +91,6 @@ type ExtractionWorkerDeps struct {
 	Registry      *providers.Registry
 	TenantID      uuid.UUID
 	PollSec       int
-	MediaAnalyzer *MediaAnalyzer
 }
 
 // RegisterExtractionWorker starts a background goroutine that periodically polls
@@ -137,7 +136,7 @@ func RegisterExtractionWorker(deps ExtractionWorkerDeps) func() {
 	slog.Info("whatsapp extraction worker: started",
 		"poll_interval", fmt.Sprintf("%ds/%ds", basePollSec, extractMinPollSec),
 		"batch_size", extractBatchSize, "max_concurrent", extractMaxConcurrent,
-		"media_analyzer", deps.MediaAnalyzer != nil)
+		"media", "body-carried (SRS 014 enrichment worker)")
 	return func() { close(stopCh) }
 }
 
@@ -243,7 +242,10 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 			continue
 		}
 
-		dayText = appendMediaAnalysis(ctx, deps, dayMsgs, dayText, agentID, graphID)
+		// Media content reaches extraction via the message body itself: the
+		// media enrichment worker (SRS 014) rewrites <media:image> tags into
+		// tag + <description> blocks, and buildConversationTextFromRaw embeds
+		// the body verbatim — single source of truth, no independent re-analysis.
 
 		summary, err := summarizeConversation(ctx, p, model, dayText)
 		if err != nil {
@@ -270,7 +272,6 @@ func processGroupBatch(ctx context.Context, deps ExtractionWorkerDeps, agentID, 
 	}
 
 	if !summarizeOK {
-		fullText = appendMediaAnalysis(ctx, deps, msgs, fullText, agentID, graphID)
 		extractor := knowledgegraph.NewExtractorWithPrompt(p, model, minConfidence, listenExtractSystemPrompt)
 		result, err := extractor.Extract(ctx, fullText)
 		if err != nil {
@@ -459,34 +460,6 @@ func groupMessagesByDate(msgs []store.ListenRawMessage) dateGroups {
 		dg.groups[date] = append(dg.groups[date], m)
 	}
 	return dg
-}
-
-// appendMediaAnalysis analyzes media attachments for the given messages and appends
-// descriptions to the text. Returns text unchanged if no media or no analyzer.
-func appendMediaAnalysis(ctx context.Context, deps ExtractionWorkerDeps, msgs []store.ListenRawMessage, text, agentID, graphID string) string {
-	mediaSummary := mediaRefsSummary(msgs)
-	if mediaSummary == "" {
-		return text
-	}
-	slog.Info("whatsapp extraction worker: analyzing media attachments",
-		"agent_id", agentID, "graph_id", graphID, "media", mediaSummary)
-	mediaDescs := analyzeMediaAttachments(ctx, msgs, deps.MediaAnalyzer)
-	if len(mediaDescs) == 0 {
-		return text
-	}
-	var mediaText strings.Builder
-	mediaText.WriteString("\n\n[Media Content Analysis]\n")
-	for _, m := range msgs {
-		if desc, ok := mediaDescs[m.ID]; ok {
-			ts := m.MsgTimestamp.Format("2006-01-02 15:04:05")
-			fmt.Fprintf(&mediaText, "\n[%s] %s:\n%s\n", ts, m.Sender, desc)
-		}
-	}
-	mediaStr := mediaText.String()
-	slog.Info("whatsapp extraction worker: media analysis result",
-		"agent_id", agentID, "graph_id", graphID,
-		"media_text_len", len(mediaStr))
-	return text + mediaStr
 }
 
 // buildConversationTextFromRaw formats raw messages into structured text for LLM extraction.

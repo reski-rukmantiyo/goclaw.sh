@@ -336,6 +336,9 @@ func (d *gatewayDeps) runLifecycle(
 
 	// WhatsApp listen-only KG extraction worker.
 	// Registered here (after all setup) so the server is up before any extraction begins.
+	// Media content reaches extraction via the message body (SRS 014): the media
+	// enrichment worker writes <description> blocks into listen_raw_messages.body,
+	// so no MediaAnalyzer wiring here anymore.
 	if d.pgStores.ListenRawMessages != nil && d.pgStores.KnowledgeGraph != nil && d.providerRegistry != nil {
 		cleanupExtraction := whatsapp.RegisterExtractionWorker(whatsapp.ExtractionWorkerDeps{
 			RawMsgStore:   d.pgStores.ListenRawMessages,
@@ -344,9 +347,26 @@ func (d *gatewayDeps) runLifecycle(
 			BuiltinTools:  d.pgStores.BuiltinTools,
 			Registry:      d.providerRegistry,
 			TenantID:      store.MasterTenantID,
-			MediaAnalyzer: whatsapp.NewMediaAnalyzer(d.providerRegistry, d.pgStores.SystemConfigs, d.pgStores.BuiltinTools, store.MasterTenantID),
 		})
 		defer cleanupExtraction()
+	}
+
+	// WhatsApp media enrichment worker (SRS 014).
+	// Turns persisted images into text descriptions via the vision LLM and
+	// rewrites the body tag + <description> block, BEFORE the embedding and
+	// extraction workers see the row (they gate on media_analyzed_at, FR-04).
+	// Registered unconditionally (Decision D6): with no vision provider it
+	// pass-through-marks rows so the FR-04 gates keep draining — hence the gate
+	// does NOT require providerRegistry, unlike the extraction worker above.
+	if d.pgStores.ListenRawMessages != nil && d.pgStores.SystemConfigs != nil {
+		cleanupMediaEnrich := whatsapp.RegisterMediaEnrichWorker(whatsapp.MediaEnrichWorkerDeps{
+			RawMsgStore:   d.pgStores.ListenRawMessages,
+			ChunkStore:    d.pgStores.RawMessageChunks, // nil-safe: chunk invalidation is PG-only
+			SystemConfigs: d.pgStores.SystemConfigs,
+			Analyzer:      whatsapp.NewMediaAnalyzer(d.providerRegistry, d.pgStores.SystemConfigs, d.pgStores.BuiltinTools, store.MasterTenantID),
+			TenantID:      store.MasterTenantID,
+		})
+		defer cleanupMediaEnrich()
 	}
 
 	// WhatsApp raw message embedding worker.

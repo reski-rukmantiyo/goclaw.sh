@@ -74,6 +74,21 @@ type ListenRawMessageListOpts struct {
 	Body   string // substring over body
 }
 
+// MediaEnrichFilter selects rows for the media enrichment worker poll (SRS 014 FR-02/FR-06).
+type MediaEnrichFilter struct {
+	// Cutoff is the enriched_since activation cutoff: rows created before it are
+	// "historical", rows at or after it are "fresh".
+	Cutoff time.Time
+	// Backfill selects eligible historical rows instead of fresh rows. Backfill
+	// eligibility is body-pattern based (bare <media:image> tag, no <description>
+	// block) and deliberately does NOT require media_analyzed_at IS NULL — rows
+	// bulk pass-through-marked at first registration stay backfill-eligible after
+	// the operator enables backfill. Already-enriched rows are excluded by the
+	// body pattern (idempotent, never re-billed).
+	Backfill bool
+	MaxRows  int
+}
+
 // ListenRawMessageStore persists raw messages captured by WhatsApp listen-only mode.
 type ListenRawMessageStore interface {
 	// AppendBatch inserts multiple raw messages in a single query.
@@ -156,4 +171,30 @@ type ListenRawMessageStore interface {
 	// limited to maxRows. These are messages where extraction_status = 'failed'
 	// AND extraction_attempts >= MaxExtractionAttempts.
 	ListAbandonedIDs(ctx context.Context, agentID, graphID string, maxRows int) ([]uuid.UUID, error)
+
+	// ListPendingMediaEnrichment returns media-bearing rows whose enrichment attempt
+	// has not run yet (media_refs <> '[]' AND media_analyzed_at IS NULL), filtered by
+	// the MediaEnrichFilter cutoff/backfill mode, ordered by created_at ASC, limited
+	// to MaxRows. Polled by the media enrichment worker (SRS 014 FR-02).
+	ListPendingMediaEnrichment(ctx context.Context, filter MediaEnrichFilter) ([]ListenRawMessage, error)
+
+	// MarkMediaEnriched writes the enriched body (tag + <description> block) and marks
+	// the row analyzed in a single UPDATE: body, media_analyzed_at = NOW(), plus the
+	// pipeline state reset (processed_at = NULL, extraction_status = 'pending',
+	// extraction_error = NULL, embedded_at = NULL) mirroring UpdateScope semantics, so
+	// already-embedded backfilled rows re-embed with the description in the chunk text
+	// (SRS 014 FR-02/FR-06).
+	MarkMediaEnriched(ctx context.Context, id uuid.UUID, body string) error
+
+	// MarkMediaAnalyzedByIDs pass-through marks rows analyzed (media_analyzed_at = NOW())
+	// WITHOUT touching body or pipeline state — used for no-provider / disabled /
+	// non-image / pre-cutoff rows so the FR-04 pending gates keep draining. Returns
+	// the row count affected (SRS 014 FR-02).
+	MarkMediaAnalyzedByIDs(ctx context.Context, ids []uuid.UUID) (int64, error)
+
+	// MarkMediaAnalyzedBefore bulk pass-through marks ALL media-bearing rows created
+	// before the cutoff (media_analyzed_at IS NULL) without touching body — the
+	// one-time first-registration mark that keeps historical rows backfill-eligible
+	// while draining the FR-04 gates when backfill is off (SRS 014 FR-06).
+	MarkMediaAnalyzedBefore(ctx context.Context, cutoff time.Time) (int64, error)
 }
