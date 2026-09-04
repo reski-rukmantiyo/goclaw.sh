@@ -594,11 +594,8 @@ func (s *PGListenRawMessageStore) List(ctx context.Context, opts store.ListenRaw
 // <description> block (idempotent — enriched/failed rows never re-match).
 // The media gate index (idx_listen_raw_media_pending) backs this poll.
 func (s *PGListenRawMessageStore) ListPendingMediaEnrichment(ctx context.Context, filter store.MediaEnrichFilter) ([]store.ListenRawMessage, error) {
-	var (
-		query string
-		args  []any
-		idx   int = 1
-	)
+	var args []any
+	idx := 1
 	where := " WHERE media_refs::text NOT IN ('[]', 'null')"
 	if filter.Backfill {
 		// Backfill eligibility is body-pattern based and deliberately does NOT
@@ -614,16 +611,21 @@ func (s *PGListenRawMessageStore) ListPendingMediaEnrichment(ctx context.Context
 		args = append(args, filter.Cutoff)
 		idx++
 	}
-	tClause, tArgs, _, err := scopeClause(ctx, idx+1)
+	// Param order follows the SQL text: filter args → tenant scope ($idx) →
+	// LIMIT ($idx+1). Binding them in any other order desyncs placeholders
+	// from args ("expected N arguments, got M").
+	tClause, tArgs, _, err := scopeClause(ctx, idx)
 	if err != nil {
 		return nil, err
 	}
 	args = append(args, tArgs...)
-	query = `SELECT id, channel_name, chat_id, chat_name, graph_id, sender, sender_id, body, msg_timestamp, agent_id, created_at, processed_at, media_refs,
+	limitIdx := idx + 1
+	args = append(args, filter.MaxRows)
+	query := `SELECT id, channel_name, chat_id, chat_name, graph_id, sender, sender_id, body, msg_timestamp, agent_id, created_at, processed_at, media_refs,
 			        extraction_status, extraction_error, extraction_attempts, last_attempted_at
 		 FROM listen_raw_messages` + where + tClause + `
 		 ORDER BY created_at ASC
-		 LIMIT $` + fmt.Sprintf("%d", idx)
+		 LIMIT $` + fmt.Sprintf("%d", limitIdx)
 
 	var rows []rawMsgRow
 	err = SqlxDBFor(ctx).SelectContext(ctx, &rows, query, args...)
@@ -641,7 +643,8 @@ func (s *PGListenRawMessageStore) ListPendingMediaEnrichment(ctx context.Context
 // UPDATE, resetting pipeline state (mirroring UpdateScope) so already-embedded
 // backfilled rows re-embed with the description (SRS 014 FR-02/FR-06).
 func (s *PGListenRawMessageStore) MarkMediaEnriched(ctx context.Context, id uuid.UUID, body string) error {
-	tClause, tArgs, _, err := scopeClause(ctx, 3)
+	// Params: $1=body, $2=extraction_status, $3=id, $4=tenant scope.
+	tClause, tArgs, _, err := scopeClause(ctx, 4)
 	if err != nil {
 		return err
 	}
