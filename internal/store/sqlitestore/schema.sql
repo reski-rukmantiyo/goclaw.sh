@@ -1622,6 +1622,7 @@ CREATE TABLE IF NOT EXISTS listen_raw_messages (
     processed_at        TEXT,
     embedded_at         TEXT,
     media_refs          TEXT NOT NULL DEFAULT '[]',
+    media_analyzed_at   TEXT,
     extraction_status   VARCHAR(20) NOT NULL DEFAULT 'pending',
     extraction_error    TEXT,
     extraction_attempts INTEGER NOT NULL DEFAULT 0,
@@ -1631,6 +1632,9 @@ CREATE TABLE IF NOT EXISTS listen_raw_messages (
 CREATE INDEX IF NOT EXISTS idx_listen_raw_agent_chat ON listen_raw_messages(agent_id, chat_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_listen_raw_pending ON listen_raw_messages(processed_at) WHERE processed_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_listen_raw_tenant ON listen_raw_messages(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_listen_raw_media_pending
+    ON listen_raw_messages(tenant_id, agent_id, created_at)
+    WHERE media_refs NOT IN ('[]', 'null') AND media_analyzed_at IS NULL;
 
 -- ============================================================
 -- Table: hooks (renamed from agent_hooks, migration 000055)

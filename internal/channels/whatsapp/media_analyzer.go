@@ -82,27 +82,44 @@ func (a *MediaAnalyzer) Analyze(ctx context.Context, refs []store.RawMediaRef) (
 
 	var descs []string
 	for _, ref := range refs {
-		desc, err := a.analyzeOne(ctx, ref, lim)
+		mediaType, content, err := a.analyzeOne(ctx, ref, lim)
 		if err != nil {
 			slog.Warn("whatsapp media analyzer: failed to analyze",
 				"media_type", ref.MediaType, "file", ref.FileName, "error", err)
-			descs = append(descs, fmt.Sprintf("[Media: %s — analysis failed]", ref.MediaType))
+			descs = append(descs, fmt.Sprintf("[Media: %s — analysis failed]", mediaType))
 			continue
 		}
-		descs = append(descs, desc)
+		descs = append(descs, fmt.Sprintf("[Media: %s — %s]", mediaType, content))
 	}
 	return strings.Join(descs, "\n"), nil
 }
 
+// HasVisionProvider reports whether a vision LLM is reachable via the read_image
+// provider chain (per-agent override > builtin_tools settings > hardcoded
+// defaults filtered by registry presence) — WITHOUT making an LLM call.
+// Decision D1 (SRS 014): when false, the media enrichment worker pass-through-
+// marks rows (no vision calls, no failure markers, no billing).
+func (a *MediaAnalyzer) HasVisionProvider(ctx context.Context) bool {
+	if a == nil || a.registry == nil {
+		return false
+	}
+	analyzeCtx := a.contextWithToolSettings(ctx, "image")
+	return len(tools.ResolveVisionChain(analyzeCtx, a.registry)) > 0
+}
+
 // analyzeOne analyzes a single media file by delegating to tools.AnalyzeMediaFile.
-func (a *MediaAnalyzer) analyzeOne(ctx context.Context, ref store.RawMediaRef, lim mediaLimits) (string, error) {
+// It returns the effective media type and the RAW description content (no
+// "[Media: …]" wrapper) so callers can embed it however they need — Analyze
+// wraps it for the KG-extraction text; the enrichment worker embeds it in a
+// <description> body block (SRS 014 FR-03).
+func (a *MediaAnalyzer) analyzeOne(ctx context.Context, ref store.RawMediaRef, lim mediaLimits) (mediaType, content string, err error) {
 	// Check file exists and size.
 	fi, err := os.Stat(ref.FilePath)
 	if err != nil {
-		return "", fmt.Errorf("stat %s: %w", ref.FilePath, err)
+		return "", "", fmt.Errorf("stat %s: %w", ref.FilePath, err)
 	}
 
-	mediaType := ref.MediaType
+	mediaType = ref.MediaType
 	if mediaType == "" {
 		mediaType = mediaTypeFromMime(ref.ContentType)
 	}
@@ -110,13 +127,13 @@ func (a *MediaAnalyzer) analyzeOne(ctx context.Context, ref store.RawMediaRef, l
 	// Check size limit.
 	sizeLimit := lim.sizeLimitForType(mediaType)
 	if fi.Size() > sizeLimit {
-		return fmt.Sprintf("[Media: %s %q — too large (%d bytes)]", mediaType, ref.FileName, fi.Size()), nil
+		return mediaType, fmt.Sprintf("%q — too large (%d bytes)", ref.FileName, fi.Size()), nil
 	}
 
 	// Read file.
 	data, err := os.ReadFile(ref.FilePath)
 	if err != nil {
-		return "", fmt.Errorf("read file: %w", err)
+		return "", "", fmt.Errorf("read file: %w", err)
 	}
 
 	mime := ref.ContentType
@@ -141,10 +158,10 @@ func (a *MediaAnalyzer) analyzeOne(ctx context.Context, ref store.RawMediaRef, l
 		Timeout:   lim.timeout,
 	})
 	if err != nil {
-		return "", err
+		return mediaType, "", err
 	}
 
-	return fmt.Sprintf("[Media: %s — %s]", mediaType, result.Content), nil
+	return mediaType, result.Content, nil
 }
 
 // Default size limits (in MB) — used when system config is not set.
@@ -297,31 +314,6 @@ func mimeFromExt(path string) string {
 	default:
 		return "application/octet-stream"
 	}
-}
-
-// analyzeMediaAttachments processes media attachments for a batch of messages.
-// Returns a map of message ID → media description text.
-func analyzeMediaAttachments(ctx context.Context, msgs []store.ListenRawMessage, analyzer *MediaAnalyzer) map[uuid.UUID]string {
-	if analyzer == nil {
-		return nil
-	}
-
-	result := make(map[uuid.UUID]string)
-	for _, m := range msgs {
-		if len(m.MediaRefs) == 0 {
-			continue
-		}
-		desc, err := analyzer.Analyze(ctx, m.MediaRefs)
-		if err != nil {
-			slog.Warn("whatsapp extraction: media analysis failed",
-				"msg_id", m.ID, "error", err)
-			continue
-		}
-		if desc != "" {
-			result[m.ID] = desc
-		}
-	}
-	return result
 }
 
 // mediaRefsSummary returns a compact summary of media refs for logging.

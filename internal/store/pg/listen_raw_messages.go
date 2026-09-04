@@ -46,7 +46,13 @@ func (s *PGListenRawMessageStore) AppendBatch(ctx context.Context, msgs []store.
 		if msgs[i].ID == uuid.Nil {
 			msgs[i].ID = uuid.Must(uuid.NewV7())
 		}
-		mediaJSON, _ := json.Marshal(msgs[i].MediaRefs)
+		// Normalize nil → empty array so text-only rows store '[]' (a nil slice
+		// marshals to JSON null, which the SRS 014 media gates treat as no-media).
+		mediaRefs := msgs[i].MediaRefs
+		if mediaRefs == nil {
+			mediaRefs = []store.RawMediaRef{}
+		}
+		mediaJSON, _ := json.Marshal(mediaRefs)
 		base := i * cols
 		placeholders[i] = fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d)",
 			base+1, base+2, base+3, base+4, base+5, base+6, base+7, base+8, base+9, base+10, base+11, base+12, base+13)
@@ -126,7 +132,8 @@ func (s *PGListenRawMessageStore) ListPending(ctx context.Context, agentID, grap
 		        extraction_status, extraction_error, extraction_attempts, last_attempted_at
 		 FROM listen_raw_messages
 		 WHERE agent_id = $1 AND graph_id = $2
-		   AND (extraction_status = $3 OR (extraction_status = $4 AND extraction_attempts < $5))`+tClause+`
+		   AND (extraction_status = $3 OR (extraction_status = $4 AND extraction_attempts < $5))
+		   AND (media_refs::text IN ('[]', 'null') OR media_analyzed_at IS NOT NULL)`+tClause+`
 		 ORDER BY msg_timestamp DESC
 		 LIMIT $6`,
 		append([]any{agentID, graphID,
@@ -195,7 +202,8 @@ func (s *PGListenRawMessageStore) ListPendingGroups(ctx context.Context) ([]stor
 	err = SqlxDBFor(ctx).SelectContext(ctx, &result,
 		`SELECT DISTINCT agent_id, graph_id
 		 FROM listen_raw_messages
-		 WHERE (extraction_status = $1 OR (extraction_status = $2 AND extraction_attempts < $3))`+tClause,
+		 WHERE (extraction_status = $1 OR (extraction_status = $2 AND extraction_attempts < $3))
+		   AND (media_refs::text IN ('[]', 'null') OR media_analyzed_at IS NOT NULL)`+tClause,
 		append([]any{store.ExtractionStatusPending, store.ExtractionStatusFailed, store.MaxExtractionAttempts}, tArgs...)...,
 	)
 	return result, err
@@ -333,7 +341,8 @@ func (s *PGListenRawMessageStore) ListPendingEmbeddings(ctx context.Context, age
 		`SELECT id, channel_name, chat_id, chat_name, graph_id, sender, sender_id, body, msg_timestamp, agent_id, created_at, processed_at, media_refs,
 		        extraction_status, extraction_error, extraction_attempts, last_attempted_at
 		 FROM listen_raw_messages
-		 WHERE agent_id = $1 AND graph_id = $2 AND embedded_at IS NULL`+tClause+`
+		 WHERE agent_id = $1 AND graph_id = $2 AND embedded_at IS NULL
+		   AND (media_refs::text IN ('[]', 'null') OR media_analyzed_at IS NOT NULL)`+tClause+`
 		 ORDER BY msg_timestamp ASC
 		 LIMIT $3`,
 		append([]any{agentID, graphID, maxRows}, tArgs...)...,
@@ -355,7 +364,8 @@ func (s *PGListenRawMessageStore) ListPendingEmbeddingGroups(ctx context.Context
 	}
 	var result []store.ListenRawMessageGroup
 	err = SqlxDBFor(ctx).SelectContext(ctx, &result,
-		`SELECT DISTINCT agent_id, graph_id FROM listen_raw_messages WHERE embedded_at IS NULL`+tClause,
+		`SELECT DISTINCT agent_id, graph_id FROM listen_raw_messages WHERE embedded_at IS NULL
+		   AND (media_refs::text IN ('[]', 'null') OR media_analyzed_at IS NOT NULL)`+tClause,
 		tArgs...,
 	)
 	return result, err
@@ -576,4 +586,120 @@ func (s *PGListenRawMessageStore) List(ctx context.Context, opts store.ListenRaw
 		result[i] = r.toMessage()
 	}
 	return result, total, nil
+}
+
+// ListPendingMediaEnrichment returns media-bearing rows awaiting the enrichment
+// attempt (SRS 014 FR-02). Fresh mode: created_at >= cutoff. Backfill mode:
+// created_at < cutoff AND still carrying the bare <media:image> tag with no
+// <description> block (idempotent — enriched/failed rows never re-match).
+// The media gate index (idx_listen_raw_media_pending) backs this poll.
+func (s *PGListenRawMessageStore) ListPendingMediaEnrichment(ctx context.Context, filter store.MediaEnrichFilter) ([]store.ListenRawMessage, error) {
+	var (
+		query string
+		args  []any
+		idx   int = 1
+	)
+	where := " WHERE media_refs::text NOT IN ('[]', 'null')"
+	if filter.Backfill {
+		// Backfill eligibility is body-pattern based and deliberately does NOT
+		// require media_analyzed_at IS NULL: rows bulk pass-through-marked at
+		// first registration (backfill off) must remain backfill-eligible after
+		// the operator flips backfill on. Already-enriched rows are excluded by
+		// the NOT LIKE description guard (idempotent, never re-billed).
+		where += fmt.Sprintf(" AND created_at < $%d AND body LIKE $%d AND body NOT LIKE $%d", idx, idx+1, idx+2)
+		args = append(args, filter.Cutoff, "%<media:image>%", "%<description>%")
+		idx += 3
+	} else {
+		where += fmt.Sprintf(" AND media_analyzed_at IS NULL AND created_at >= $%d", idx)
+		args = append(args, filter.Cutoff)
+		idx++
+	}
+	tClause, tArgs, _, err := scopeClause(ctx, idx+1)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, tArgs...)
+	query = `SELECT id, channel_name, chat_id, chat_name, graph_id, sender, sender_id, body, msg_timestamp, agent_id, created_at, processed_at, media_refs,
+			        extraction_status, extraction_error, extraction_attempts, last_attempted_at
+		 FROM listen_raw_messages` + where + tClause + `
+		 ORDER BY created_at ASC
+		 LIMIT $` + fmt.Sprintf("%d", idx)
+
+	var rows []rawMsgRow
+	err = SqlxDBFor(ctx).SelectContext(ctx, &rows, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]store.ListenRawMessage, len(rows))
+	for i, r := range rows {
+		result[i] = r.toMessage()
+	}
+	return result, nil
+}
+
+// MarkMediaEnriched writes the enriched body and marks the row analyzed in one
+// UPDATE, resetting pipeline state (mirroring UpdateScope) so already-embedded
+// backfilled rows re-embed with the description (SRS 014 FR-02/FR-06).
+func (s *PGListenRawMessageStore) MarkMediaEnriched(ctx context.Context, id uuid.UUID, body string) error {
+	tClause, tArgs, _, err := scopeClause(ctx, 3)
+	if err != nil {
+		return err
+	}
+	_, err = s.dbFor(ctx).ExecContext(ctx,
+		`UPDATE listen_raw_messages
+		 SET body = $1,
+		     media_analyzed_at = NOW(),
+		     processed_at = NULL,
+		     extraction_status = $2,
+		     extraction_error = NULL,
+		     embedded_at = NULL
+		 WHERE id = $3`+tClause,
+		append([]any{body, store.ExtractionStatusPending, id}, tArgs...)...,
+	)
+	return err
+}
+
+// MarkMediaAnalyzedByIDs pass-through marks rows analyzed without touching body
+// or pipeline state (no-provider / disabled / non-image / pre-cutoff rows), so
+// the FR-04 pending gates keep draining (SRS 014 FR-02).
+func (s *PGListenRawMessageStore) MarkMediaAnalyzedByIDs(ctx context.Context, ids []uuid.UUID) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, 0, len(ids))
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args = append(args, id)
+	}
+	idx := len(args) + 1
+	tClause, tArgs, _, err := scopeClause(ctx, idx)
+	if err != nil {
+		return 0, err
+	}
+	args = append(args, tArgs...)
+	q := `UPDATE listen_raw_messages SET media_analyzed_at = NOW()
+	      WHERE id IN (` + strings.Join(placeholders, ",") + `) AND media_analyzed_at IS NULL` + tClause
+	res, err := s.dbFor(ctx).ExecContext(ctx, q, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// MarkMediaAnalyzedBefore bulk pass-through marks ALL media-bearing rows created
+// before the cutoff — the one-time first-registration mark (SRS 014 FR-06).
+// Body is untouched so the rows stay backfill-eligible by body pattern.
+func (s *PGListenRawMessageStore) MarkMediaAnalyzedBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	tClause, tArgs, _, err := scopeClause(ctx, 2)
+	if err != nil {
+		return 0, err
+	}
+	q := `UPDATE listen_raw_messages SET media_analyzed_at = NOW()
+	      WHERE media_refs::text NOT IN ('[]', 'null') AND media_analyzed_at IS NULL AND created_at < $1` + tClause
+	res, err := s.dbFor(ctx).ExecContext(ctx, q, append([]any{cutoff}, tArgs...)...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }

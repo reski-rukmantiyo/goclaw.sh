@@ -2,9 +2,9 @@
 
 **Project**: GoClaw Gateway
 **Release**: 2026.3.0
-**Version**: 0.2-draft
+**Version**: 0.4-draft
 **Date**: 2026-09-04
-**Status**: Draft
+**Status**: Implemented (code-complete + build/vet/test-verified). Live WhatsApp image round-trip + PG migration apply on the master tenant pending (§5 env-gated).
 **Difficulty**: Medium
 **Estimate**: 2–3 days
 
@@ -16,6 +16,8 @@
 |---------|------|---------|
 | 0.1-draft | 2026-09-04 | Initial draft. Root cause verified against code: WhatsApp inbound images are stored in `listen_raw_messages.body` as a bare `<media:image>` tag (no URL — WhatsApp media has no hosted URL; `BuildMediaTags` `internal/channels/media/media_tags.go:24-28`), the file is persisted via `ListenBuffer.PersistMedia` into `media_refs` (`internal/channels/whatsapp/listen_buffer.go:158`), the embedding worker embeds `body` verbatim (`buildEmbeddingTextFromRaw`, `internal/channels/whatsapp/embedding_worker.go:356`) so embeddings capture only the placeholder string, and the KG extract worker re-analyzes media independently (`appendMediaAnalysis`, `internal/channels/whatsapp/extract_worker.go:466`). Composes with `007` (scope edit + state-reset contract), `008` (server-side body/chunk text filters), `011` (chunk `tsv`), `003` (inbound hot-path rules). |
 | 0.2-draft | 2026-09-04 | Open questions resolved with operator. **D1**: enrichment active only when a vision LLM is configured (no provider = silent pass-through, no billing). **D2**: backfill opt-in (`listen.media_analysis.backfill_enabled`, default off) + persisted `enriched_since` activation cutoff (FR-06 rewritten). **D3**: `image` only — sticker excluded (pass-through; stickers emit no body tag today). **D4**: descriptions always English; multilingual embeddings cover vi/zh retrieval. FR-02/FR-03/FR-06/FR-07 updated accordingly. |
+| 0.3-draft | 2026-09-04 | **Pre-implementation gap-check (all root-cause claims verified against code) + operator decisions locked.** Verified: versions (`RequiredSchemaVersion=90`, SQLite `SchemaVersion=47`), `media_refs` empty = `'[]'` (`NOT NULL DEFAULT`, PG `000053`, SQLite `schema.sql:1624`) so the FR-04 predicate/partial index are safe, none of the 4 pending queries filters `media_refs` today, `UpdateScope` never touches `body`, `listen.media_analysis.enabled` gate exists (`media_analyzer.go:79,238`, default on). **Locked decisions:** (D5) D1 probe = new exported `MediaAnalyzer.HasVisionProvider(ctx) bool` wrapping `tools.ResolveMediaProviderChain` (`internal/tools/media_provider_chain.go:65` — pure config+registry, no LLM call); effective D1 semantics documented: default chain = openrouter, gemini, anthropic, claude-cli, dashscope (`internal/tools/read_image.go:35`) — **any** of these configured ⇒ enrichment ON. (D6) enrichment worker registered **unconditionally** next to `RegisterEmbeddingWorker` (`cmd/gateway_lifecycle.go:355`), gate = ListenRawMessages+SystemConfigs+BuiltinTools non-nil (NOT `providerRegistry` — no-provider must still pass-through-mark so the FR-04 gates drain). (D7) store API = `ListPendingMediaEnrichment(ctx, MediaEnrichFilter{Cutoff, Backfill, MaxRows})` params struct. Line-ref corrections: `BuildMediaTags` = `internal/channels/media/media_tags.go:18-58` (not 24-28 — that is the image branch); `analyzeMediaAttachments` lives in `internal/channels/whatsapp/media_analyzer.go:304` (not extract_worker.go); chunk interface name is `RawMessageChunkStore` (not `ChunkStore`); FR-02 tenant AC reworded — single registration with `TenantID = store.MasterTenantID`, mirroring the embedding worker (`cmd/gateway_lifecycle.go:359`), not per-tenant instances. |
+| 0.4-draft | 2026-09-04 | **Implemented (code-complete + build/vet/test-verified).** Migration 000091 (PG column+partial index) + `RequiredSchemaVersion` 91; SQLite `schema.sql` + patch 47→48. Store: `MediaEnrichFilter` + `ListPendingMediaEnrichment` + `MarkMediaEnriched` (single UPDATE incl. pipeline reset) + `MarkMediaAnalyzedByIDs` (pass-through) + `MarkMediaAnalyzedBefore` (FR-06 bulk) on interface + PG + SQLite; FR-04 predicate on all 4 pending queries both stores. New `internal/channels/whatsapp/media_enrich_worker.go` (`RegisterMediaEnrichWorker`, consts 30s/5s/50/2, D5 `HasVisionProvider` probe per poll cycle, `ensureEnrichActivation` writes `enriched_since` once + bulk-mark when backfill off, per-group `enriched/passed_through/failed` logs, `enrichBodyWithDescriptions` FR-03 rewrite incl. `(from replied message)` line-aware insert + 2000-rune truncation + `html.EscapeString`, chunk invalidation via `DeleteBySourceMsgIDs`→neighbors `ResetEmbeddedByIDs`). `tools.ResolveVisionChain` exported probe; `analyzeOne` refactored to return raw content (`Analyze` wraps — output unchanged). FR-05: `appendMediaAnalysis` + `analyzeMediaAttachments` + `ExtractionWorkerDeps.MediaAnalyzer` removed; extract worker consumes media via body only. **Deviations found during implementation:** (1) **`media_refs` nil-marshals to JSON `null`** — `AppendBatch` stored string `null` for text-only rows (both DBs, pre-existing), so the FR-04 predicate and poll filters use `media_refs IN ('[]','null')` / `NOT IN` (PG `media_refs::text`) and `AppendBatch` now normalizes nil→`[]`; partial index matches. (2) Backfill poll deliberately does NOT filter `media_analyzed_at IS NULL` (bulk-marked rows must stay backfill-eligible by body pattern — matches FR-06 eligibility text). (3) **Pre-existing SQLite bug fixed as drive-by:** `ListPending`/`ListPendingEmbeddings`/`ListAbandonedIDs` bound `maxRows` BEFORE `tArgs` while the tenant clause sits before `LIMIT ?` → the tenant UUID fed LIMIT → "datatype mismatch (20)" on every call (latent — these paths were never exercised on desktop). Bind order corrected. **Verification:** `go build ./...` ✓, `go build -tags sqliteonly ./...` ✓, `go vet ./...` ✓; `TestSQLiteListenRawMessageStore_*` 21/21 `-race` ✓ (incl. 7 new media-enrichment tests: poll fresh/backfill/tenant-isolation, MarkMediaEnriched reset, pass-through, bulk-mark, FR-04 gate on all 4 pending queries, text-only no-regression); `internal/channels/whatsapp` 134/136 `-race` (2 pre-existing `TestMimeToExt`); `sqlitestore` 77/81 (4 pre-existing schema-DDL failures, documented since SRS 008); `internal/http`+`internal/tools` failure sets byte-identical to clean tree (verified via stash compare — 17 pre-existing: `TestResolveAuth_*`, `TestWebhookAdmin_*`, `TestKGTraversal_Tier1_CappedAt20`, per SRS 008/011). `go fix` skipped (unrelated-churn convention, 007/009/012/013). **Env-gated pending:** PG migration apply + PG store integration test + live image round-trip on master tenant (needs running gateway + pgvector; no pg-5433 test container in this env). |
 
 ---
 
@@ -23,7 +25,7 @@
 
 This SRS defines **vision-based image description at raw-message capture**: a background enrichment worker turns persisted WhatsApp images into text descriptions via the configured vision LLM, writes the description into `listen_raw_messages.body`, and lets the existing embedding and KG-extraction workers consume that text as the single source of truth for media content. The image file keeps its durable path and `media_refs` reference; no media content is re-analyzed downstream.
 
-Core idea: today the body says only `<media:image>`; after this feature the body says `<media:image>` **plus** an escaped `<description>` block, and every downstream consumer (Embeddings menu chunks, `shared_knowledge_search` FTS via migration 000090 `tsv`, KG extraction) reads the body — no worker-specific media handling.
+Core idea: today the body says only `<media:image>`; after this feature the body says `<media:image>` **plus** an escaped `<description>` block, and every downstream consumer (Embeddings menu chunks, `shared_knowledge_search` FTS via migration 000090 `tsv`, KG extraction) reads the body — no worker-specific media handling. (`BuildMediaTags` is `internal/channels/media/media_tags.go:18-58`; the image branch is lines 24–28. Stickers arrive as media type `"sticker"` — an inline literal at `media_download.go:43`, not a constant — and emit no tag.)
 
 ## 2. Scope
 
@@ -37,7 +39,7 @@ Core idea: today the body says only `<media:image>`; after this feature the body
 
 **Out of scope**:
 
-- Video, document, sticker, audio, and voice content descriptions (same mechanism extends later; v1 = `image` only — Decision D3). Stickers arrive as media type `"sticker"` (`media_download.go:42`), emit **no** body tag today (`BuildMediaTags` has no sticker case), and pass through enrichment marked analyzed.
+- Video, document, sticker, audio, and voice content descriptions (same mechanism extends later; v1 = `image` only — Decision D3). Stickers arrive as media type `"sticker"` (`media_download.go:43`), emit **no** body tag today (`BuildMediaTags` has no sticker case), and pass through enrichment marked analyzed.
 - Audio/voice STT (existing inbound transcript path via `<transcript>` is unchanged).
 - Respond-mode (bot-mentioned) message handling — the agent pipeline already receives `bus.MediaFile` and can call `read_image` itself; unchanged.
 - Any UI change: the Raw Messages menu already renders `body`, the Embeddings menu renders chunk `text`; richer text appears with no UI work. No new i18n keys.
@@ -74,15 +76,17 @@ Partial index for the worker poll (both DBs):
 ```sql
 CREATE INDEX idx_listen_raw_media_pending
     ON listen_raw_messages (tenant_id, agent_id, created_at)
-    WHERE media_refs <> '[]' AND media_analyzed_at IS NULL;
+    WHERE media_refs::text NOT IN ('[]', 'null') AND media_analyzed_at IS NULL;
 ```
+
+(SQLite form uses plain `media_refs NOT IN ('[]', 'null')`. The `'null'` arm: pre-existing rows stored JSON `null` for text-only messages — see revision 0.4 deviation 1.)
 
 Acceptance criteria:
 
-- [ ] PG migration `000091_listen_raw_messages_media_analyzed.up.sql` / `.down.sql` adds column + partial index; `RequiredSchemaVersion` bumped 90 → 91 in `internal/upgrade/version.go`.
-- [ ] SQLite: column + partial index added to `internal/store/sqlitestore/schema.sql` (fresh-DB schema) **and** incremental patch appended to the `migrations` map in `internal/store/sqlitestore/schema.go`; `SchemaVersion` bumped (currently 47 → 48).
-- [ ] `go build ./...` and `go build -tags sqliteonly ./...` both green.
-- [ ] Existing rows migrate with `media_analyzed_at IS NULL` (they become backfill candidates, FR-06).
+- [x] PG migration `000091_listen_raw_messages_media_analyzed.up.sql` / `.down.sql` adds column + partial index; `RequiredSchemaVersion` bumped 90 → 91 in `internal/upgrade/version.go`. _(v0.4; partial-index predicate widened to `media_refs::text NOT IN ('[]','null')` per the nil-marshaling deviation, revision 0.4)_
+- [x] SQLite: column + partial index added to `internal/store/sqlitestore/schema.sql` (fresh-DB schema) **and** incremental patch appended to the `migrations` map in `internal/store/sqlitestore/schema.go`; `SchemaVersion` bumped (currently 47 → 48). _(v0.4; fresh-DB v48 exercised by every sqlite store test via EnsureSchema)_
+- [x] `go build ./...` and `go build -tags sqliteonly ./...` both green. _(v0.4)_
+- [ ] Existing rows migrate with `media_analyzed_at IS NULL` (they become backfill candidates, FR-06). _(code-guaranteed — column added nullable, no backfill; live `./goclaw migrate up` on master pending, env-gated)_
 
 ---
 
@@ -105,14 +109,18 @@ Behavior table:
 
 Worker constants v1 (hardcoded, mirroring `embedding_worker.go` consts; system-config knobs deferred — see §6): poll 30s, min poll 5s when backlog > 100, max 2 concurrent (agent, graph) groups, batch 50 rows.
 
+Provider probe (Decision D5): `MediaAnalyzer` gains an exported `HasVisionProvider(ctx context.Context) bool` that builds the same builtin-tool settings ctx as `Analyze` (`contextWithToolSettings`, `media_analyzer.go:52-67`) and calls `tools.ResolveMediaProviderChain` (`internal/tools/media_provider_chain.go:65`) — pure config-parse + `registry.Get`, **no LLM call**. Empty chain ⇒ no provider ⇒ D1 pass-through. Effective D1 semantics: the default chain is openrouter, gemini, anthropic, claude-cli, dashscope (`internal/tools/read_image.go:35`), so **any** of those providers configured in `llm_providers` makes enrichment active; the probe is evaluated per poll cycle so runtime provider changes are picked up without restart.
+
+Registration (Decision D6): registered in `cmd/gateway_lifecycle.go` next to `RegisterEmbeddingWorker` (which it must out-live-gate: the embedding worker requires `RawMessageChunks` non-nil, the enrichment worker requires only ListenRawMessages + SystemConfigs + BuiltinTools non-nil — **not** `providerRegistry`, because the no-provider state must still pass-through-mark rows so the FR-04 gates drain). Single registration with `TenantID = store.MasterTenantID`, mirroring the embedding worker (`cmd/gateway_lifecycle.go:359`) — not per-tenant instances; tenant isolation comes from the store's `scopeClause` on poll and update.
+
 Acceptance criteria:
 
-- [ ] Worker registered alongside the existing listen workers; stop function closes cleanly (same lifecycle as `RegisterEmbeddingWorker`).
-- [ ] Success, no-provider, disabled, non-image, pre-cutoff, and failure paths all set `media_analyzed_at` exactly once.
-- [ ] With no vision provider configured, zero vision API calls are made and no `[analysis failed]` markers are written (no-provider pass-through is silent).
-- [ ] Vision failures never drop the message, never panic the worker, and log `slog.Warn` with `msg_id`, `agent_id`, `graph_id`, `media_type`, `error`.
-- [ ] Worker honors `MediaAnalyzer` size caps and timeout — a huge image yields the too-large marker, not a stalled call.
-- [ ] Tenant isolation preserved: poll and update are tenant-scoped (worker runs per tenant, same as embedding worker's `store.WithTenantID` context).
+- [x] Worker registered unconditionally next to `RegisterEmbeddingWorker` (gate: ListenRawMessages + SystemConfigs + BuiltinTools non-nil); stop function closes cleanly (same lifecycle as `RegisterEmbeddingWorker`). _(v0.4: `cmd/gateway_lifecycle.go`, same stopCh pattern)_
+- [x] Success, no-provider, disabled, non-image, pre-cutoff, and failure paths all set `media_analyzed_at` exactly once. _(v0.4: no-provider/disabled/non-image/already-described → `MarkMediaAnalyzedByIDs` exactly once — `TestEnsureEnrichActivation`, `TestMediaAnalysisEnabled`, store tests `TestSQLiteListenRawMessageStore_MediaEnrichmentPoll`/`_MarkMediaAnalyzed*`; success/failure vision paths set it via `MarkMediaEnriched` — code-path proven, live vision round-trip env-gated)_
+- [x] With no vision provider configured, zero vision API calls are made and no `[analysis failed]` markers are written (no-provider pass-through is silent). _(v0.4: D5 probe short-circuits before any `analyzeOne` call; pass-through never touches body)_
+- [x] Vision failures never drop the message, never panic the worker, and log `slog.Warn` with `msg_id`, `agent_id`, `graph_id`, `media_type`, `error`. _(v0.4: `enrichRow` per-ref failure → `[analysis failed]` marker + mark; exact log fields present)_
+- [x] Worker honors `MediaAnalyzer` size caps and timeout — a huge image yields the too-large marker, not a stalled call. _(v0.4: worker uses `loadLimits` + `analyzeOne`, which enforces `sizeLimitForType`/timeout — unchanged analyzer path)_
+- [x] Tenant isolation preserved: poll and update are tenant-scoped via the store's `scopeClause` (single registration with `TenantID = store.MasterTenantID` and `store.WithTenantID` context, mirroring the embedding worker — not per-tenant worker instances). _(v0.4: `TestSQLiteListenRawMessageStore_MediaEnrichmentPoll_TenantIsolation`)_
 
 ---
 
@@ -141,9 +149,9 @@ Rules:
 
 Acceptance criteria:
 
-- [ ] Unit tests cover: single image, multiple images, image + caption, image + group-history prefix, image inside `[Replying to: …]` context, failure marker, disabled pass-through (no change), sticker-only rows (no tag → body untouched).
-- [ ] Body length growth is bounded: description truncated at 2,000 chars per image (`… [truncated]` suffix) to protect day-group chunking and embedding input sizes.
-- [ ] No rewrite touches rows whose body already contains a `<description>` block (idempotent).
+- [x] Unit tests cover: single image, multiple images, image + caption, image + group-history prefix, image inside `[Replying to: …]` context, failure marker, disabled pass-through (no change), sticker-only rows (no tag → body untouched). _(v0.4: `TestEnrichBodyWithDescriptions` 11 table cases + `TestImageMediaRefs`; "(from replied message)" suffix handled line-aware so the description lands after the full tag line)_
+- [x] Body length growth is bounded: description truncated at 2,000 chars per image (`… [truncated]` suffix) to protect day-group chunking and embedding input sizes. _(v0.4: rune-safe truncation case in the table test)_
+- [x] No rewrite touches rows whose body already contains a `<description>` block (idempotent). _(v0.4: `enrichGroup` skips such rows to pass-through; backfill eligibility `NOT LIKE '%<description>%'` is the store-level guard)_
 
 ---
 
@@ -154,14 +162,16 @@ Both existing workers must not process a media-bearing row before its enrichment
 Gate (applies to `ListPendingEmbeddings`, `ListPendingEmbeddingGroups`, `ListPending`, `ListPendingGroups` in `store.ListenRawMessageStore`, PG and SQLite mirrored):
 
 ```sql
-AND (media_refs = '[]' OR media_analyzed_at IS NOT NULL)
+AND (media_refs IN ('[]', 'null') OR media_analyzed_at IS NOT NULL)
 ```
+
+(`media_refs::text IN (...)` on PG. The `'null'` arm covers rows written before the nil-marshaling fix — `AppendBatch` used to store JSON `null` for text-only messages; new writes normalize to `'[]'`. See revision 0.4 deviation 1.)
 
 Acceptance criteria:
 
-- [ ] PG and SQLite implementations both add the predicate to all four pending-list queries; fresh rows with image refs are invisible to embed/extract workers until `media_analyzed_at` is set.
-- [ ] Non-media rows (`media_refs = '[]'`) behave exactly as before — no regression in 007's re-extract/re-embed flow for text-only messages.
-- [ ] `007`'s `UpdateScope` reset (which clears `embedded_at` etc.) still causes re-processing; `media_analyzed_at` is untouched by scope edits, so re-embedded rows keep their existing descriptions (no duplicate vision cost).
+- [x] PG and SQLite implementations both add the predicate to all four pending-list queries; fresh rows with image refs are invisible to embed/extract workers until `media_analyzed_at` is set. _(v0.4: `TestSQLiteListenRawMessageStore_MediaGateOnPendingLists` — all four queries gated, gate drains after pass-through mark; PG mirrors line-for-line. Predicate uses `media_refs IN ('[]','null')` — see the nil-marshaling deviation in revision 0.4)_
+- [x] Non-media rows (`media_refs = '[]'`) behave exactly as before — no regression in 007's re-extract/re-embed flow for text-only messages. _(v0.4: `TestSQLiteListenRawMessageStore_MediaGateTextOnlyNoRegression` + the 007/008 suites still green)_
+- [x] `007`'s `UpdateScope` reset (which clears `embedded_at` etc.) still causes re-processing; `media_analyzed_at` is untouched by scope edits, so re-embedded rows keep their existing descriptions (no duplicate vision cost). _(v0.4: `UpdateScope` SET list unchanged — verified against `pg/listen_raw_messages.go` UpdateScope; scope tests green)_
 
 ---
 
@@ -173,9 +183,9 @@ Justification against 007's re-extract contract: re-extraction after a scope edi
 
 Acceptance criteria:
 
-- [ ] `appendMediaAnalysis`, `analyzeMediaAttachments` call from the extract path, and the `[Media Content Analysis]` text section are removed; `mediaRefsSummary` logging may stay.
-- [ ] `MediaAnalyzer` remains in the wiring only for the enrichment worker.
-- [ ] Extract worker unit tests updated: media-bearing bodies flow through as plain text.
+- [x] `appendMediaAnalysis`, `analyzeMediaAttachments` call from the extract path, and the `[Media Content Analysis]` text section are removed; `mediaRefsSummary` logging may stay. _(v0.4: both call sites, the function, and `analyzeMediaAttachments` deleted; `mediaRefsSummary` reused by the enrichment worker's batch log)_
+- [x] `MediaAnalyzer` remains in the wiring only for the enrichment worker. _(v0.4: `ExtractionWorkerDeps.MediaAnalyzer` field removed; sole construction is the enrichment worker deps in `cmd/gateway_lifecycle.go`)_
+- [x] Extract worker unit tests updated: media-bearing bodies flow through as plain text. _(v0.4: extraction path is now body-only by construction — no analyzer reference compiles; existing whatsapp suite 134/136 green, the 2 failures are the pre-existing `TestMimeToExt` pair)_
 
 ---
 
@@ -195,7 +205,7 @@ First registration with backfill off performs a one-time bulk pass-through mark 
 ```sql
 UPDATE listen_raw_messages
 SET media_analyzed_at = NOW()
-WHERE media_refs <> '[]' AND media_analyzed_at IS NULL
+WHERE media_refs::text NOT IN ('[]', 'null') AND media_analyzed_at IS NULL
   AND created_at < :enriched_since AND tenant_id = :t
 ```
 
@@ -226,20 +236,20 @@ WHERE id = $2 AND tenant_id = $3
 
 and the worker must then invalidate stale neighbor chunks (day-group chunks share `source_msg_ids` across messages):
 
-1. `ChunkStore.DeleteBySourceMsgIDs(ctx, [msgID])` for each enriched message already present in chunks.
+1. `RawMessageChunkStore.DeleteBySourceMsgIDs(ctx, [msgID])` for each enriched message already present in chunks (the 007 FR-08 method, `internal/store/raw_message_chunk_store.go:93`; PG-only — SQLite chunk store is a no-op stub).
 2. `RawMsgStore.ResetEmbeddedByIDs(ctx, neighborIDs)` where `neighborIDs` are the source message IDs of every deleted chunk minus the enriched ones — the day group re-embeds whole, matching 007 FR-08.
 
 Sequencing with 007 scope edits: a scope edit on a row before its backfill enrichment re-keys the row; the enrichment worker then enriches it under the new `(agent_id, graph_id)` (it is still backfill-eligible by body pattern). A scope edit after enrichment resets embed/extract state but keeps the description in `body` — the row re-processes under the new key with the description intact. Neither order loses data.
 
 Acceptance criteria:
 
-- [ ] First registration writes `enriched_since` exactly once (absent key only); restarts reuse the stored value.
-- [ ] With backfill off: bulk pass-through mark runs once; historical rows keep bare bodies; zero vision calls; embed/extract gates drain (no pipeline stall).
-- [ ] Fresh-flow rows (never embedded) enrich without chunk deletion (nothing to delete — they were gated).
-- [ ] Backfill on: eligible rows (bare tag, no `<description>`) enrich; rows with existing descriptions or failure markers are skipped; already-embedded rows get chunks deleted + neighbors reset per the sequence above; the next embedding cycle re-chunks the day group with the description in `text` (and therefore `tsv`, 011).
-- [ ] `content_hash` unchanged semantics: re-chunked text differs from the old placeholder text, so no false dedupe.
-- [ ] Backfill is incremental and restart-safe (crash mid-backfill leaves rows un-attempted → body pattern still matches → retried next poll; no double billing after success because the body no longer matches the pattern).
-- [ ] SQLite listen-store mirror tested (chunk store is PG-only stub — backfill chunk invalidation is PG-only by design, 008).
+- [x] First registration writes `enriched_since` exactly once (absent key only); restarts reuse the stored value. _(v0.4: `TestEnsureEnrichActivation` — write-once, restart reuse, bulk-mark skipped when backfill on; stored as RFC3339 second precision)_
+- [x] With backfill off: bulk pass-through mark runs once; historical rows keep bare bodies; zero vision calls; embed/extract gates drain (no pipeline stall). _(v0.4: `MarkMediaAnalyzedBefore` store test + worker activation test; zero vision calls guaranteed by the D5 probe short-circuit)_
+- [x] Fresh-flow rows (never embedded) enrich without chunk deletion (nothing to delete — they were gated). _(v0.4: chunk invalidation no-ops when `DeleteBySourceMsgIDs` returns 0 — gated fresh rows have no chunks)_
+- [ ] Backfill on: eligible rows (bare tag, no `<description>`) enrich; rows with existing descriptions or failure markers are skipped; already-embedded rows get chunks deleted + neighbors reset per the sequence above; the next embedding cycle re-chunks the day group with the description in `text` (and therefore `tsv`, 011). _(v0.4 code-complete — eligibility store-tested incl. bulk-marked rows staying eligible; the chunk-delete → re-chunk cycle needs the live PG gateway, env-gated)_
+- [x] `content_hash` unchanged semantics: re-chunked text differs from the old placeholder text, so no false dedupe. _(v0.4: hash input is chunk `text` which now carries the description — differs from the old placeholder text by construction)_
+- [x] Backfill is incremental and restart-safe (crash mid-backfill leaves rows un-attempted → body pattern still matches → retried next poll; no double billing after success because the body no longer matches the pattern). _(v0.4: `MarkMediaEnriched` is a single atomic UPDATE — body pattern flips in the same commit; eligibility is body-pattern based, not in-memory state)_
+- [x] SQLite listen-store mirror tested (chunk store is PG-only stub — backfill chunk invalidation is PG-only by design, 008). _(v0.4: `TestSQLiteListenRawMessageStore_MediaEnrichmentPoll` incl. backfill-after-bulk-mark case; chunk store stub nil-safe in the worker)_
 
 ---
 
@@ -249,15 +259,15 @@ Operators must be able to see and control media description behavior through exi
 
 Acceptance criteria:
 
-- [ ] Master gate is the existing `listen.media_analysis.enabled` system config (per-tenant, `SystemConfigStore`, tenant→master fallback) — one switch for both enrichment cost and behavior. Effective activity additionally requires a configured vision provider (Decision D1).
-- [ ] Size/timeout caps reuse existing `listen.media_analysis.{max_image_mb,timeout_sec}` keys. New keys, same family, per FR-06: `listen.media_analysis.backfill_enabled` (default `false`) and `listen.media_analysis.enriched_since` (worker-managed activation cutoff, not operator-edited).
-- [ ] Worker start/stop and per-batch outcomes are logged with `slog` fields `agent_id`, `graph_id`, `enriched`, `passed_through`, `failed` — matching the embedding worker's log style.
-- [ ] Raw Messages menu shows the enriched body with no code change (verify manually).
+- [x] Master gate is the existing `listen.media_analysis.enabled` system config (per-tenant, `SystemConfigStore`, tenant→master fallback) — one switch for both enrichment cost and behavior. Effective activity additionally requires a configured vision provider (Decision D1). _(v0.4: `mediaAnalysisEnabled` in the worker — default on, "false"/"0" off, `TestMediaAnalysisEnabled`; D1 probe checked per poll cycle)_
+- [x] Size/timeout caps reuse existing `listen.media_analysis.{max_image_mb,timeout_sec}` keys. New keys, same family, per FR-06: `listen.media_analysis.backfill_enabled` (default `false`) and `listen.media_analysis.enriched_since` (worker-managed activation cutoff, not operator-edited). _(v0.4: worker reads `backfill_enabled`, writes-only `enriched_since`; caps via `loadLimits` unchanged)_
+- [x] Worker start/stop and per-batch outcomes are logged with `slog` fields `agent_id`, `graph_id`, `enriched`, `passed_through`, `failed` — matching the embedding worker's log style. _(v0.4: `enrichGroup` batch log carries exactly these fields + `media` summary)_
+- [ ] Raw Messages menu shows the enriched body with no code change (verify manually). _(manual — needs running gateway)_
 
 ## 4. System Impact
 
 - **DB model change**: PG migration `000091` (column + partial index) + `RequiredSchemaVersion` 91; SQLite `schema.sql` + incremental patch + `SchemaVersion` 48. No `raw_message_chunks` change (no `tsv` rebuild; 011 expression untouched).
-- **Store layer**: `ListenRawMessageStore` — new `ListPendingMediaEnrichment(ctx, maxRows)` + `MarkMediaAnalyzed`-style update method (body + state reset + `media_analyzed_at` in one UPDATE); pending-list queries gain the FR-04 predicate (PG `internal/store/pg/listen_raw_messages.go`, SQLite `internal/store/sqlitestore/listen_raw_messages.go`).
+- **Store layer**: `ListenRawMessageStore` — new `ListPendingMediaEnrichment(ctx, MediaEnrichFilter{Cutoff time.Time, Backfill bool, MaxRows int})` (Decision D7; fresh mode = `media_refs NOT IN ('[]','null') AND media_analyzed_at IS NULL AND created_at >= cutoff`; backfill mode = `media_refs NOT IN ('[]','null') AND created_at < cutoff AND body LIKE '%<media:image>%' AND body NOT LIKE '%<description>%'` — deliberately WITHOUT a `media_analyzed_at IS NULL` filter so bulk-marked rows stay backfill-eligible) + `MarkMediaEnriched` update method (body + state reset + `media_analyzed_at` in one UPDATE) + `MarkMediaAnalyzedByIDs` pass-through + `MarkMediaAnalyzedBefore` first-registration bulk mark (FR-06); pending-list queries gain the FR-04 predicate (PG `internal/store/pg/listen_raw_messages.go`, SQLite `internal/store/sqlitestore/listen_raw_messages.go`).
 - **Worker integration**: new `RegisterMediaEnrichWorker` wired next to `RegisterEmbeddingWorker` / extract worker registration; `MediaAnalyzer` ownership moves to the enrichment worker.
 - **Channel layer**: none (inbound path untouched — that is the point).
 - **API/UI**: none.
