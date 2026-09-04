@@ -12,7 +12,13 @@
     "senderId": "Sender ID",
     "paired": "Đã ghép nối",
     "by": "Bởi",
+    "expires": "Hết hạn",
     "actions": "Thao tác"
+  },
+  "expires": {
+    "never": "Không bao giờ",
+    "expired": "Đã hết hạn",
+    "expiringSoon": "Sắp hết hạn"
   },
   "approve": "Phê duyệt",
   "deny": "Từ chối",

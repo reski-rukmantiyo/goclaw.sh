@@ -11,8 +11,10 @@ import (
 
 // mockPairingStore is a test implementation of store.PairingStore.
 type mockPairingStore struct {
-	pairedDevices map[string]map[string]bool // senderID -> channel -> paired
-	failIsPaired  bool                        // force IsPaired to return error
+	pairedDevices      map[string]map[string]bool // senderID -> channel -> paired
+	failIsPaired       bool                        // force IsPaired to return error
+	isPairedCalls      int                         // counts IsPaired invocations (renewal-hook reach)
+	lastIsPairedSender string                      // senderID of the most recent IsPaired call
 }
 
 func newMockPairingStore() *mockPairingStore {
@@ -22,6 +24,8 @@ func newMockPairingStore() *mockPairingStore {
 }
 
 func (m *mockPairingStore) IsPaired(ctx context.Context, senderID, channel string) (bool, error) {
+	m.isPairedCalls++
+	m.lastIsPairedSender = senderID
 	if m.failIsPaired {
 		return false, errors.New("pairing service error")
 	}

@@ -39,8 +39,9 @@ var defaultPlaceholderProviders = []store.LLMProviderData{
 // so they appear in the UI for easy configuration.
 func seedOnboardPlaceholders(dsn string) error {
 	storeCfg := store.StoreConfig{
-		PostgresDSN:   dsn,
-		EncryptionKey: os.Getenv("GOCLAW_ENCRYPTION_KEY"),
+		PostgresDSN:    dsn,
+		EncryptionKey:  os.Getenv("GOCLAW_ENCRYPTION_KEY"),
+		PairingDeviceTTL: store.DefaultPairedDeviceTTL, // throwaway seed store: default 30d (0 must not read as "never")
 	}
 	stores, err := pg.NewPGStores(storeCfg)
 	if err != nil {

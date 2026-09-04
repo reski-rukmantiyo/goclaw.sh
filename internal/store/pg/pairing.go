@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,18 +18,30 @@ const (
 	codeAlphabet         = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	codeLength           = 8
 	codeTTL              = 60 * time.Minute
-	pairedDeviceTTL      = 30 * 24 * time.Hour // 30 days
 	maxPendingPerAccount = 3
 )
 
 // PGPairingStore implements store.PairingStore backed by Postgres.
 type PGPairingStore struct {
-	db        *sql.DB
-	onRequest func(code, senderID, channel, chatID string)
+	db            *sql.DB
+	ttl           time.Duration // paired-device expiry; <=0 = never expire (NULL)
+	renewalWindow time.Duration // near-expiry window; 0 = renewal disabled
+	onRequest     func(code, senderID, channel, chatID string)
 }
 
-func NewPGPairingStore(db *sql.DB) *PGPairingStore {
-	return &PGPairingStore{db: db}
+// NewPGPairingStore constructs a pairing store. ttl: <=0 → never expire
+// (approve writes expires_at = NULL). renewalWindow: <=0 → auto (ttl/4);
+// clamped to ttl; 0 → renewal disabled. SRS 012.
+func NewPGPairingStore(db *sql.DB, ttl, renewalWindow time.Duration) *PGPairingStore {
+	if ttl <= 0 {
+		ttl = 0 // never expire (explicit config "0"); NULL on approve, no renewal
+	} else if renewalWindow <= 0 {
+		renewalWindow = ttl / 4 // auto ~25%
+	}
+	if ttl > 0 && renewalWindow > ttl {
+		renewalWindow = ttl
+	}
+	return &PGPairingStore{db: db, ttl: ttl, renewalWindow: renewalWindow}
 }
 
 func (s *PGPairingStore) dbFor(ctx context.Context) *sql.DB {
@@ -37,7 +50,6 @@ func (s *PGPairingStore) dbFor(ctx context.Context) *sql.DB {
 	}
 	return s.db
 }
-
 
 // SetOnRequest sets a callback fired after a new pairing request is created.
 func (s *PGPairingStore) SetOnRequest(cb func(code, senderID, channel, chatID string)) {
@@ -109,11 +121,14 @@ func (s *PGPairingStore) ApprovePairing(ctx context.Context, code, approvedBy st
 
 	// Add to paired — use the request's tenant (the channel that initiated pairing)
 	now := time.Now()
-	expiresAt := now.Add(pairedDeviceTTL)
+	var expiresVal any
+	if s.ttl > 0 {
+		expiresVal = now.Add(s.ttl) // finite lifetime
+	} // else nil → NULL = never expire (SRS 012)
 	_, err = s.dbFor(ctx).ExecContext(ctx,
 		`INSERT INTO paired_devices (id, sender_id, channel, chat_id, paired_by, paired_at, metadata, expires_at, tenant_id)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		uuid.Must(uuid.NewV7()), senderID, channel, chatID, approvedBy, now, metaJSON, expiresAt, reqTenantID,
+		uuid.Must(uuid.NewV7()), senderID, channel, chatID, approvedBy, now, metaJSON, expiresVal, reqTenantID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create paired device: %w", err)
@@ -170,7 +185,25 @@ func (s *PGPairingStore) IsPaired(ctx context.Context, senderID, channel string)
 	if err != nil {
 		return false, fmt.Errorf("pairing check query: %w", err)
 	}
-	return count > 0, nil
+	paired := count > 0
+	// Sliding renewal (SRS 012): an in-use device whose expiry is within the
+	// renewal window keeps its expiry alive, so active devices never lapse.
+	// Best-effort + non-blocking — a renewal error never flips the verdict (the
+	// channel-policy fail-open posture is preserved). Window-gated so it does
+	// not write once per message (≤~1 renewal/week/device).
+	if paired && s.ttl > 0 && s.renewalWindow > 0 {
+		now := time.Now()
+		if _, rerr := s.dbFor(ctx).ExecContext(ctx,
+			`UPDATE paired_devices
+			 SET expires_at = $4
+			 WHERE sender_id = $1 AND channel = $2 AND tenant_id = $3
+			   AND expires_at IS NOT NULL AND expires_at <= $5`,
+			senderID, channel, tid, now.Add(s.ttl), now.Add(s.renewalWindow),
+		); rerr != nil {
+			slog.Warn("security.pairing_renew_failed", "sender_id", senderID, "channel", channel, "error", rerr)
+		}
+	}
+	return paired, nil
 }
 
 // pairingRequestRow is an sqlx scan struct for pairing_requests.
@@ -188,12 +221,13 @@ type pairingRequestRow struct {
 
 // pairedDeviceRow is an sqlx scan struct for paired_devices.
 type pairedDeviceRow struct {
-	SenderID string    `json:"sender_id" db:"sender_id"`
-	Channel  string    `json:"channel" db:"channel"`
-	ChatID   string    `json:"chat_id" db:"chat_id"`
-	PairedBy string    `json:"paired_by" db:"paired_by"`
-	PairedAt time.Time `json:"paired_at" db:"paired_at"`
-	Metadata []byte    `json:"metadata" db:"metadata"`
+	SenderID  string     `json:"sender_id" db:"sender_id"`
+	Channel   string     `json:"channel" db:"channel"`
+	ChatID    string     `json:"chat_id" db:"chat_id"`
+	PairedBy  string     `json:"paired_by" db:"paired_by"`
+	PairedAt  time.Time  `json:"paired_at" db:"paired_at"`
+	ExpiresAt *time.Time `json:"expires_at" db:"expires_at"` // nil = never expire (NULL)
+	Metadata  []byte     `json:"metadata" db:"metadata"`
 }
 
 func (s *PGPairingStore) ListPending(ctx context.Context) []store.PairingRequestData {
@@ -232,7 +266,7 @@ func (s *PGPairingStore) ListPaired(ctx context.Context) []store.PairedDeviceDat
 
 	var rows []pairedDeviceRow
 	err := SqlxDBFor(ctx).SelectContext(ctx, &rows,
-		`SELECT sender_id, channel, chat_id, paired_by, paired_at, COALESCE(metadata, '{}') AS metadata
+		`SELECT sender_id, channel, chat_id, paired_by, paired_at, expires_at, COALESCE(metadata, '{}') AS metadata
 		 FROM paired_devices WHERE tenant_id = $1 ORDER BY paired_at DESC`, tid)
 	if err != nil {
 		return []store.PairedDeviceData{}
@@ -243,6 +277,10 @@ func (s *PGPairingStore) ListPaired(ctx context.Context) []store.PairedDeviceDat
 		result[i] = store.PairedDeviceData{
 			SenderID: r.SenderID, Channel: r.Channel, ChatID: r.ChatID,
 			PairedBy: r.PairedBy, PairedAt: r.PairedAt.UnixMilli(),
+		}
+		if r.ExpiresAt != nil {
+			ms := r.ExpiresAt.UnixMilli()
+			result[i].ExpiresAt = &ms
 		}
 		if len(r.Metadata) > 0 {
 			json.Unmarshal(r.Metadata, &result[i].Metadata)

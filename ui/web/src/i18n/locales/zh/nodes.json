@@ -12,7 +12,13 @@
     "senderId": "发送者 ID",
     "paired": "配对时间",
     "by": "操作人",
+    "expires": "到期",
     "actions": "操作"
+  },
+  "expires": {
+    "never": "永不过期",
+    "expired": "已过期",
+    "expiringSoon": "即将到期"
   },
   "approve": "批准",
   "deny": "拒绝",

@@ -16,12 +16,13 @@ type PairingRequestData struct {
 
 // PairedDeviceData represents an approved pairing.
 type PairedDeviceData struct {
-	SenderID string            `json:"sender_id" db:"sender_id"`
-	Channel  string            `json:"channel" db:"channel"`
-	ChatID   string            `json:"chat_id" db:"chat_id"`
-	PairedAt int64             `json:"paired_at" db:"paired_at"`
-	PairedBy string            `json:"paired_by" db:"paired_by"`
-	Metadata map[string]string `json:"metadata,omitempty" db:"metadata"`
+	SenderID  string            `json:"sender_id" db:"sender_id"`
+	Channel   string            `json:"channel" db:"channel"`
+	ChatID    string            `json:"chat_id" db:"chat_id"`
+	PairedAt  int64             `json:"paired_at" db:"paired_at"`
+	PairedBy  string            `json:"paired_by" db:"paired_by"`
+	Metadata  map[string]string `json:"metadata,omitempty" db:"metadata"`
+	ExpiresAt *int64            `json:"expires_at,omitempty" db:"expires_at"` // Unix-ms; nil = never expire (NULL)
 }
 
 // PairingStore manages device pairing.

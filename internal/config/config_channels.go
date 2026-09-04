@@ -1,5 +1,7 @@
 package config
 
+import "time"
+
 // PendingCompactionConfig configures LLM-based compaction of pending group messages.
 // When a group accumulates more than Threshold pending messages, older messages are
 // summarized by an LLM and replaced with a compact summary, keeping KeepRecent raw messages.
@@ -21,6 +23,61 @@ type ChannelsConfig struct {
 	ZaloPersonal      ZaloPersonalConfig       `json:"zalo_personal"`
 	Feishu            FeishuConfig             `json:"feishu"`
 	PendingCompaction *PendingCompactionConfig `json:"pending_compaction,omitempty"` // global pending message compaction settings
+	Pairing           PairingConfig             `json:"pairing"`
+}
+
+// PairingConfig tunes approved device ("nodes") pairing expiry. SRS 012.
+//
+// DeviceTTL is the lifetime granted to a paired device on approve and on each
+// renewal, encoded as a human-readable duration string (e.g. "720h", "168h")
+// parsed via time.ParseDuration. Empty → default 30 days. "0"/"0s" → never
+// expire (approve writes expires_at = NULL, honouring migration 021's
+// "NULL = no expiry" contract). Invalid → default.
+//
+// RenewalWindow is the near-expiry window inside which an active IsPaired hit
+// slides the expiry forward (so in-use devices never lapse). Empty → auto = TTL/4
+// (~25%). "0" → renewal disabled (devices lapse exactly at TTL, re-introducing
+// the pre-SRS-012 forced re-authorization). Clamped to [0, TTL].
+type PairingConfig struct {
+	DeviceTTL     string `json:"device_ttl,omitempty"`     // e.g. "720h" (30d default), "0" = never
+	RenewalWindow string `json:"renewal_window,omitempty"` // e.g. "180h"; empty = TTL/4, "0" = disabled
+}
+
+// defaultPairedDeviceTTL is the 30-day expiry granted to paired devices when
+// DeviceTTL is unset/invalid. Mirrors the pre-SRS-012 hardcoded const.
+const defaultPairedDeviceTTL = 30 * 24 * time.Hour
+
+// DeviceTTLDuration parses DeviceTTL: empty/invalid → 30d default; "0" → 0
+// (never expire). A positive duration is returned as-is.
+func (p PairingConfig) DeviceTTLDuration() time.Duration {
+	if p.DeviceTTL == "" {
+		return defaultPairedDeviceTTL
+	}
+	d, err := time.ParseDuration(p.DeviceTTL)
+	if err != nil || d < 0 {
+		return defaultPairedDeviceTTL
+	}
+	return d // 0 = never expire
+}
+
+// RenewalWindowDuration resolves RenewalWindow against the given TTL: empty →
+// auto (TTL/4); invalid → auto; explicit value (incl. 0 = disabled) honoured;
+// clamped to [0, TTL]. When TTL <= 0 (never expire) renewal is a no-op, so 0
+// is returned.
+func (p PairingConfig) RenewalWindowDuration(ttl time.Duration) time.Duration {
+	if ttl <= 0 {
+		return 0 // never-expire devices never renew
+	}
+	window := ttl / 4 // auto default (~25%)
+	if p.RenewalWindow != "" {
+		if d, err := time.ParseDuration(p.RenewalWindow); err == nil && d >= 0 {
+			window = d
+		}
+	}
+	if window > ttl {
+		window = ttl
+	}
+	return window
 }
 
 type TelegramConfig struct {

@@ -12,7 +12,13 @@
     "senderId": "Sender ID",
     "paired": "Paired",
     "by": "By",
+    "expires": "Expires",
     "actions": "Actions"
+  },
+  "expires": {
+    "never": "Never",
+    "expired": "Expired",
+    "expiringSoon": "Expiring soon"
   },
   "approve": "Approve",
   "deny": "Deny",

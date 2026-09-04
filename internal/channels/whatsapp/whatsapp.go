@@ -206,7 +206,7 @@ func (c *Channel) Start(ctx context.Context) error {
 		return fmt.Errorf("whatsapp get device: %w", err)
 	}
 
-	c.client = whatsmeow.NewClient(deviceStore, nil)
+	c.client = whatsmeow.NewClient(deviceStore, c.whatsmeowLogger())
 	c.client.AddEventHandler(c.handleEvent)
 
 	if c.client.Store.ID == nil {

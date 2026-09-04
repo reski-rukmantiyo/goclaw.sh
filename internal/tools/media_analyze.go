@@ -80,6 +80,16 @@ func normalizeMediaType(t string) string {
 
 // --- Image ---
 
+// ResolveVisionChain resolves the read_image vision provider chain for probing
+// whether a vision LLM is configured (priority: per-agent ctx override >
+// builtin_tools settings from ctx > hardcoded defaults filtered by registry
+// presence). Pure config+registry resolution — no LLM call. Used by callers
+// such as the WhatsApp media enrichment worker's D1 pass-through decision.
+func ResolveVisionChain(ctx context.Context, registry *providers.Registry) []MediaProviderEntry {
+	return ResolveMediaProviderChain(ctx, "read_image", "", "",
+		visionProviderPriority, visionModelDefaults, registry)
+}
+
 func analyzeMediaImage(ctx context.Context, registry *providers.Registry, req MediaFileRequest) (*MediaFileResult, error) {
 	mime := req.MimeType
 	if mime == "" {

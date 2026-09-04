@@ -549,6 +549,9 @@
     "alreadyLinked": "✅ Thiết bị đã được liên kết",
     "alreadyLinkedDetail": "WhatsApp đã kết nối. Để liên kết thiết bị khác, nhấn Liên kết lại — thao tác này sẽ đăng xuất phiên hiện tại.",
     "relinkDevice": "Liên kết lại",
+    "pairedDisconnected": "⚠️ Thiết bị đã liên kết nhưng bị ngắt",
+    "pairedDisconnectedDetail": "Thiết bị này vẫn liên kết với một tài khoản WhatsApp, nhưng phiên đã bị ngắt. Nhấn Liên kết lại để xóa phiên hiện tại và quét mã QR mới.",
+    "sessionClearFailed": "Không thể xóa phiên WhatsApp trước đó. Hãy khởi động lại gateway rồi thử lại.",
     "connectedSuccess": "✅ Kết nối WhatsApp thành công!",
     "tabQrCode": "Mã QR"
   },

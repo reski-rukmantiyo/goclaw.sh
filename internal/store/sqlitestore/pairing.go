@@ -21,18 +21,30 @@ const (
 	codeAlphabet         = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	codeLength           = 8
 	codeTTL              = 60 * time.Minute
-	pairedDeviceTTL      = 30 * 24 * time.Hour
 	maxPendingPerAccount = 3
 )
 
 // SQLitePairingStore implements store.PairingStore backed by SQLite.
 type SQLitePairingStore struct {
-	db        *sql.DB
-	onRequest func(code, senderID, channel, chatID string)
+	db            *sql.DB
+	ttl           time.Duration // paired-device expiry; <=0 = never expire (NULL)
+	renewalWindow time.Duration // near-expiry window; 0 = renewal disabled
+	onRequest     func(code, senderID, channel, chatID string)
 }
 
-func NewSQLitePairingStore(db *sql.DB) *SQLitePairingStore {
-	return &SQLitePairingStore{db: db}
+// NewSQLitePairingStore constructs a pairing store. ttl: <=0 → never expire
+// (approve writes expires_at = NULL). renewalWindow: <=0 → auto (ttl/4);
+// clamped to ttl; 0 → renewal disabled. SRS 012.
+func NewSQLitePairingStore(db *sql.DB, ttl, renewalWindow time.Duration) *SQLitePairingStore {
+	if ttl <= 0 {
+		ttl = 0 // never expire (explicit config "0"); NULL on approve, no renewal
+	} else if renewalWindow <= 0 {
+		renewalWindow = ttl / 4 // auto ~25%
+	}
+	if ttl > 0 && renewalWindow > ttl {
+		renewalWindow = ttl
+	}
+	return &SQLitePairingStore{db: db, ttl: ttl, renewalWindow: renewalWindow}
 }
 
 func (s *SQLitePairingStore) SetOnRequest(cb func(code, senderID, channel, chatID string)) {
@@ -95,11 +107,14 @@ func (s *SQLitePairingStore) ApprovePairing(ctx context.Context, code, approvedB
 
 	s.db.ExecContext(ctx, "DELETE FROM pairing_requests WHERE id = ?", reqID)
 
-	expiresAt := now.Add(pairedDeviceTTL)
+	var expiresVal interface{}
+	if s.ttl > 0 {
+		expiresVal = now.Add(s.ttl).Round(0) // finite lifetime (strip monotonic for SQLite string compare)
+	} // else nil → NULL = never expire (SRS 012)
 	_, err = s.db.ExecContext(ctx,
 		`INSERT INTO paired_devices (id, sender_id, channel, chat_id, paired_by, paired_at, metadata, expires_at, tenant_id)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		uuid.Must(uuid.NewV7()), senderID, channel, chatID, approvedBy, now, metaJSON, expiresAt, reqTenantID,
+		uuid.Must(uuid.NewV7()), senderID, channel, chatID, approvedBy, now, metaJSON, expiresVal, reqTenantID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create paired device: %w", err)
@@ -147,15 +162,31 @@ func (s *SQLitePairingStore) RevokePairing(ctx context.Context, senderID, channe
 
 func (s *SQLitePairingStore) IsPaired(ctx context.Context, senderID, channel string) (bool, error) {
 	tid := tenantIDForInsert(ctx)
+	now := time.Now().Round(0) // Strip monotonic clock for correct SQLite string comparison
 	var count int64
 	err := s.db.QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM paired_devices WHERE sender_id = ? AND channel = ? AND tenant_id = ? AND (expires_at IS NULL OR expires_at > ?)",
-		senderID, channel, tid, time.Now().Round(0),
+		senderID, channel, tid, now,
 	).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("pairing check query: %w", err)
 	}
-	return count > 0, nil
+	paired := count > 0
+	// Sliding renewal (SRS 012): an in-use device within the renewal window keeps
+	// its expiry alive. Best-effort + non-blocking (a renewal error never flips
+	// the verdict); window-gated so it does not write once per message.
+	if paired && s.ttl > 0 && s.renewalWindow > 0 {
+		if _, rerr := s.db.ExecContext(ctx,
+			`UPDATE paired_devices
+			 SET expires_at = ?
+			 WHERE sender_id = ? AND channel = ? AND tenant_id = ?
+			   AND expires_at IS NOT NULL AND expires_at <= ?`,
+			now.Add(s.ttl).Round(0), senderID, channel, tid, now.Add(s.renewalWindow).Round(0),
+		); rerr != nil {
+			slog.Warn("security.pairing_renew_failed", "sender_id", senderID, "channel", channel, "error", rerr)
+		}
+	}
+	return paired, nil
 }
 
 func (s *SQLitePairingStore) ListPending(ctx context.Context) []store.PairingRequestData {
@@ -204,7 +235,7 @@ func (s *SQLitePairingStore) ListPaired(ctx context.Context) []store.PairedDevic
 	s.db.ExecContext(ctx, "DELETE FROM paired_devices WHERE expires_at IS NOT NULL AND expires_at < ?", now)
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT sender_id, channel, chat_id, paired_by, paired_at, COALESCE(metadata, '{}')
+		`SELECT sender_id, channel, chat_id, paired_by, paired_at, expires_at, COALESCE(metadata, '{}')
 		 FROM paired_devices WHERE tenant_id = ? ORDER BY paired_at DESC`, tid)
 	if err != nil {
 		return nil
@@ -215,12 +246,18 @@ func (s *SQLitePairingStore) ListPaired(ctx context.Context) []store.PairedDevic
 	for rows.Next() {
 		var d store.PairedDeviceData
 		var pairedAtStr string
+		var expiresAtStr sql.NullString
 		var metaJSON []byte
-		if err := rows.Scan(&d.SenderID, &d.Channel, &d.ChatID, &d.PairedBy, &pairedAtStr, &metaJSON); err != nil {
+		if err := rows.Scan(&d.SenderID, &d.Channel, &d.ChatID, &d.PairedBy, &pairedAtStr, &expiresAtStr, &metaJSON); err != nil {
 			slog.Warn("pairing: scan paired error", "error", err)
 			continue
 		}
 		d.PairedAt = parseTimeToMillis(pairedAtStr)
+		if expiresAtStr.Valid && expiresAtStr.String != "" {
+			if ms := parseTimeToMillis(expiresAtStr.String); ms > 0 {
+				d.ExpiresAt = &ms // nil left nil → never expire
+			}
+		}
 		if len(metaJSON) > 0 {
 			json.Unmarshal(metaJSON, &d.Metadata)
 		}

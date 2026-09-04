@@ -31,6 +31,8 @@ func setupStoresAndTracing(
 		StorageBackend:   "sqlite",
 		EncryptionKey:    os.Getenv("GOCLAW_ENCRYPTION_KEY"),
 		SkillsStorageDir: filepath.Join(dataDir, "skills-store"),
+		PairingDeviceTTL:     cfg.Channels.Pairing.DeviceTTLDuration(),
+		PairingRenewalWindow: cfg.Channels.Pairing.RenewalWindowDuration(cfg.Channels.Pairing.DeviceTTLDuration()),
 	}
 	stores, err := sqlitestore.NewSQLiteStores(storeCfg)
 	if err != nil {

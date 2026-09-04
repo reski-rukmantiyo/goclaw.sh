@@ -6,6 +6,8 @@ PostgreSQL multi-tenant AI agent gateway with WebSocket RPC + HTTP API.
 
 Always respond in the same language as the user's prompt. If the user writes in Vietnamese, respond in Vietnamese. If in English, respond in English. Match the user's language naturally.
 
+Use simple English. Do not use terminology that is hard to understand. When a technical term must be used, explain it in plain words right after.
+
 ## SRS Documentation (Read First)
 
 Files in `docs/srs/` follow a fixed naming convention:
@@ -19,6 +21,7 @@ The `NNN` prefix is a three-digit sequence number that defines **chronological o
 Why: `docs/srs/` holds canonical requirements. Conclusions made without reading it risk duplicating scope, contradicting an existing FR, or re-investigating a bug already documented + partially fixed. Every later feature or bugfix builds on earlier ones — skipping them breaks traceability.
 
 How to apply:
+- At the start of ANY task — feature, bugfix, start, check, or search — always look for documentation in `docs/` FIRST. The `docs/` folder holds topic guides (`00-architecture-overview.md` … `27-rbac-permissions-and-sidebar-access.md`) plus `docs/srs/` requirement docs. Check both before writing any code or giving any conclusion.
 - At the start of ANY feature or bugfix task, `ls docs/srs/` and read ALL existing files in `NNN` order — every prior `feat-*` and `bugfix-*` must be read before executing new work, regardless of whether it seems related.
 - Cross-reference new work against existing SRS scope and FR traceability before proposing changes; an FR, data model, or error code you plan to introduce may already be owned by an earlier doc.
 - Before starting a bugfix, read every prior `bugfix-*` doc and its status header — the defect may already be code-fixed (live verification may still be pending), or the root cause may trace back to an earlier fix.

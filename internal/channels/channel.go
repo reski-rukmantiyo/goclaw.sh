@@ -184,7 +184,8 @@ type BaseChannel struct {
 	pairingService  store.PairingStore
 	groupHistory    *PendingHistory
 	historyLimit    int
-	approvedGroups  sync.Map // chatID → true (in-memory cache for paired group approval)
+	approvedGroups  sync.Map // chatID → time.Time approved-at (TTL-bounded cache, groupApproveCacheTTL)
+	memberRenewed   sync.Map // senderID → time.Time last member-renewal (TTL-bounded, memberRenewCacheTTL; SRS 012 FR-08)
 	pairingDebounce sync.Map // senderID → time.Time (debounce pairing reply sends)
 	requireMention  bool
 
@@ -271,15 +272,82 @@ func (c *BaseChannel) ConfigPersister() func(ctx context.Context, config any) er
 // RequireMention returns whether @mention is required in group chats.
 func (c *BaseChannel) RequireMention() bool { return c.requireMention }
 
-// IsGroupApproved returns true if the group was already approved via pairing.
+// groupApproveCacheTTL bounds how long a group stays in the in-memory approval
+// cache before the next message re-validates via IsPaired (SRS 012). Bounds
+// staleness so (a) the sliding renewal fires for groups (IsPaired is the renewal
+// hook) and (b) a revoked/expired group is evicted within this window instead of
+// admitted forever. Short enough to renew well before the 30-day wall; long
+// enough to keep the DB-skip benefit on active groups.
+const groupApproveCacheTTL = 60 * time.Minute
+
+// IsGroupApproved returns true if the group was approved via pairing AND the
+// cached approval is still fresh (within groupApproveCacheTTL). A stale entry is
+// evicted so the caller re-validates via IsPaired — which renews an in-window
+// device (sliding expiry) or evicts an expired/revoked one.
 func (c *BaseChannel) IsGroupApproved(chatID string) bool {
-	_, ok := c.approvedGroups.Load(chatID)
-	return ok
+	v, ok := c.approvedGroups.Load(chatID)
+	if !ok {
+		return false
+	}
+	approvedAt, _ := v.(time.Time)
+	if time.Since(approvedAt) > groupApproveCacheTTL {
+		c.approvedGroups.Delete(chatID)
+		return false
+	}
+	return true
 }
 
-// MarkGroupApproved caches a group as approved so future messages skip DB lookups.
+// MarkGroupApproved caches a group as approved (with the current time) so future
+// messages skip DB lookups until the cache TTL elapses.
 func (c *BaseChannel) MarkGroupApproved(chatID string) {
-	c.approvedGroups.Store(chatID, true)
+	c.approvedGroups.Store(chatID, time.Now())
+}
+
+// memberRenewCacheTTL bounds how often a member's paired_devices row is
+// re-validated while that member is active in a group (SRS 012 FR-08). Calling
+// IsPaired per group message would add a DB round-trip per message; instead the
+// member is re-validated at most once per TTL — the same cadence the
+// groupApproveCacheTTL gives the group row. IsPaired is the sliding-renewal
+// hook, so an active member's expiry advances within ≤ this TTL of entering
+// the renewal window.
+const memberRenewCacheTTL = 60 * time.Minute
+
+// TouchGroupMember renews the *member's own* paired-device expiry (single
+// sliding expiry, SRS 012 FR-08). Group messages under "open"/"allowlist"
+// group policies never reach IsPaired (the renewal hook), so a member active
+// only in groups would let their personal pairing lapse. This call re-runs
+// IsPaired for the member's senderID — re-advancing expires_at — regardless of
+// the group policy outcome. Result is ignored: renewal is best-effort and MUST
+// never gate the group message (an unpaired member is governed by the group
+// policy, not by this renewal). Rate-limited per member via memberRenewCacheTTL
+// so a busy group does not add a DB lookup per message.
+func (c *BaseChannel) TouchGroupMember(ctx context.Context, senderID string) {
+	if senderID == "" {
+		return
+	}
+	if v, ok := c.memberRenewed.Load(senderID); ok {
+		last, _ := v.(time.Time)
+		if time.Since(last) <= memberRenewCacheTTL {
+			return // renewed recently — skip until memberRenewCacheTTL elapses
+		}
+	}
+	c.memberRenewed.Store(senderID, time.Now())
+
+	ps := c.pairingService
+	if ps == nil {
+		return
+	}
+	// Errors are swallowed on purpose: renewal is best-effort (the store's
+	// fail-open posture) and must never block the inbound group message.
+	if _, err := ps.IsPaired(ctx, senderID, c.name); err != nil {
+		slog.Debug("pairing member renewal failed", "sender_id", senderID, "channel", c.name, "error", err)
+	}
+}
+
+// ClearGroupMemberRenewal removes a member's renewal-rate entry (e.g. after
+// revoke) so the next group message re-validates immediately.
+func (c *BaseChannel) ClearGroupMemberRenewal(senderID string) {
+	c.memberRenewed.Delete(senderID)
 }
 
 // ClearGroupApproval removes a group from the approval cache.
@@ -351,6 +419,12 @@ func (c *BaseChannel) CheckDMPolicy(ctx context.Context, senderID, dmPolicy stri
 // chatID is the group chat identifier used for approval caching.
 // Returns PolicyAllow, PolicyDeny, or PolicyNeedsPairing.
 func (c *BaseChannel) CheckGroupPolicy(ctx context.Context, senderID, chatID, groupPolicy string) PolicyResult {
+	// Single sliding expiry (SRS 012 FR-08): a member active in a group renews
+	// their OWN paired-device expiry, independent of the group-policy verdict
+	// ("open" policies never reach IsPaired otherwise). Best-effort; the group
+	// message itself is governed by the policy result below.
+	c.TouchGroupMember(ctx, senderID)
+
 	if groupPolicy == "" {
 		groupPolicy = "open"
 	}

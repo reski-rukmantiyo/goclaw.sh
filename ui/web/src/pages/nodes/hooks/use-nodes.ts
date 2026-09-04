@@ -20,6 +20,7 @@ export interface PairedDevice {
   chat_id: string;
   paired_at: number;
   paired_by: string;
+  expires_at?: number | null; // Unix-ms; null/absent = never expire (SRS 012)
 }
 
 export function useNodes() {

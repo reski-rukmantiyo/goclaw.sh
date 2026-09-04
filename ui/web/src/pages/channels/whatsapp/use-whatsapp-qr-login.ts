@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useWsCall } from "@/hooks/use-ws-call";
 import { useWsEvent } from "@/hooks/use-ws-event";
 
@@ -8,18 +8,30 @@ export function useWhatsAppQrLogin(instanceId: string | null) {
   const [qrPng, setQrPng] = useState<string | null>(null);
   const [status, setStatus] = useState<QrStatus>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [reason, setReason] = useState("");
   const { call: startQR, loading } = useWsCall("whatsapp.qr.start");
 
+  // Guard against re-entrant / duplicate qr.start calls. React StrictMode
+  // double-mounts effects in dev (two start() calls in the same tick) and
+  // rapid clicks can fire several; each extra call cancels the prior session
+  // (backend Swap) so no QR ever renders. Relink/Retry buttons are already
+  // disabled while loading, so this never blocks a legitimate action.
+  const inFlight = useRef(false);
+
   const start = useCallback(async (forceReauth = false) => {
-    if (!instanceId) return;
+    if (!instanceId || inFlight.current) return;
+    inFlight.current = true;
     setStatus("waiting");
     setQrPng(null);
     setErrorMsg("");
+    setReason("");
     try {
       await startQR({ instance_id: instanceId, force_reauth: forceReauth });
     } catch (err) {
       setStatus("error");
       setErrorMsg(err instanceof Error ? err.message : "Failed to start QR session");
+    } finally {
+      inFlight.current = false;
     }
   }, [startQR, instanceId]);
 
@@ -30,6 +42,7 @@ export function useWhatsAppQrLogin(instanceId: string | null) {
     setStatus("idle");
     setQrPng(null);
     setErrorMsg("");
+    setReason("");
   }, []);
 
   useWsEvent(
@@ -49,7 +62,7 @@ export function useWhatsAppQrLogin(instanceId: string | null) {
     "whatsapp.qr.done",
     useCallback(
       (payload: unknown) => {
-        const p = payload as { instance_id: string; success: boolean; already_connected?: boolean; error?: string };
+        const p = payload as { instance_id: string; success: boolean; already_connected?: boolean; error?: string; reason?: string };
         if (p.instance_id !== instanceId) return;
         if (p.success) {
           // Distinguish: already connected before any QR vs. freshly authenticated via QR scan.
@@ -57,6 +70,7 @@ export function useWhatsAppQrLogin(instanceId: string | null) {
         } else {
           setStatus("error");
           setErrorMsg(p.error ?? "QR authentication failed");
+          setReason(p.reason ?? "");
         }
       },
       [instanceId],
@@ -64,6 +78,6 @@ export function useWhatsAppQrLogin(instanceId: string | null) {
   );
 
   return {
-    qrPng, status, errorMsg, loading, start, reset, retry: start, triggerReauth,
+    qrPng, status, errorMsg, reason, loading, start, reset, retry: start, triggerReauth,
   };
 }
