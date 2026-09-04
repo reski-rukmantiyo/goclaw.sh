@@ -2,8 +2,8 @@
 
 **Project**: GoClaw Gateway
 **Release**: 2026.3.0
-**Version**: 0.4-draft
-**Date**: 2026-07-22
+**Version**: 0.5-draft
+**Date**: 2026-08-17
 **Status**: Implemented (code-complete + build/vet/test-verified). UI render + live on-tenant verification pending (§3 FR-02/FR-03 manual boxes).
 **Difficulty**: Low–Medium
 **Estimate**: 0.5–1 days
@@ -14,6 +14,7 @@
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.5-draft | 2026-08-17 | **Unified member sliding expiry (FR-08).** Operator report: group chats with expired members still worked while the same members' **personal (DM) chats** forced re-pairing. Root cause (verified against live `whatsapp-reski` instance, DB `postgres@localhost:5432`): (a) the instance runs `group_policy = "open"` → `CheckGroupPolicy` returns `PolicyAllow` **before** reaching `IsPaired` (the renewal hook), so group activity never renewed anything; (b) the **group pairing row** (`group:<chatID>`) and the **member's personal row** (`<senderID>`) are separate `paired_devices` rows — even under `group_policy = "pairing"`, group messages renew only the group row, never the member's own. A member active exclusively in groups hit the 30-day wall → DM re-auth. Fix (FR-08): `CheckGroupPolicy` now calls `TouchGroupMember(ctx, senderID)` first — a best-effort, TTL-gated (`memberRenewCacheTTL = 60 min`) re-run of `IsPaired` for the **member's own senderID**, renewing their personal row regardless of the group-policy verdict. Single sliding expiry per member: **any** qualifying activity (DM *or* any group message) extends the same `expires_at`. Renewal never gates the message (result ignored; unpaired members stay governed by the group policy). Covers every `CheckGroupPolicy` caller: WhatsApp, Discord, Feishu, Slack, Zalo personal. New tests: `TestTouchGroupMember_RenewsOwnPairing`, `_RateLimited`, `_UnpairedMemberStillRenews`, `_NoPairingService`, `TestClearGroupMemberRenewal`; `TestCheckGroupPolicy_ActiveGroupRevalidatesAfterCacheTTL` updated for the member-renewal call. **Also fixed stale doc:** FR-06/FR-07 previously documented `groupApproveCacheTTL = 10 min`; the shipped constant is `60 * time.Minute` (`channel.go`, commit daf7dd02) — doc now matches code. **Verification:** `go test -race ./internal/channels/` 140/140 ✓. |
 | 0.1-draft | 2026-07-15 | Initial draft. Verified root cause against code: every paired device gets a hard `expires_at = paired_at + 30d` (`internal/store/pg/pairing.go:20,112`; `internal/store/sqlitestore/pairing.go:24,98`) and the TTL is never refreshed — `IsPaired` only *reads* the expiry (`pg/pairing.go:167`; `sqlite:152`), the only `UPDATE paired_devices` is `MigrateGroupChatID` which does not touch `expires_at` (`pg/pairing.go:265`; `sqlite:249`). So an active device that messages daily still dies at day 30 and is pruned on the next `ListPaired` (`pg/pairing.go:231`; `sqlite:204`) → operator must re-pair ("register nodes again"). **No schema migration required** — the `expires_at` column already exists in both DBs (PG `migrations/000021_paired_devices_expiry.up.sql:3`; SQLite `schema.sql:539`). Chosen fix: sliding renewal inside the store `IsPaired` (single point covers every channel + browser), gated by a renewal window to avoid a write-per-message, plus a configurable TTL + renewal window, and surfacing `expires_at` in the `pairing.list` response + Nodes UI so the expiry is visible. |
 | 0.2-draft | 2026-07-15 | **Implemented (code-complete + build/vet/test-verified).** Config: `PairingConfig` (`config_channels.go`) with `DeviceTTLDuration()` (30d default, `0`=never) + `RenewalWindowDuration(ttl)` (auto ttl/4, clamp, `0`=disabled), threaded through `store.StoreConfig` (`types.go` + `DefaultPairedDeviceTTL`) → `pg/factory.go`/`sqlitestore/factory.go` → constructors `NewPGPairingStore(db,ttl,window)`/`NewSQLitePairingStore(db,ttl,window)`; 4 gateway build sites + onboard seed store wired (`cmd/gateway_stores_*.go`, `cmd/onboard_managed.go`). Stores: `IsPaired` runs a window-gated, best-effort, tenant-scoped renewal UPDATE after the COUNT verdict (PG + SQLite); `ApprovePairing` writes `expires_at = NULL` when ttl≤0; `ListPaired` SELECT + `pairedDeviceRow` add `expires_at`; `PairedDeviceData.ExpiresAt *int64` (`pairing_store.go`). Hardcoded `pairedDeviceTTL` consts removed. i18n: 4 keys × en/vi/zh in `nodes.json`. UI: `PairedDevice.expires_at?` (`use-nodes.ts`) + Expires column + never/expired/expiring-soon badges (`nodes-page.tsx`). **Verification:** `go build ./...` ✓, `go build -tags sqliteonly ./...` ✓, `go vet ./...` clean, `go test -tags sqliteonly -race ./internal/store/sqlitestore/ -run TestSQLitePairingStore_` 7/7 ✓, `go test ./internal/config/` 69/69 ✓ (incl. new `TestPairingConfig_Durations` 8 subtests + `TestChannelsConfig_PairingDefault`), `pnpm build` (ui/web) ✓. `go fix ./...` reverted — produced unrelated modernization churn (agent/memory/http-tenants tests etc.), same convention as `007`/`009`. **Deferred (env-gated):** PG pairing store integration test (needs pgvector pg18 container; PG impl mirrors SQLite line-for-line — SQLite tests prove the SQL logic), live on-tenant manual check (active device's `expires_at` advances; idle device pruned), and the FR-02/FR-03 UI render checks (needs browser). **Pre-existing unrelated failures:** 4 SQLite schema-migration DDL tests (`TestEnsureSchema_MigrationV11*`, `TestSQLiteSchemaUpgrade_23_to_24`, `_25_to_26_HeartbeatFK`) — same class documented in `008`; fail identically on the clean tree. |
 | 0.3-draft | 2026-07-22 | **Live-verification gap closed (FR-06).** Operator reported a WhatsApp group showed `expires ≈ now` ("just now") yet still accepted messages. Root cause: the in-memory group-approval cache `approvedGroups` (`channel.go`) had **no TTL** — a group was cached on first `IsPaired` hit and every later message hit the cache → `PolicyAllow` **before** reaching `IsPaired`. So for groups the FR-00 renewal (which lives in `IsPaired`) never fired (expiry lapsed) **and** a revoked/expired group kept working for the whole process lifetime. Fix (centralized in `IsGroupApproved`/`MarkGroupApproved`): cache now stores `chatID → time.Time` (approved-at); `IsGroupApproved` evicts + returns false when older than `groupApproveCacheTTL` (10 min), so the next message re-validates via `IsPaired` → renews (FR-00) **or** evicts an expired/revoked group. Covers WhatsApp + Telegram (all `IsGroupApproved` callers). New `TestGroupApproveCache_TTL`. **Verification:** `go build` (PG+sqliteonly) ✓, `go vet ./internal/channels/...` clean, `go test -race ./internal/channels/ -run TestGroupApproveCache` ✓. **Note:** requires a gateway rebuild + restart to take effect; the old in-memory cache only clears on restart. |
@@ -206,7 +207,7 @@ Fix: make the cache TTL-bounded so the next message after the TTL re-validates v
 | entry fresh (`now - approvedAt <= groupApproveCacheTTL`) | `PolicyAllow` (current fast path, no DB) |
 | entry stale (`now - approvedAt > groupApproveCacheTTL`) | evict entry → fall through to `IsPaired` (renew / evict) → re-`MarkGroupApproved` |
 
-`groupApproveCacheTTL` defaults to `10 * time.Minute` (`channel.go`). Short enough to renew well before the 30-day wall and to evict a lapsed group within minutes; long enough to keep the DB-skip benefit on active groups. The change is centralized in `IsGroupApproved`/`MarkGroupApproved`, so every caller benefits: WhatsApp (`whatsapp/policy.go:16` → `CheckGroupPolicy`) and Telegram (`handlers.go:264,319,375`).
+`groupApproveCacheTTL` is `60 * time.Minute` (`channel.go`; note — the 0.3 revision row says 10 min, but the shipped constant from commit daf7dd02 is 60 min). Short enough to renew well before the 30-day wall; long enough to keep the DB-skip benefit on active groups. The change is centralized in `IsGroupApproved`/`MarkGroupApproved`, so every caller benefits: WhatsApp (`whatsapp/policy.go:16` → `CheckGroupPolicy`) and Telegram (`handlers.go:264,319,375`).
 
 Acceptance criteria:
 
@@ -221,14 +222,15 @@ Acceptance criteria:
 
 **User-facing guarantee (operator request):** as long as a node — **especially a WhatsApp DM and a WhatsApp group** — has message activity, its `expires_at` is extended by the sliding renewal (FR-00), so it **never expires during periods of activity**. Only **inactivity beyond the TTL** expires a node. This is the property the "register nodes again after some time" report violated, and it must hold for every channel, not just DMs.
 
-The guarantee rests on the renewal hook (`IsPaired`) being reached while the device is in-window. Two reach paths:
+The guarantee rests on the renewal hook (`IsPaired`) being reached while the device is in-window. Three reach paths:
 
 | Node type | Renewal-hook reach | Why active ⇒ no expiry |
 |---|---|---|
 | **DM** (WhatsApp/Telegram/…) | `CheckDMPolicy` has **no cache** → `IsPaired` called on **every** message (`channel.go:335`) | every active msg renews while in-window |
-| **Group** (WhatsApp/Telegram) | `approvedGroups` cache HIT does **not** refresh the stamp (`channel.go:389-390` returns early) → entry ages out exactly `groupApproveCacheTTL` (10 min) after the last miss → next msg re-runs `IsPaired` (`channel.go:389-404`) | an active group is re-validated (renewed) within ≤10 min of entering the 7.5-day renewal window — far inside the window, so it never lapses |
+| **Group row** (`group:<chatID>`) | `approvedGroups` cache HIT does **not** refresh the stamp (`channel.go`) → entry ages out exactly `groupApproveCacheTTL` (60 min) after the last miss → next msg re-runs `IsPaired` for the group row | an active group is re-validated (renewed) within ≤60 min of entering the 7.5-day renewal window — far inside the window, so it never lapses |
+| **Member's personal row** (FR-08) | every group msg fires `TouchGroupMember` (`CheckGroupPolicy` entry) → member's own `IsPaired` re-run, TTL-gated to ≤1/hour (`memberRenewCacheTTL`) | a member active **only in groups** still renews their personal pairing — DM and group activity feed ONE expiry |
 
-Critical property verified: a cache **hit does not re-stamp** the entry, so even a group messaged every few seconds still ages out after 10 min and re-runs `IsPaired`. If hits re-stamped, a constantly-active group would never re-validate and would expire — the exact symptom the cache-TTL fix (FR-06) closed.
+Critical property verified: a cache **hit does not re-stamp** the entry, so even a group messaged every few seconds still ages out after the TTL and re-runs `IsPaired`. If hits re-stamped, a constantly-active group would never re-validate and would expire — the exact symptom the cache-TTL fix (FR-06) closed.
 
 Acceptance criteria:
 
@@ -240,8 +242,87 @@ Acceptance criteria:
 
 ---
 
+### FR-08: Unified member sliding expiry — group activity renews the member's personal pairing
+
+**Gap found at live verification (2026-08-17):** operator reported group chats still worked for members whose pairings had expired, while those same members' **personal (DM) chats** demanded re-pairing. Two causes, both verified against the live `whatsapp-reski` instance (`channel_instances`: `group_policy = "open"`, `dm_policy = "pairing"`):
+
+1. **`group_policy = "open"` bypasses the renewal hook entirely.** `CheckGroupPolicy` returns `PolicyAllow` on the `default` branch without ever calling `IsPaired` (`channel.go`). Group activity therefore renewed nothing, and *any* member — expired, revoked, or never-paired — was admitted for the life of the process. ("Expired nodes still can chat in group.")
+2. **Group and personal pairings are separate rows.** Even under `group_policy = "pairing"`, the group check runs `IsPaired("group:<chatID>", …)` — the **group's** row. A member active exclusively in groups never re-ran `IsPaired` for their own senderID, so their personal row hit the 30-day wall and the next DM forced re-pairing. ("Personal chat has to re-authenticate.")
+
+Fix: `CheckGroupPolicy` now fires `TouchGroupMember(ctx, senderID)` **before** evaluating the group policy. It re-runs `IsPaired` for the **member's own senderID** — the FR-00 renewal hook — so any group message from a paired member advances that member's personal `expires_at`. Result is deliberately ignored: renewal is best-effort and must never gate the group message (whether a member may speak in a group is the group policy's decision, not the renewal's).
+
+| Property | Behaviour |
+|---|---|
+| single expiry per member | DM msgs (FR-07 DM path) **and** group msgs (this FR) renew the **same** `paired_devices` row (`sender_id = <member JID>`) |
+| fires on every group policy | `"open"` / `"allowlist"` / `"pairing"` / default — `TouchGroupMember` runs before the policy switch |
+| rate-limited | per-member `memberRenewed` cache (`senderID → time.Time`, `memberRenewCacheTTL = 60 min`) — a busy group adds ≤1 member `IsPaired` per member per hour, not per message |
+| never gates the message | return value ignored; unpaired/unknown members unaffected — group admission still decided by the group policy |
+| revocation-friendly | `ClearGroupMemberRenewal(senderID)` forces immediate re-validation (e.g. post-revoke) |
+
+Acceptance criteria:
+
+- [x] A group message under `group_policy = "open"` from a paired member re-runs `IsPaired` for the member's **own** senderID. _(`TestTouchGroupMember_RenewsOwnPairing` — asserts `lastIsPairedSender == "member1"`, not `group:chat1`)_
+- [x] Member renewal is TTL-gated: a 5-message burst → 1 `IsPaired`; after cache expiry → 1 more. _(`TestTouchGroupMember_RateLimited`)_
+- [x] An unpaired member under `"open"` is still admitted (renewal never flips the policy verdict). _(`TestTouchGroupMember_UnpairedMemberStillRenews`)_
+- [x] Nil pairing service → no-op, no panic. _(`TestTouchGroupMember_NoPairingService`)_
+- [x] `ClearGroupMemberRenewal` forces re-validation on the next message. _(`TestClearGroupMemberRenewal`)_
+- [x] `go test -race ./internal/channels/` green (140/140, incl. the updated `TestCheckGroupPolicy_ActiveGroupRevalidatesAfterCacheTTL`).
+- [ ] Live: a member whose personal row is inside the renewal window sends a WhatsApp group message → `expires_at` advances within ≤`memberRenewCacheTTL` (manual).
+
+#### FR-08.1: Behaviour matrix — an EXPIRED member sends a message
+
+"Expired" = the member's personal row has `expires_at < NOW()` (`IsPaired` COUNT → 0). The renewal UPDATE is gated on `paired == true` (`pg/pairing.go` IsPaired — the UPDATE runs only inside the `if paired` branch), so **an already-expired row can never resurrect itself by activity** — re-pairing is the only recovery. Extension works only while the row is still live (inside the renewal window = last 25% of TTL).
+
+| # | Scenario | What happens | Member row: expired or not | Member row: extended or not |
+|---|---|---|---|---|
+| 1 | **Personal (DM) chat** — `dm_policy = "pairing"` | `CheckDMPolicy` → `IsPaired(member)` → COUNT 0 → `PolicyNeedsPairing` → pairing-reply message sent; **member cannot chat** until operator approves a new pairing code | Still expired (row untouched; pruned on next `ListPaired` — see FR-02) | **No** — renewal UPDATE gated on `paired == true`, which failed |
+| 2 | **WhatsApp group, `group_policy = "open"`** | `TouchGroupMember` → `IsPaired(member)` → false, no renewal (fire-and-forget, result ignored) → policy `"open"` → `PolicyAllow` — **member CAN still chat in the group**; group access ignores member pairing by design | Still expired | **No** — renewal attempted (FR-08 hook fired) but gated on `paired == true`; an expired row cannot self-resurrect |
+| 3 | **WhatsApp group, `group_policy = "pairing"` (not open)** | `TouchGroupMember` → member `IsPaired` → false, no effect on verdict. Group admission decided by the **group row** (`group:<chatID>`): group row valid (or in allowlist) → `PolicyAllow`, member can chat; group row also absent/expired → `PolicyNeedsPairing` → pairing request issued for the **group**, not the member | Still expired | **No** for the member row (same `paired == true` gate). The **group row** may extend (its own renewal, FR-00/FR-06) — but that is a different `paired_devices` row |
+
+Design consequence (accepted): under `group_policy = "open"`, an expired member keeps group access forever (open = trust the group invite, no per-member gate). If the operator wants expired members locked out of groups too, set `group_policy = "allowlist"` (member must be in the channel allowlist) — not `"pairing"` alone, which gates the **group**, not each member.
+
+#### FR-08.2: Behaviour matrix — a NON-EXPIRED member sends a message
+
+"Not expired" = the member's personal row has `expires_at > NOW()` (COUNT ≥ 1 → `paired == true`). Two sub-states, because the renewal UPDATE fires **only inside the renewal window** (`expires_at <= NOW() + renewalWindow`, default = last 25% of TTL):
+
+- **Healthy** — `expires_at` outside the renewal window (> 75% of TTL remaining): `IsPaired` returns true, but the window predicate fails → **no UPDATE**. Correct: the row is nowhere near lapsing; the write would be wasted.
+- **In renewal window** — `expires_at` within the last 25% of TTL: UPDATE fires → `expires_at = NOW() + TTL` (full 30d re-granted).
+
+**Timing values (implementation defaults, FR-01):**
+
+| Setting | Default | Where configured | Meaning |
+|---|---|---|---|
+| `device_ttl` | `720h` (30 days) | `channels.pairing.device_ttl` in config.json (absent → default) | lifetime granted on approve **and on each renewal** — renewal re-grants the FULL TTL from the renewing message, not a partial add |
+| `renewal_window` | `180h` (7.5 days = TTL/4) | `channels.pairing.renewal_window` (absent → TTL/4; `"0"` → renewal disabled) | near-expiry window that arms the renewal UPDATE |
+| `memberRenewCacheTTL` | `60 min` | code const (`internal/channels/channel.go`) | how often a group message re-runs the member's `IsPaired` (rate limit, not a security window) |
+| `groupApproveCacheTTL` | `60 min` | code const (`internal/channels/channel.go`) | how often a group message re-runs the group row's `IsPaired` |
+
+With defaults: a member is extended **the moment a qualifying message arrives while ≤7.5 days remain**, and the extension sets `expires_at = message time + 30 days`. A member active at least once every 22.5 days (30 − 7.5) never lapses. Verified in code: the renewal UPDATE writes `now.Add(s.ttl)` (`pg/pairing.go` / `sqlitestore/pairing.go` `IsPaired`), gated on `paired == true` AND `expires_at <= now + renewalWindow` — an expired row (COUNT 0) never reaches the UPDATE.
+
+Live deployment note (2026-08-17): the running gateway's `config.json` has **no `channels.pairing` block** → defaults are active (30d TTL, 7.5d window). Operator tuning example: add under `channels`:
+
+```json5
+"pairing": { "device_ttl": "720h", "renewal_window": "180h" }
+```
+
+| # | Scenario | What happens | Member row: expired or not | Member row: extended or not |
+|---|---|---|---|---|
+| 1 | **Personal (DM) chat** — `dm_policy = "pairing"` | `CheckDMPolicy` → `IsPaired(member)` on **every** msg (no cache) → `PolicyAllow` → member chats normally | Not expired | **Yes, but only when in the renewal window** — every DM msg evaluates the window; healthy rows stay untouched (no write), in-window rows extend to `now + 30d` on the very first msg |
+| 2 | **WhatsApp group, `group_policy = "open"`** | `TouchGroupMember` (TTL-gated: first msg, then ≤1/hour/member) → member `IsPaired` → true → policy `"open"` → `PolicyAllow` → member chats normally | Not expired | **Yes, when in the renewal window** — renewal fires on the first group msg per `memberRenewCacheTTL` (60 min). A member active **only in groups** keeps their personal row alive (the FR-08 fix). Group activity alone, pre-FR-08, let this row lapse |
+| 3 | **WhatsApp group, `group_policy = "pairing"` (not open)** | `TouchGroupMember` → member renewal (same as #2). Group admission via the **group row** (`group:<chatID>`): cache fresh → `PolicyAllow` (no DB); cache stale/miss → `IsPaired(group)` → valid → re-cache + allow, invalid → `PolicyNeedsPairing` for the group | Not expired | **Yes, when in the renewal window** — member row via `TouchGroupMember` (independent of the group verdict). The **group row** re-validates on its own cadence (`groupApproveCacheTTL` = 60 min) and extends itself when in-window (FR-00/FR-06) |
+
+Net effect (the FR-08 guarantee): for a non-expired member, **any** qualifying activity — DM, open group, or pairing-gated group — feeds the **same single sliding expiry**. The row only ever reaches the expired state through `memberRenewCacheTTL` + `groupApproveCacheTTL` (≤ 60 min of re-validation lag) plus the full renewal window (~7.5d at default TTL) of total inactivity — i.e. an active member cannot lapse.
+
+| Sub-state (row before msg) | DM msg | Group msg (`open` or `pairing`) |
+|---|---|---|
+| Healthy (> 22.5 days left) | no write — `expires_at` unchanged | no write — `expires_at` unchanged (renewal hook may not even fire if member cache is fresh) |
+| In renewal window (≤ 7.5 days left) | extended → `msg time + 30 days` | extended → `msg time + 30 days` (on the first msg after the member cache expires, ≤ 60 min lag) |
+
+---
+
 ## 4. System Impact
 
+- **Channel policy gate** (`internal/channels/channel.go`): `CheckGroupPolicy` fires `TouchGroupMember` (FR-08) + TTL-bounded `IsGroupApproved`/`MarkGroupApproved` (FR-06). New fields: `memberRenewed sync.Map`; new consts `memberRenewCacheTTL`, `groupApproveCacheTTL`. No store-interface change — renewal rides the existing `IsPaired`.
 - **Store interface + DTO** (`internal/store/pairing_store.go`): add `ExpiresAt *int64` to `PairedDeviceData` (FR-02). No new interface method — renewal is internal to `IsPaired`.
 - **PG store** (`internal/store/pg/pairing.go`): (a) `IsPaired` gains a conditional renewal UPDATE after the COUNT SELECT (FR-00); (b) `pairedDeviceTTL` const → constructor param `ttl`, add `renewalWindow`; `ApprovePairing` writes `NULL` when `ttl <= 0` (FR-01); (c) `pairedDeviceRow` + `ListPaired` SELECT add `expires_at` → map to `*int64` (FR-02). Constructor `NewPGPairingStore(db, ttl, renewalWindow)`.
 - **SQLite store** (`internal/store/sqlitestore/pairing.go`): mirror (a)/(b)/(c). Constructor `NewSQLitePairingStore(db, ttl, renewalWindow)`.
@@ -272,6 +353,8 @@ Acceptance criteria:
 | **Make TTL configurable (`0` = never), not just bump the constant.** | The 30d wall is the reported pain; operators have different trust/retention needs. `0`/NULL honours the migration-021 "NULL = no expiry" contract as a clean opt-out. Keeping a single hardcoded const would re-fix only one number. |
 | **Surface `expires_at` in the API + UI.** | The defect was invisible: a device vanishes on day 30 with no warning. Showing the expiry makes the behaviour observable and lets an operator see a device is "expiring soon" before it lapses — directly answering "why must I re-register". |
 | **No schema migration.** | The `expires_at` column exists in both DBs (PG migration 021; SQLite `schema.sql:539`). Renewal is an UPDATE on it; configurable TTL is constructor plumbing; expiry surfacing is a SELECT/DTO addition. Adding a migration would be cargo-culting — and would force a `sqliteonly` schema bump that the desktop edition does not need. |
+| **Member renewal ignores the `IsPaired` verdict and never gates the group message (FR-08).** | Whether a member may speak in a group is the group policy's decision; the member's own expiry is a background concern. Coupling them (e.g. denying group msgs for expired members under `"open"`) would silently change `open`'s contract — groups are admitted without per-member pairing by design. Renewal is a side-effect of the check, not a gate. |
+| **Member renewal is TTL-gated in the channel layer (60 min), not window-gated in the store.** | The store's renewal window (FR-00) bounds the *write* frequency; the channel-side cache bounds the *IsPaired round-trip* frequency. A per-message member lookup would add a DB hit to every group msg in busy groups; 1/hour/member keeps the overhead invisible while still renewing long before the 30-day wall. |
 | **Do NOT add a sweep/"renew all" job.** | Sliding renewal is per-activity by design: active devices survive, idle ones lapse (the eviction purpose of the original expiry). A background sweep that extends idle pairings would defeat that purpose and re-grant access to dormant/abandoned devices — a security regression. |
 
 ## 7. Risks and Open Questions
