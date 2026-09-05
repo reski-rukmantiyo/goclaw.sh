@@ -9,6 +9,7 @@ import { ChannelHeader } from "./channel-header";
 import { ChannelGeneralTab } from "./channel-general-tab";
 import { ChannelCredentialsTab } from "./channel-credentials-tab";
 import { ChannelGroupsTab } from "./channel-groups-tab";
+import { ChannelContactsTab } from "./channel-contacts-tab";
 import { ChannelManagersTab } from "./channel-managers-tab";
 import { ChannelDiagnosticsCard } from "./channel-diagnostics-card";
 import { DetailPageSkeleton } from "@/components/shared/loading-skeleton";
@@ -35,10 +36,14 @@ const baseChannelDetailTabs = new Set(["general", "credentials", "managers"]);
 export function resolveChannelDetailTab(
   requestedTab: string | null,
   showGroups: boolean,
+  showContacts = false,
 ) {
   if (!requestedTab) return DEFAULT_CHANNEL_DETAIL_TAB;
   if (requestedTab === "groups") {
     return showGroups ? "groups" : DEFAULT_CHANNEL_DETAIL_TAB;
+  }
+  if (requestedTab === "contacts") {
+    return showContacts ? "contacts" : DEFAULT_CHANNEL_DETAIL_TAB;
   }
   return baseChannelDetailTabs.has(requestedTab)
     ? requestedTab
@@ -82,6 +87,7 @@ export function ChannelDetailPage({
 
   const isTelegram = instance?.channel_type === "telegram";
   const showGroupsTab = isTelegram || instance?.channel_type === "whatsapp";
+  const showContactsTab = instance?.channel_type === "whatsapp";
   const supportsReauth = instance
     ? channelsWithAuth.has(instance.channel_type)
     : false;
@@ -89,10 +95,14 @@ export function ChannelDetailPage({
   const remediation = getChannelRemediationMeta(status, supportsReauth, t);
   const checkedLabel = getChannelCheckedLabel(status, t);
 
+  // Re-resolve the tab only when the instance identity, tab availability, or URL
+  // changes — NOT on every instance refetch. A save triggers a refetch that swaps the
+  // instance object; depending on `instance` here reset the tab to the default after
+  // every save (the "tab jumps away on save" defect).
   useEffect(() => {
     if (!instance) return;
-    setActiveTab(resolveChannelDetailTab(searchParams.get("tab"), showGroupsTab));
-  }, [instance, showGroupsTab, searchParams]);
+    setActiveTab(resolveChannelDetailTab(searchParams.get("tab"), showGroupsTab, showContactsTab));
+  }, [instance?.id, showGroupsTab, showContactsTab, searchParams]);
 
   useEffect(() => {
     if (!instance) return;
@@ -200,6 +210,11 @@ export function ChannelDetailPage({
                   {t("detail.tabs.groups")}
                 </TabsTrigger>
               )}
+              {showContactsTab && (
+                <TabsTrigger value="contacts">
+                  {t("detail.tabs.contacts")}
+                </TabsTrigger>
+              )}
               <TabsTrigger value="managers">
                 {t("detail.tabs.managers")}
               </TabsTrigger>
@@ -226,6 +241,17 @@ export function ChannelDetailPage({
                   instance={instance}
                   onUpdate={updateInstance}
                   listManagerGroups={listManagerGroups}
+                  listContacts={listContacts}
+                  agents={agents}
+                />
+              </TabsContent>
+            )}
+
+            {showContactsTab && (
+              <TabsContent value="contacts" className="mt-4">
+                <ChannelContactsTab
+                  instance={instance}
+                  onUpdate={updateInstance}
                   listContacts={listContacts}
                   agents={agents}
                 />

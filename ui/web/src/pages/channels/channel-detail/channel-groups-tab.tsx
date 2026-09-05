@@ -9,7 +9,6 @@ import { TelegramGroupOverrides } from "../telegram-group-overrides";
 import type { TelegramGroupConfigValues } from "../telegram-group-fields";
 import type { TelegramTopicConfigValues } from "../telegram-topic-overrides";
 import { WhatsAppGroupOverrides } from "../whatsapp-group-overrides";
-import { WhatsAppContactOverrides, type WhatsAppContactConfigValues } from "../whatsapp-contact-overrides";
 import { WhatsAppGroupJoinRules, type WhatsAppGroupJoinRuleValues } from "../whatsapp-group-join-rules";
 import type { GroupManagerGroupInfo } from "../hooks/use-channel-detail";
 
@@ -148,20 +147,14 @@ function WhatsAppGroupsContent({
   const [joinRules, setJoinRules] = useState<WhatsAppGroupJoinRuleValues[]>(
     (config.group_join_rules as WhatsAppGroupJoinRuleValues[]) ?? [],
   );
-  const [contacts, setContacts] = useState<Record<string, WhatsAppContactConfigValues>>(
-    (config.contacts as Record<string, WhatsAppContactConfigValues>) ?? {},
-  );
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
     const hasGroups = Object.keys(groups).length > 0;
-    // Omit an empty contacts map — mirrors the groups undefined cleanup.
-    const hasContacts = Object.keys(contacts).length > 0;
     const updatedConfig = {
       ...config,
       groups: hasGroups ? groups : undefined,
       group_join_rules: joinRules.length > 0 ? joinRules : undefined,
-      contacts: hasContacts ? contacts : undefined,
     };
     const cleanConfig = Object.fromEntries(
       Object.entries(updatedConfig).filter(([, v]) => v !== undefined),
@@ -193,13 +186,6 @@ function WhatsAppGroupsContent({
         listContacts={listContacts}
         agents={agents}
         instanceId={instance.id}
-      />
-
-      <WhatsAppContactOverrides
-        contacts={contacts}
-        onChange={setContacts}
-        listContacts={listContacts}
-        agents={agents}
       />
 
       <div className="flex items-center justify-end gap-2">
