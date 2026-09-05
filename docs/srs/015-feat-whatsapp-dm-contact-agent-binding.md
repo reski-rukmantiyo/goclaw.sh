@@ -2,9 +2,9 @@
 
 **Project**: GoClaw Gateway
 **Release**: 2026.3.0
-**Version**: 0.1-draft
-**Date**: 2026-09-04
-**Status**: Draft
+**Version**: 0.2-draft
+**Date**: 2026-09-06
+**Status**: Implemented (code-complete + build/vet/test-verified). Live on-device DM round-trip on the master tenant pending (§5 manual items).
 **Difficulty**: Low–Medium
 **Estimate**: 1–2 days
 
@@ -15,6 +15,7 @@
 | Version | Date | Changes |
 |---------|------|---------|
 | 0.1-draft | 2026-09-04 | Initial draft. Current-state map verified against code: DM routing always uses the channel default agent (`resolveAgentID` group-only override, `internal/channels/whatsapp/whatsapp.go:674-684`); gateway-level `cfg.Bindings` routing (`resolveAgentRoute`, `cmd/gateway_consumer_helpers.go:20`) is never consulted for WhatsApp because the channel always sets `msg.AgentID` (`cmd/gateway_consumer_normal.go:39-42`). Design mirrors the existing per-group override mechanism (`WhatsAppGroupConfig.AgentID` keyed by group JID in `channel_instances.config`). |
+| 0.2-draft | 2026-09-06 | **Implemented (code-complete + build/vet/test-verified).** Config: `WhatsAppContactConfig` + `Contacts` on `WhatsAppConfig` (`config_channels.go`), round-trip + nil-map-omitted tests green. Resolution: `resolveAgentID` gained the `direct` branch; `resolveGroupAgentUUID` refactored into shared `resolveAgentKeyUUID` with new sibling `resolveContactAgentUUID` (same cache pattern as 003 RC1); `RefreshGroupAgentCache` walks `Contacts` too. Inbound: contact-disabled early return + DM routing **Debug** log (per FR-02.4); listen-only DM attribution via `resolveContactAgentUUID(senderID)`. UI: `whatsapp-contact-overrides.tsx` (picker via `listContacts("","whatsapp","direct","user")`, agent Select, enabled toggle, manual JID entry) wired into the WhatsApp branch of `channel-groups-tab.tsx` with the shared Save; `contact-jid.ts` pure helper + vitest. i18n: `whatsappContactOverrides` block (13 keys — superset of the 9 proposed: added `hint`/`nameLabel`/`enabledHint`/`knownContacts` needed by the component) × en/vi/zh. **Deviations:** (1) `resolveAgentID` signature extended to `(chatID, senderID, peerKind)` — the DM lookup key is the normalized sender JID (FR-03), which differs from raw `chatID` under LID addressing; 4 callers updated (`inbound.go`, `commands.go` ×3). (2) No `resolveContactAgentUUID` DB lookup per message — shared cache proven by `TestResolveContactAgentUUID_CachesAcrossCalls`. **Verification:** `go build ./...` ✓, `go build -tags sqliteonly ./...` ✓, `go vet ./...` ✓, `go test -race ./internal/channels/whatsapp/` 144/146 (2 pre-existing `TestMimeToExt`, documented since `003`), `go test -race ./internal/config/ ./internal/channels/` 211 ✓, `pnpm build` (ui/web) ✓, `contact-jid.test.ts` 6/6 ✓. `go fix` skipped (unrelated-churn convention, 007/009/012/013/014). **Deferred (env-gated):** live master-tenant DM round-trip (override contact → Raka, unlisted → default, listen-only attribution, runtime edit), UI render/click checks, session-switch check. |
 
 ---
 
@@ -62,7 +63,7 @@ For traceability, the DM routing path as it exists today:
 
 Acceptance criteria:
 
-- [ ] The map above is re-verified at implementation time (re-grep each site; line numbers may drift).
+- [x] The map above is re-verified at implementation time (re-grep each site; line numbers may drift). _(re-verified 2026-09-06: all FR-00 sites still accurate — `resolveAgentID` `whatsapp.go:674-684`, DM policy `inbound.go:55-57`, LID normalization `inbound.go:36-43`, group-disabled `inbound.go:192-195`, listen attribution `inbound.go:235`, `agentKeyCache` `whatsapp.go:79-87`, `RefreshGroupAgentCache` `whatsapp.go:804-842`, consumer dispatch `gateway_consumer_normal.go:39-42,55`)_
 
 ---
 
@@ -103,10 +104,10 @@ Example config fragment:
 
 Acceptance criteria:
 
-- [ ] `WhatsAppContactConfig` struct + `Contacts` field added to `WhatsAppConfig`; JSON round-trips (marshal/unmarshal test).
-- [ ] Config persists through the existing update path: `channels.instances.update { updates: { config: … } }` stores the map; reload restores it (`channel_instances.go:173-230` treats `config` as opaque except `session_clear` — no handler change expected; verify none needed).
-- [ ] No migration file, no `RequiredSchemaVersion` change, no SQLite `schema.sql`/`schema.go` change (verification only).
-- [ ] `go build ./...` and `go build -tags sqliteonly ./...` green (struct is shared code).
+- [x] `WhatsAppContactConfig` struct + `Contacts` field added to `WhatsAppConfig`; JSON round-trips (marshal/unmarshal test). _(`internal/config/whatsapp_contacts_test.go`: `TestWhatsAppContactsConfig_RoundTrip` + `_NilMapOmitted`)_
+- [x] Config persists through the existing update path: `channels.instances.update { updates: { config: … } }` stores the map; reload restores it (`channel_instances.go:173-230` treats `config` as opaque except `session_clear` — no handler change expected; verify none needed). _(by inspection — `validateSessionClearConfig` `channel_instances.go:314-342` inspects only `session_clear` + `groups.*.session_clear`; `contacts` rides the opaque config through update → JSONB → reload → `config.WhatsAppConfig.Contacts` unmarshal. No handler change made.)_
+- [x] No migration file, no `RequiredSchemaVersion` change, no SQLite `schema.sql`/`schema.go` change (verification only). _(by inspection — no `migrations/` file touched; `internal/upgrade/version.go` + `sqlitestore/schema.go` untouched)_
+- [x] `go build ./...` and `go build -tags sqliteonly ./...` green (struct is shared code). _(both builds ✓, 2026-09-06)_
 
 ---
 
@@ -138,13 +139,13 @@ slog.Debug("whatsapp dm routing", "chat_id", chatID,
 
 Acceptance criteria:
 
-- [ ] A DM from a contact with `agent_id: "raka"` produces an agent run under `raka` (verify: session key `BuildScopedSessionKey("raka", <instance>, "direct", <chatID>)` in the `inbound: scheduling message` log, `gateway_consumer_normal.go:194-201`).
-- [ ] A DM from a contact with no entry, `""`, or `"__default__"` runs the channel default agent (no regression).
-- [ ] A DM from a contact with `enabled: false` is dropped before routing (no agent run, no reply), mirroring the group-disabled path.
-- [ ] With global `listen_only` on, a DM from an override contact stores its `listen_raw_messages` row with the **override agent's UUID** (not the channel default).
-- [ ] Runtime edit of a contact's `agent_id` via the UI is honored on the next inbound DM without a gateway restart (UI path → `emitCacheInvalidate` → `InstanceLoader.Reload`; live-config read guarantees fresh values, same as groups per `003` §11.1).
-- [ ] A direct DB edit to `channel_instances.config` is reconciled within the documented resync interval (existing 60 s `ResyncIfStale`, `003` RC2 — no new code).
-- [ ] No per-message DB lookup on the hot path: contact override agent_key→UUID resolves via `agentKeyCache` (cache hit after warm-up; on-demand + cache on miss).
+- [ ] A DM from a contact with `agent_id: "raka"` produces an agent run under `raka` (verify: session key `BuildScopedSessionKey("raka", <instance>, "direct", <chatID>)` in the `inbound: scheduling message` log, `gateway_consumer_normal.go:194-201`). _(manual — needs running gateway + real device)_
+- [x] A DM from a contact with no entry, `""`, or `"__default__"` runs the channel default agent (no regression). _(`TestResolveAgentID_DirectDefaults` — 3 cases)_
+- [x] A DM from a contact with `enabled: false` is dropped before routing (no agent run, no reply), mirroring the group-disabled path. _(by inspection — `inbound.go` direct branch returns before routing when `ct.Enabled != nil && !*ct.Enabled`, mirroring the group-disabled return; the disabled-drop precedes listen-only capture too, so a disabled contact stores nothing)_
+- [x] With global `listen_only` on, a DM from an override contact stores its `listen_raw_messages` row with the **override agent's UUID** (not the channel default). _(resolution proven by `TestResolveContactAgentUUID_RuntimeOverrideNoReload`; wiring by inspection — `inbound.go` listen branch calls `resolveContactAgentUUID(senderID)` for `peerKind == "direct"`, and `ListenBuffer.Add` honors `entry.AgentID` over the channel default `listen_buffer.go:113-121`)_
+- [x] Runtime edit of a contact's `agent_id` via the UI is honored on the next inbound DM without a gateway restart (UI path → `emitCacheInvalidate` → `InstanceLoader.Reload`; live-config read guarantees fresh values, same as groups per `003` §11.1). _(the live-config property is unit-proven: `TestResolveContactAgentUUID_RuntimeOverrideNoReload` adds an override at runtime with no reload and resolves on the next call — the same RC1-style guarantee as `003`'s `TestResolveGroupAgentUUID_RuntimeOverrideNoReload`; UI→invalidate→Reload path is existing, unchanged)_
+- [x] A direct DB edit to `channel_instances.config` is reconciled within the documented resync interval (existing 60 s `ResyncIfStale`, `003` RC2 — no new code). _(existing mechanism, untouched — by inspection)_
+- [x] No per-message DB lookup on the hot path: contact override agent_key→UUID resolves via `agentKeyCache` (cache hit after warm-up; on-demand + cache on miss). _(`TestResolveContactAgentUUID_CachesAcrossCalls` — second call resolves with the store ref nil'd, i.e. pure cache hit)_
 
 ---
 
@@ -157,8 +158,8 @@ WhatsApp uses dual identity: phone JID (`@s.whatsapp.net`) and LID (`@lid`). `ha
 
 Acceptance criteria:
 
-- [ ] A LID-addressed DM (`AddressingMode == LID`, `SenderAlt` present) from an override contact routes to the override agent.
-- [ ] Unit test covers: phone-JID lookup hit, LID-mode lookup hit via normalized sender, miss → default.
+- [x] A LID-addressed DM (`AddressingMode == LID`, `SenderAlt` present) from an override contact routes to the override agent. _(`TestResolveAgentID_DirectLIDNormalizedSender` — `@lid` chat JID + normalized phone sender JID resolves the override; upstream normalization `inbound.go:39-41` unchanged)_
+- [x] Unit test covers: phone-JID lookup hit, LID-mode lookup hit via normalized sender, miss → default. _(same test + `TestResolveAgentID_DirectOverride` + `_DirectDefaults`)_
 
 ---
 
@@ -173,10 +174,10 @@ A new **Contacts** section in the WhatsApp channel detail, mirroring `WhatsAppGr
 
 Acceptance criteria:
 
-- [ ] Operator can add a discovered contact, pick an agent, save, and see the override persist after page reload (config round-trip).
-- [ ] Manual JID entry rejects a value not matching `^\d+@s\.whatsapp\.net$` (inline error, no save).
-- [ ] Removing all overrides omits `contacts` from the saved config (no stale `{}` payload difference — mirror the groups `undefined` cleanup, `channel-groups-tab.tsx:88-93`).
-- [ ] `pnpm build` (ui/web) green; no raw i18n keys rendered.
+- [ ] Operator can add a discovered contact, pick an agent, save, and see the override persist after page reload (config round-trip). _(manual — needs browser; code-complete, `pnpm build` green)_
+- [x] Manual JID entry rejects a value not matching `^\d+@s\.whatsapp\.net$` (inline error, no save). _(`contact-jid.test.ts` — `isValidWhatsAppPhoneJid` 6 cases incl. local-format/LID/group-JID/`+`-prefixed rejects; component shows `whatsappContactOverrides.invalidJid` inline and blocks add)_
+- [x] Removing all overrides omits `contacts` from the saved config (no stale `{}` payload difference — mirror the groups `undefined` cleanup, `channel-groups-tab.tsx:88-93`). _(by inspection — `channel-groups-tab.tsx` `handleSave`: `contacts: hasContacts ? contacts : undefined` with `hasContacts = Object.keys(contacts).length > 0`, identical to the groups cleanup)_
+- [x] `pnpm build` (ui/web) green; no raw i18n keys rendered. _(build ✓; all keys present in en/vi/zh, namespace `channels` already registered — `useTranslation("channels")` in the new component)_
 
 ---
 
@@ -198,8 +199,8 @@ New keys in `ui/web/src/i18n/locales/{en,vi,zh}/channels.json` under a `whatsapp
 
 Acceptance criteria:
 
-- [ ] All keys present in `en`, `vi`, `zh` with identical key sets.
-- [ ] Namespace `channels` already registered — no `004`-FR-07-style mismatch (verify `useTranslation("channels")` at the new component).
+- [x] All keys present in `en`, `vi`, `zh` with identical key sets. _(13 keys per locale — the 9 proposed + `hint`/`nameLabel`/`enabledHint`/`knownContacts` the component also renders; added to all three `channels.json` files)_
+- [x] Namespace `channels` already registered — no `004`-FR-07-style mismatch (verify `useTranslation("channels")` at the new component). _(verified — `whatsapp-contact-overrides.tsx` uses `useTranslation("channels")`; `pnpm build` green)_
 
 ---
 
@@ -209,9 +210,9 @@ No new endpoint. Contact overrides are read/written through the existing `channe
 
 Acceptance criteria:
 
-- [ ] No new WS method, HTTP route, or store method; no auth change to the existing update path.
-- [ ] DM policy still gates before agent resolution (a non-paired contact with an override still gets the pairing flow, not the override agent).
-- [ ] Contact override resolution is confined to the channel's own instance config (per-instance; two WhatsApp instances in the same tenant have independent `contacts` maps).
+- [x] No new WS method, HTTP route, or store method; no auth change to the existing update path. _(by inspection — only `config_channels.go` (struct), `whatsapp.go` (resolution), `inbound.go` (routing/drop/log), `commands.go` (caller signature), UI files touched)_
+- [x] DM policy still gates before agent resolution (a non-paired contact with an override still gets the pairing flow, not the override agent). _(by inspection — `checkDMPolicy` at `inbound.go:55-57` runs before `resolveAgentID` and the contacts block; contact resolution added after the gate, none before)_
+- [x] Contact override resolution is confined to the channel's own instance config (per-instance; two WhatsApp instances in the same tenant have independent `contacts` maps). _(by inspection — `c.config.Contacts` is the per-instance config struct loaded per channel instance; no shared/global map)_
 
 ---
 
@@ -223,9 +224,9 @@ Acceptance criteria:
 
 Acceptance criteria:
 
-- [ ] Group override routing still passes the existing `group_agent_test.go` suite (`003` RC1 regression tests).
-- [ ] A contact switched from agent A to agent B starts a new session under B; A's prior session is still listed in Sessions (manual check).
-- [ ] `go test -race ./internal/channels/whatsapp/` green (modulo the 2 pre-existing `TestMimeToExt` failures documented since `003`).
+- [x] Group override routing still passes the existing `group_agent_test.go` suite (`003` RC1 regression tests). _(all 5 `TestResolveGroupAgentUUID_*` green + new `TestResolveAgentID_GroupBranchUnchanged` proving a sender's contact entry never affects group routing)_
+- [ ] A contact switched from agent A to agent B starts a new session under B; A's prior session is still listed in Sessions (manual check). _(manual — needs running gateway)_
+- [x] `go test -race ./internal/channels/whatsapp/` green (modulo the 2 pre-existing `TestMimeToExt` failures documented since `003`). _(144 passed / 2 pre-existing `TestMimeToExt` failures — byte-identical failure set on untouched `media_utils_test.go`, documented since `003`/`013`/`014`)_
 
 ## 4. System Impact
 

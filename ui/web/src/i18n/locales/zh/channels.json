@@ -582,6 +582,21 @@
     "refreshing": "刷新中...",
     "notJoined": "未加入"
   },
+  "whatsappContactOverrides": {
+    "title": "私聊联系人",
+    "hint": "将每个 WhatsApp 联系人的私聊消息路由到指定 agent。未设置的联系人使用渠道默认 agent。",
+    "addContact": "添加联系人",
+    "contactJid": "联系人 JID（例: 628123456789@s.whatsapp.net）",
+    "invalidJid": "必须是形如 628123456789@s.whatsapp.net 的手机号 JID",
+    "nameLabel": "名称",
+    "agent": "Agent",
+    "defaultAgent": "渠道默认",
+    "enabled": "启用",
+    "enabledHint": "禁用后将完全忽略此联系人的私聊消息。",
+    "knownContacts": "已发现的联系人",
+    "saveContacts": "保存",
+    "saving": "保存中…"
+  },
   "sessionClear": {
     "title": "会话清理计划",
     "enabledLabel": "自动清理会话",

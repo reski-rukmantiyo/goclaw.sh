@@ -182,8 +182,28 @@ func (c *Channel) handleIncomingMessage(evt *events.Message) {
 		cc.EnsureContact(ctx, c.Type(), c.Name(), chatID, "", "", "", "group", "group", "", "")
 	}
 
-	// Resolve group-specific agent override.
-	targetAgentID := c.resolveAgentID(chatID, peerKind)
+	// Resolve group-specific / contact-specific agent override.
+	targetAgentID := c.resolveAgentID(chatID, senderID, peerKind)
+	if peerKind == "direct" {
+		// Per-contact DM overrides (SRS 015): disabled contacts are dropped before
+		// routing, mirroring the group-disabled path below.
+		if c.config.Contacts != nil {
+			if ct, ok := c.config.Contacts[senderID]; ok && ct != nil {
+				if ct.Enabled != nil && !*ct.Enabled {
+					slog.Info("whatsapp dm message rejected: contact disabled", "chat_id", chatID)
+					return
+				}
+			}
+		}
+		// Debug, not Info: DM volume is 1-on-1 and continuous; per-message Info logs
+		// would be noisy (groups log at Info mainly for routing triage).
+		slog.Debug("whatsapp dm routing",
+			"chat_id", chatID,
+			"default_agent", c.AgentID(),
+			"final_agent", targetAgentID,
+			"override_applied", targetAgentID != c.AgentID(),
+			"contacts_configured", len(c.config.Contacts))
+	}
 	if peerKind == "group" {
 		slog.Info("whatsapp group routing", "chat_id", chatID, "default_agent", c.AgentID(),
 			"groups_count", len(c.config.Groups))
@@ -232,7 +252,12 @@ func (c *Channel) handleIncomingMessage(evt *events.Message) {
 			// Persist media files to durable storage before storing the raw message.
 			var persistedRefs []store.RawMediaRef
 			var failedPaths []string
+			// Per-contact DM override attribution (SRS 015 FR-02): listen-only DM rows
+			// land in the override agent's scope. Groups keep the group override path.
 			effectiveAgentUUID := c.resolveGroupAgentUUID(chatID)
+			if peerKind == "direct" {
+				effectiveAgentUUID = c.resolveContactAgentUUID(senderID)
+			}
 			graphID := c.resolveGraphID(chatID, peerKind)
 			slog.Info("whatsapp listen-only agent resolution",
 				"chat_id", chatID,

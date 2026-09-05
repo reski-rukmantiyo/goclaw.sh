@@ -670,13 +670,23 @@ func (c *Channel) resolveGraphID(chatID, peerKind string) string {
 }
 
 // resolveAgentID returns the effective agent ID for a chat, applying
-// group-specific overrides from config when applicable.
-func (c *Channel) resolveAgentID(chatID, peerKind string) string {
+// group-specific or contact-specific overrides from config when applicable.
+// For DMs the override lookup is keyed on the normalized sender JID (LID→phone,
+// inbound.go) — the chat peer IS the sender, and LID-addressed chats must resolve
+// the same override as phone-JID-addressed ones.
+func (c *Channel) resolveAgentID(chatID, senderID, peerKind string) string {
 	agentID := c.AgentID()
 	if peerKind == "group" && c.config.Groups != nil {
 		if grp, ok := c.config.Groups[chatID]; ok && grp != nil {
 			if grp.AgentID != "" && grp.AgentID != "__default__" {
 				agentID = grp.AgentID
+			}
+		}
+	}
+	if peerKind == "direct" && c.config.Contacts != nil && senderID != "" {
+		if ct, ok := c.config.Contacts[senderID]; ok && ct != nil {
+			if ct.AgentID != "" && ct.AgentID != "__default__" {
+				agentID = ct.AgentID
 			}
 		}
 	}
@@ -798,9 +808,9 @@ func (c *Channel) ResolveGroupAgentOverrides(ctx context.Context, agentStore sto
 	c.RefreshGroupAgentCache(ctx)
 }
 
-// RefreshGroupAgentCache rebuilds the agent_key → UUID cache from the live group config.
-// Called on agent create/update (CacheKindAgent) and on channel reload so renamed/recreated
-// agents resolve correctly without a gateway restart.
+// RefreshGroupAgentCache rebuilds the agent_key → UUID cache from the live group and
+// contact config. Called on agent create/update (CacheKindAgent) and on channel reload so
+// renamed/recreated agents resolve correctly without a gateway restart.
 func (c *Channel) RefreshGroupAgentCache(_ context.Context) {
 	c.agentKeyMu.RLock()
 	as := c.agentStore
@@ -810,29 +820,42 @@ func (c *Channel) RefreshGroupAgentCache(_ context.Context) {
 	}
 	c.mu.Lock()
 	groups := c.config.Groups
+	contacts := c.config.Contacts
 	c.mu.Unlock()
-	if groups == nil {
+	if groups == nil && contacts == nil {
 		return
 	}
 	ctx := c.tenantScopedCtx()
 	resolved := make(map[string]string)
-	for _, grp := range groups {
-		if grp == nil || grp.AgentID == "" || grp.AgentID == "__default__" {
-			continue
+	resolve := func(agentKey, source string) {
+		if agentKey == "" || agentKey == "__default__" {
+			return
 		}
-		ag, err := as.GetByKey(ctx, grp.AgentID)
+		ag, err := as.GetByKey(ctx, agentKey)
 		if err != nil {
 			// Fallback: config may contain a UUID instead of agent_key (e.g. UI WS fallback).
-			if id, parseErr := uuid.Parse(grp.AgentID); parseErr == nil {
+			if id, parseErr := uuid.Parse(agentKey); parseErr == nil {
 				ag, err = as.GetByID(ctx, id)
 			}
 		}
 		if err != nil {
-			slog.Warn("whatsapp: failed to resolve group override agent",
-				"agent_key", grp.AgentID, "error", err)
+			slog.Warn("whatsapp: failed to resolve override agent",
+				"agent_key", agentKey, "source", source, "error", err)
+			return
+		}
+		resolved[agentKey] = ag.ID.String()
+	}
+	for _, grp := range groups {
+		if grp == nil {
 			continue
 		}
-		resolved[grp.AgentID] = ag.ID.String()
+		resolve(grp.AgentID, "group")
+	}
+	for _, ct := range contacts {
+		if ct == nil {
+			continue
+		}
+		resolve(ct.AgentID, "contact")
 	}
 	c.agentKeyMu.Lock()
 	c.agentKeyCache = resolved
@@ -863,7 +886,40 @@ func (c *Channel) resolveGroupAgentUUID(chatID string) string {
 	if agentKey == "" {
 		return ""
 	}
+	return c.resolveAgentKeyUUID(chatID, agentKey)
+}
 
+// resolveContactAgentUUID returns the agent UUID for a per-contact DM override, or empty
+// string when the contact has no override (the caller then falls back to the channel
+// default agent — correct). Keyed on the normalized sender JID so LID-addressed DMs
+// resolve the same override as phone-JID-addressed ones (SRS 015 FR-03). Reads the LIVE
+// c.config.Contacts and resolves agent_key → UUID through the shared cache — the same
+// pattern as resolveGroupAgentUUID (003 RC1).
+func (c *Channel) resolveContactAgentUUID(senderID string) string {
+	if senderID == "" {
+		return ""
+	}
+	agentKey := ""
+	c.mu.Lock()
+	if c.config.Contacts != nil {
+		if ct, ok := c.config.Contacts[senderID]; ok && ct != nil {
+			if ct.AgentID != "" && ct.AgentID != "__default__" {
+				agentKey = ct.AgentID
+			}
+		}
+	}
+	c.mu.Unlock()
+	if agentKey == "" {
+		return ""
+	}
+	return c.resolveAgentKeyUUID(senderID, agentKey)
+}
+
+// resolveAgentKeyUUID resolves an override agent_key to an agent UUID via the
+// agent_key → UUID cache (fast path) or an on-demand agent-store lookup (cached on
+// miss). No DB lookup happens per message after warmup. Returns "" when the key cannot
+// be resolved (deleted/renamed agent) — callers fall back to the channel default.
+func (c *Channel) resolveAgentKeyUUID(scopeID, agentKey string) string {
 	// Fast path: cache hit.
 	c.agentKeyMu.RLock()
 	uuidStr, ok := c.agentKeyCache[agentKey]
@@ -887,8 +943,8 @@ func (c *Channel) resolveGroupAgentUUID(chatID string) string {
 		}
 	}
 	if err != nil {
-		slog.Warn("whatsapp: failed to resolve group override agent on demand",
-			"chat_id", chatID, "agent_key", agentKey, "error", err)
+		slog.Warn("whatsapp: failed to resolve override agent on demand",
+			"chat_id", scopeID, "agent_key", agentKey, "error", err)
 		return ""
 	}
 	uuidStr = ag.ID.String()
