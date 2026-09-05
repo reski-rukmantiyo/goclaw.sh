@@ -173,7 +173,14 @@ func (c *Channel) handleIncomingMessage(evt *events.Message) {
 
 	// Collect contact.
 	if cc := c.ContactCollector(); cc != nil {
-		cc.EnsureContact(ctx, c.Type(), c.Name(), senderID, senderID,
+		// DM contact overrides are keyed by phone JID; resolve LID→phone (SRS 015 FR-08)
+		// so LID-addressed DMs are collected under the same phone identity the override
+		// map uses. Groups keep the raw sender (their overrides key the group JID).
+		contactKey := senderID
+		if peerKind == "direct" {
+			contactKey = c.resolveContactLookupKey(senderID)
+		}
+		cc.EnsureContact(ctx, c.Type(), c.Name(), contactKey, contactKey,
 			metadata["user_name"], "", peerKind, "user", "", "")
 	}
 
@@ -199,6 +206,8 @@ func (c *Channel) handleIncomingMessage(evt *events.Message) {
 		// would be noisy (groups log at Info mainly for routing triage).
 		slog.Debug("whatsapp dm routing",
 			"chat_id", chatID,
+			"sender", senderID,
+			"lookup_key", c.resolveContactLookupKey(senderID),
 			"default_agent", c.AgentID(),
 			"final_agent", targetAgentID,
 			"override_applied", targetAgentID != c.AgentID(),

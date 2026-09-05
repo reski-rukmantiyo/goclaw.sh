@@ -684,7 +684,8 @@ func (c *Channel) resolveAgentID(chatID, senderID, peerKind string) string {
 		}
 	}
 	if peerKind == "direct" && c.config.Contacts != nil && senderID != "" {
-		if ct, ok := c.config.Contacts[senderID]; ok && ct != nil {
+		lookupKey := c.resolveContactLookupKey(senderID)
+		if ct, ok := c.config.Contacts[lookupKey]; ok && ct != nil {
 			if ct.AgentID != "" && ct.AgentID != "__default__" {
 				agentID = ct.AgentID
 			}
@@ -899,10 +900,11 @@ func (c *Channel) resolveContactAgentUUID(senderID string) string {
 	if senderID == "" {
 		return ""
 	}
+	lookupKey := c.resolveContactLookupKey(senderID)
 	agentKey := ""
 	c.mu.Lock()
 	if c.config.Contacts != nil {
-		if ct, ok := c.config.Contacts[senderID]; ok && ct != nil {
+		if ct, ok := c.config.Contacts[lookupKey]; ok && ct != nil {
 			if ct.AgentID != "" && ct.AgentID != "__default__" {
 				agentKey = ct.AgentID
 			}
@@ -912,7 +914,38 @@ func (c *Channel) resolveContactAgentUUID(senderID string) string {
 	if agentKey == "" {
 		return ""
 	}
-	return c.resolveAgentKeyUUID(senderID, agentKey)
+	return c.resolveAgentKeyUUID(lookupKey, agentKey)
+}
+
+// resolveContactLookupKey returns the phone JID for a LID-addressed DM sender, via
+// whatsmeow's LID map (client-side store, cache-backed — no network call, no DB hit
+// after the first lookup). Contact overrides are keyed by phone JID (SRS 015 FR-01),
+// so LID-only senders (no SenderAlt — the WhatsApp LID-first rollout) must be resolved
+// to their phone identity before the contacts lookup. Falls back to the raw senderID
+// when the client/store is unavailable or no mapping exists (Option 2: routing-only —
+// pairing/policy keep using the raw sender key, so existing LID-keyed pairing rows
+// stay valid).
+func (c *Channel) resolveContactLookupKey(senderID string) string {
+	if !strings.HasSuffix(senderID, "@lid") {
+		return senderID // already phone JID (or non-LID form) — nothing to resolve
+	}
+	client := c.client
+	if client == nil || client.Store == nil || client.Store.LIDs == nil {
+		return senderID
+	}
+	lid, err := types.ParseJID(senderID)
+	if err != nil {
+		return senderID
+	}
+	pn, err := client.Store.LIDs.GetPNForLID(context.Background(), lid)
+	if err != nil || pn.IsEmpty() {
+		return senderID
+	}
+	// whatsmeow's getLIDMapping copies the LID's device suffix onto the resolved PN
+	// (`Device: source.Device`, sqlstore/lidmap.go) — e.g. `62815…:78@s.whatsapp.net`.
+	// Override keys are bare phone JIDs, so strip the device before use.
+	pn.Device = 0
+	return pn.String()
 }
 
 // resolveAgentKeyUUID resolves an override agent_key to an agent UUID via the
