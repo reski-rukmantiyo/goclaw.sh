@@ -42,7 +42,7 @@ func (c *Channel) handleCommand(ctx context.Context, text, senderID, chatID, pee
 			ChatID:   chatID,
 			Content:  "/reset",
 			PeerKind: peerKind,
-			AgentID:  c.resolveAgentID(chatID, peerKind),
+			AgentID:  c.resolveAgentID(chatID, senderID, peerKind),
 			UserID:   stripSenderUserID(senderID),
 			TenantID: c.TenantID(),
 			Metadata: map[string]string{
@@ -59,7 +59,7 @@ func (c *Channel) handleCommand(ctx context.Context, text, senderID, chatID, pee
 			ChatID:   chatID,
 			Content:  "/stop",
 			PeerKind: peerKind,
-			AgentID:  c.resolveAgentID(chatID, peerKind),
+			AgentID:  c.resolveAgentID(chatID, senderID, peerKind),
 			UserID:   stripSenderUserID(senderID),
 			TenantID: c.TenantID(),
 			Metadata: map[string]string{
@@ -76,7 +76,7 @@ func (c *Channel) handleCommand(ctx context.Context, text, senderID, chatID, pee
 			ChatID:   chatID,
 			Content:  "/stopall",
 			PeerKind: peerKind,
-			AgentID:  c.resolveAgentID(chatID, peerKind),
+			AgentID:  c.resolveAgentID(chatID, senderID, peerKind),
 			UserID:   stripSenderUserID(senderID),
 			TenantID: c.TenantID(),
 			Metadata: map[string]string{

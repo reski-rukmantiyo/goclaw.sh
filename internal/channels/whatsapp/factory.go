@@ -91,13 +91,15 @@ func FactoryWithDBAudio(db *sql.DB, pendingStore store.PendingMessageStore, dial
 		GroupJoinRules:       ic.GroupJoinRules,
 		}
 
-		// Parse per-group overrides from config JSONB.
+		// Parse per-group and per-contact overrides from config JSONB.
 		if len(cfg) > 0 {
 			var wrapper struct {
-				Groups map[string]*config.WhatsAppGroupConfig `json:"groups"`
+				Groups   map[string]*config.WhatsAppGroupConfig   `json:"groups"`
+				Contacts map[string]*config.WhatsAppContactConfig `json:"contacts"`
 			}
 			if json.Unmarshal(cfg, &wrapper) == nil {
 				waCfg.Groups = wrapper.Groups
+				waCfg.Contacts = wrapper.Contacts
 			}
 		}
 
@@ -105,6 +107,12 @@ func FactoryWithDBAudio(db *sql.DB, pendingStore store.PendingMessageStore, dial
 			slog.Info("whatsapp group overrides loaded", "name", name, "count", len(waCfg.Groups))
 			for jid, gc := range waCfg.Groups {
 				slog.Info("whatsapp group override", "jid", jid, "agent_id", gc.AgentID, "enabled", gc.Enabled)
+			}
+		}
+		if len(waCfg.Contacts) > 0 {
+			slog.Info("whatsapp contact overrides loaded", "name", name, "count", len(waCfg.Contacts))
+			for jid, ct := range waCfg.Contacts {
+				slog.Info("whatsapp contact override", "jid", jid, "agent_id", ct.AgentID, "enabled", ct.Enabled)
 			}
 		}
 

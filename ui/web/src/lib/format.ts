@@ -13,17 +13,17 @@ export function formatDate(date: string | Date, tz?: string): string {
 
 export function formatRelativeTime(date: string | Date): string {
   const d = typeof date === "string" ? new Date(date) : date;
-  const now = Date.now();
-  const diffMs = now - d.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
+  const diffMs = d.getTime() - Date.now(); // >0 = future, <0 = past
+  const future = diffMs > 0;
+  const diffSec = Math.floor(Math.abs(diffMs) / 1000);
   const diffMin = Math.floor(diffSec / 60);
   const diffHr = Math.floor(diffMin / 60);
   const diffDay = Math.floor(diffHr / 24);
 
   if (diffSec < 60) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  if (diffHr < 24) return `${diffHr}h ago`;
-  if (diffDay < 30) return `${diffDay}d ago`;
+  if (diffMin < 60) return future ? `in ${diffMin}m` : `${diffMin}m ago`;
+  if (diffHr < 24) return future ? `in ${diffHr}h` : `${diffHr}h ago`;
+  if (diffDay < 30) return future ? `in ${diffDay}d` : `${diffDay}d ago`;
   return formatDate(d);
 }
 

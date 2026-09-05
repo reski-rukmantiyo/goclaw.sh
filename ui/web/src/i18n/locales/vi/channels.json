@@ -124,6 +124,7 @@
       "config": "Cấu hình",
       "credentials": "Thông tin xác thực",
       "groups": "Nhóm",
+      "contacts": "Liên hệ",
       "managers": "Quản lý"
     },
     "general": {
@@ -581,6 +582,21 @@
     "refreshGroups": "Làm mới nhóm",
     "refreshing": "Đang làm mới...",
     "notJoined": "Chưa tham gia"
+  },
+  "whatsappContactOverrides": {
+    "title": "Danh bạ tin nhắn riêng",
+    "hint": "Định tuyến tin nhắn riêng của từng liên hệ WhatsApp tới một agent cụ thể. Liên hệ không có cấu hình sẽ dùng agent mặc định của kênh.",
+    "addContact": "Thêm liên hệ",
+    "contactJid": "JID liên hệ (vd: 628123456789@s.whatsapp.net)",
+    "invalidJid": "Phải là JID số điện thoại như 628123456789@s.whatsapp.net",
+    "nameLabel": "Tên",
+    "agent": "Agent",
+    "defaultAgent": "Mặc định của kênh",
+    "enabled": "Bật",
+    "enabledHint": "Tắt để bỏ qua hoàn toàn tin nhắn riêng từ liên hệ này.",
+    "knownContacts": "Liên hệ đã phát hiện",
+    "saveContacts": "Lưu",
+    "saving": "Đang lưu…"
   },
   "sessionClear": {
     "title": "Lịch xóa phiên",

@@ -125,6 +125,7 @@
       "config": "Config",
       "credentials": "Credentials",
       "groups": "Groups",
+      "contacts": "Contacts",
       "managers": "Managers"
     },
     "general": {
@@ -582,6 +583,21 @@
     "refreshGroups": "Refresh Groups",
     "refreshing": "Refreshing...",
     "notJoined": "Not joined"
+  },
+  "whatsappContactOverrides": {
+    "title": "Direct Message Contacts",
+    "hint": "Route each WhatsApp contact's direct messages to a specific agent. Contacts without an override use the default channel agent.",
+    "addContact": "Add contact",
+    "contactJid": "Contact JID (e.g. 628123456789@s.whatsapp.net)",
+    "invalidJid": "Must be a phone JID like 628123456789@s.whatsapp.net",
+    "nameLabel": "Name",
+    "agent": "Agent",
+    "defaultAgent": "Channel default",
+    "enabled": "Enabled",
+    "enabledHint": "Disable to ignore this contact's direct messages entirely.",
+    "knownContacts": "Discovered Contacts",
+    "saveContacts": "Save",
+    "saving": "Saving…"
   },
   "sessionClear": {
     "title": "Session Clear Schedule",

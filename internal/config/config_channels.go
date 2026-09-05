@@ -212,6 +212,13 @@ type WhatsAppGroupJoinRule struct {
 	RequireMention *bool  `json:"require_mention,omitempty"`  // override channel-level require_mention
 }
 
+// WhatsAppContactConfig defines per-contact overrides for a WhatsApp channel (DMs).
+type WhatsAppContactConfig struct {
+	Name    string `json:"name,omitempty"`     // human-readable alias (from the contact picker when available)
+	AgentID string `json:"agent_id,omitempty"` // agent_key to route to (overrides channel default); "" or "__default__" = channel default. UUID form also accepted.
+	Enabled *bool  `json:"enabled,omitempty"`  // false = bot ignores this contact's DMs entirely (default: true)
+}
+
 type WhatsAppConfig struct {
 	Enabled        bool                             `json:"enabled"`
 	AuthDir        string                           `json:"auth_dir,omitempty"`        // optional: SQLite auth dir override (desktop)
@@ -223,6 +230,7 @@ type WhatsAppConfig struct {
 	BlockReply     *bool                            `json:"block_reply,omitempty"`     // override gateway block_reply (nil = inherit)
 	TableMode      string                           `json:"table_mode,omitempty"`      // "auto" (default), "ascii", "cards", "list", "off"
 	Groups         map[string]*WhatsAppGroupConfig  `json:"groups,omitempty"`          // per-group overrides, keyed by group JID
+	Contacts       map[string]*WhatsAppContactConfig `json:"contacts,omitempty"`       // per-contact DM overrides, keyed by phone JID (<number>@s.whatsapp.net)
 	GroupJoinRules []WhatsAppGroupJoinRule          `json:"group_join_rules,omitempty"` // auto-config rules when bot joins a group
 
 	// Listen-only mode: silently collect messages for KG extraction.
